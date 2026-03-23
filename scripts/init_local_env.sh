@@ -328,10 +328,11 @@ main() {
     # 3.8.1 Yufeng 按文件维度覆盖率（T8.5）
     execute_sql_file "$PROJECT_DIR/sql/yufeng_coverage_by_file.sql" "创建按文件维度覆盖率视图"
 
-    # 3.9 Yufeng 门店维表（用于筛选下拉显示门店名）
+    # 3.9 门店维表（用于筛选下拉显示门店名）
     execute_sql_file "$PROJECT_DIR/sql/yufeng_dim_store.sql" "创建 Yufeng 门店维表"
+    execute_sql_file "$PROJECT_DIR/sql/bonjur_dim_store.sql" "创建 Bonjur 门店维表"
 
-    # 3.9.1 Yufeng DM 模型
+    # 3.9.1 DM 模型
     execute_sql_file "$PROJECT_DIR/sql/yufeng_dm_models.sql" "创建 Yufeng DM 模型"
     execute_sql_file "$PROJECT_DIR/sql/bonjur_dm_models.sql" "创建 Bonjur DM 模型"
 

@@ -6,7 +6,8 @@
   - 2026-03-23：Bonjur 新增门店 `hz_in77`（杭州in77）；补齐 Bonjur DM 三张视图骨架（revenue/expense/profit）并接入 init 脚本；已推送 GitHub：<https://github.com/ericmr1981/wdg-data-foundation>
   - 2026-03-23：Bonjur 补齐“银行流水分类/覆盖率/未分类/人工匹配/规则沉淀”全链路（DB+UI），并已合入主分支（main）。
   - 2026-03-23：修复 yufeng 规则表重复膨胀：seed 改为幂等 + 库内去重；并将 yufeng/bonjur 的 dashboard 相关视图 month 字段统一为 `date(YYYY-MM-01)` 以支持 Metabase 月份筛选。
-  - 2026-03-23：Metabase：修复 dashboard(3/4) 卡片的分类遗漏，并将 dashboard=4（月筛选）改为 date（月选择器）。
+  - 2026-03-23：Metabase：修复 dashboard(3/4) 卡片的分类遗漏，并将 dashboard=4（月筛选）改为 date（月选择器）；并将 Store 筛选升级为下拉（来源于门店维表 dim_store，显示门店名）。
+  - 2026-03-23：新增门店维表：`yufeng_cfg.dim_store` / `bonjur_cfg.dim_store`（初始化脚本已接入），用于 dashboard 下拉显示“门店名”。
 - **优先级**: P1
 - **负责人(Agent)**: polo_engineer
 - **提出人**: Eric
