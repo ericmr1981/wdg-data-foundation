@@ -324,11 +324,20 @@ def create_ingest_file(meta: dict, file_hash: str, file_size: int, conn) -> int:
         return cur.fetchone()[0]
 
 
-def delete_existing_data(source_file_id: int, conn):
+def _validate_brand(brand_code: str) -> str:
+    brand_code = (brand_code or '').lower().strip()
+    if brand_code not in ("yufeng", "bonjur"):
+        raise ValueError(f"不支持的品牌 brand_code: {brand_code}")
+    return brand_code
+
+
+def delete_existing_data(brand_code: str, source_file_id: int, conn):
     """删除当次导入的旧数据（幂等核心）"""
+    brand_code = _validate_brand(brand_code)
+    table = f"{brand_code}_ods.bank_txn"
     with conn.cursor() as cur:
         cur.execute(
-            "DELETE FROM yufeng_ods.bank_txn WHERE source_file_id = %s",
+            f"DELETE FROM {table} WHERE source_file_id = %s",
             (source_file_id,),
         )
         deleted = cur.rowcount
@@ -336,8 +345,10 @@ def delete_existing_data(source_file_id: int, conn):
         return deleted
 
 
-def insert_bank_txn(df: pd.DataFrame, store_code: str, source_file_id: int, conn) -> int:
+def insert_bank_txn(brand_code: str, df: pd.DataFrame, store_code: str, source_file_id: int, conn) -> int:
     """批量插入银行流水数据"""
+    brand_code = _validate_brand(brand_code)
+    table = f"{brand_code}_ods.bank_txn"
     records = []
     for _, row in df.iterrows():
         # 安全检查：确保金额字段不是 NaN/inf，转换为 None
@@ -372,8 +383,8 @@ def insert_bank_txn(df: pd.DataFrame, store_code: str, source_file_id: int, conn
     with conn.cursor() as cur:
         execute_values(
             cur,
-            """
-            INSERT INTO yufeng_ods.bank_txn (
+            f"""
+            INSERT INTO {table} (
                 store_code, self_acct, txn_time, counterparty_name, counterparty_acct,
                 in_amt, out_amt, balance_amt, summary, purpose, memo, source_file_id
             ) VALUES %s
@@ -486,11 +497,13 @@ def verify_import(file_path: str) -> dict:
         print(f"Month: {ingest['month']}")
 
         # 检查 bank_txn
+        brand_code = _validate_brand(meta["brand_code"])
+        table = f"{brand_code}_ods.bank_txn"
         with conn.cursor() as cur:
             cur.execute(
-                """
+                f"""
                 SELECT COUNT(*), COUNT(txn_time), COUNT(in_amt), COUNT(out_amt)
-                FROM yufeng_ods.bank_txn
+                FROM {table}
                 WHERE source_file_id = %s
                 """,
                 (ingest["id"],),
@@ -527,9 +540,8 @@ def do_import(file_path: str) -> dict:
     # 解析路径
     meta = parse_path(file_path)
 
-    # 验证 brand_code
-    if meta["brand_code"] != "yufeng":
-        raise ValueError(f"本脚本仅支持 yufeng 品牌，当前文件: {meta['brand_code']}")
+    # 验证 brand_code（目前支持 yufeng / bonjur）
+    _validate_brand(meta["brand_code"])
 
     # 初始化 Ops Logger
     ops = create_ops_logger(
@@ -575,7 +587,7 @@ def do_import(file_path: str) -> dict:
                 if ops:
                     ops.step_start("delete_previous", step_order=STEP_ORDER["delete_previous"])
 
-                deleted = delete_existing_data(source_file_id, conn)
+                deleted = delete_existing_data(meta["brand_code"], source_file_id, conn)
                 print(f"Deleted {deleted} existing rows for idempotent import")
 
                 if ops:
@@ -605,8 +617,8 @@ def do_import(file_path: str) -> dict:
         if ops:
             ops.step_start("insert_bank_txn", step_order=STEP_ORDER["insert_bank_txn"], detail={"rows_in": rows_parsed})
 
-        row_count = insert_bank_txn(df, meta["store_code"], source_file_id, conn)
-        print(f"Inserted {row_count} rows into yufeng_ods.bank_txn")
+        row_count = insert_bank_txn(meta["brand_code"], df, meta["store_code"], source_file_id, conn)
+        print(f"Inserted {row_count} rows into {meta['brand_code']}_ods.bank_txn")
 
         if ops:
             ops.step_end("insert_bank_txn", rows_out=row_count, rows_rejected=rows_parsed - row_count)
