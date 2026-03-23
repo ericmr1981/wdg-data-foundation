@@ -312,6 +312,9 @@ main() {
     # 3.5 Bonjur ODS (品牌特定)
     execute_sql_file "$PROJECT_DIR/brand-docs/Bonjur_ODS_DDL.sql" "创建 bonjur_ods 表"
 
+    # 3.5.1 Bonjur CFG（先建表，后续可从 yufeng 复制规则）
+    execute_sql_file "$PROJECT_DIR/sql/bonjur_cfg_ddl.sql" "创建 bonjur_cfg.bank_rule_map"
+
     # 3.6 Yufeng 分类规则与应用
     execute_sql_file "$PROJECT_DIR/sql/yufeng_apply_classification.sql" "应用分类规则"
 
