@@ -5,6 +5,7 @@
 - 门店（store_code）
   - 温州瓯海万象城店：`wz_oh_wxc`
   - 温州瑞安吾悦广场店：`wz_ra_wy`
+- 杭州in77：`hz_in77`
 
 ## 1. Schema 命名（方案B：同库分品牌schema）
 > 建议采用前缀：`bonjur_raw / bonjur_ods / bonjur_cfg / bonjur_dm`

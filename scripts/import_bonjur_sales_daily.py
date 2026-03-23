@@ -51,6 +51,7 @@ DB_CONFIG = {
 STORE_NAME_MAPPING = {
     "温州瓯海万象城店": "wz_oh_wxc",
     "温州瑞安吾悦广场店": "wz_ra_wy",
+    "杭州in77": "hz_in77",
 }
 
 # CSV 列名 → 目标字段映射

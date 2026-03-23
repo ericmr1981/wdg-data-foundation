@@ -326,7 +326,8 @@ main() {
     execute_sql_file "$PROJECT_DIR/sql/yufeng_coverage_by_file.sql" "创建按文件维度覆盖率视图"
 
     # 3.9 Yufeng DM 模型
-    execute_sql_file "$PROJECT_DIR/sql/yufeng_dm_models.sql" "创建 DM 模型"
+    execute_sql_file "$PROJECT_DIR/sql/yufeng_dm_models.sql" "创建 Yufeng DM 模型"
+    execute_sql_file "$PROJECT_DIR/sql/bonjur_dm_models.sql" "创建 Bonjur DM 模型"
 
     # 3.10 Yufeng 回归测试
     execute_sql_file "$PROJECT_DIR/sql/yufeng_rule_regression.sql" "创建回归测试视图"

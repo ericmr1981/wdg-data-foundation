@@ -10,6 +10,7 @@
 |---|---|
 | 温州瓯海万象城店 | wz_oh_wxc |
 | 温州瑞安吾悦广场店 | wz_ra_wy |
+| 杭州in77 | hz_in77 |
 
 ## 3) 字段映射（CSV → bonjur_ods.sales_monthly）
 目标表：`bonjur_ods.sales_monthly`

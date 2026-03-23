@@ -38,7 +38,8 @@ export default function UploadPage() {
     ],
     bonjur: [
       { code: 'wz_oh_wxc', name: '温州瓯海万象城店' },
-      { code: 'wz_ra_wy', name: '温州瑞安吾悦广场店' }
+      { code: 'wz_ra_wy', name: '温州瑞安吾悦广场店' },
+      { code: 'hz_in77', name: '杭州in77' }
     ]
   };
 
