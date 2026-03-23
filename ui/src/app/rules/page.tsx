@@ -144,7 +144,7 @@ export default function RulesPage() {
       const res = await fetch('/api/rules', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rule_id: rule.rule_id, enabled: !rule.enabled })
+        body: JSON.stringify({ brand, rule_id: rule.rule_id, enabled: !rule.enabled })
       });
       const data = await res.json();
       if (data.success) {
@@ -158,10 +158,12 @@ export default function RulesPage() {
   async function handleDelete(rule_id: number) {
     if (!confirm('确定要删除这条规则吗？')) return;
     try {
-      const res = await fetch(`/api/rules?id=${rule_id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/rules?id=${rule_id}&brand=${brand}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         fetchRules();
+      } else {
+        setError(data.error || '删除失败');
       }
     } catch (err: any) {
       setError(err.message);
