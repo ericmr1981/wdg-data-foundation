@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: dataplatform-pg-dashboard
+    environment:
+      POSTGRES_DB: ${DB_NAME:-dataplatform}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - dataplatform_pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  metabase:
+    image: metabase/metabase:latest
+    container_name: dataplatform-metabase
+    depends_on:
+      - postgres
+    ports:
+      - "${METABASE_PORT:-3001}:3000"
+    environment:
+      # Metabase 自身的应用数据库（用 H2 内置最简单；要持久化可改成 Postgres）
+      MB_DB_TYPE: h2
+      MB_DB_FILE: /metabase-data/metabase.db
+      JAVA_TIMEZONE: Asia/Shanghai
+    volumes:
+      - metabase_data:/metabase-data
+    restart: unless-stopped
+
+  # Next.js UI MVP（由 Claude Code 任务落地后启用）
+  # ui:
+  #   build:
+  #     context: ./ui
+  #   container_name: dataplatform-ui
+  #   depends_on:
+  #     - postgres
+  #   environment:
+  #     DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-dataplatform}
+  #   ports:
+  #     - "${UI_PORT:-3000}:3000"
+  #   restart: unless-stopped
+
+volumes:
+  dataplatform_pg_data:
+  metabase_data:

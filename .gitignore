@@ -1,0 +1,18 @@
+# env
+.env
+.env.*
+
+# secrets docs
+/docs/VPS_MIGRATION_SECRETS.md
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# node
+node_modules/
+.next/
+
+# mac
+.DS_Store
