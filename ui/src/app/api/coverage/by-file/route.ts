@@ -1,32 +1,30 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { getDmSchema, normalizeBrand } from '@/lib/brand-server';
 
-// GET /api/coverage/by-file - 获取按文件维度的覆盖率统计
+// GET /api/coverage/by-file?brand=xxx - 获取按文件维度的覆盖率统计
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const brand = searchParams.get('brand') || 'yufeng';
+  const brandParam = searchParams.get('brand') || 'yufeng';
+  const brand = normalizeBrand(brandParam);
+
+  if (!brand) {
+    return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
+  }
+
+  const schema = getDmSchema(brand);
 
   try {
-    let query = '';
-    let queryParams: string[] = [];
-
-    if (brand === 'yufeng') {
-      query = `
-        SELECT source_file_id, file_name, file_path, store_code, file_month,
-               total_rows, covered_rows, unclassified_rows, coverage_rate_rows,
-               total_in_amt, covered_in_amt, unclassified_in_amt, coverage_rate_in_amt,
-               total_out_amt, covered_out_amt, unclassified_out_amt, coverage_rate_out_amt,
-               uploaded_at, import_status
-        FROM yufeng_dm.v_coverage_by_file
-        ORDER BY uploaded_at DESC
-        LIMIT 20
-      `;
-    } else if (brand === 'bonjur') {
-      // Bonjur 暂时返回空（需要后续实现）
-      return NextResponse.json({ success: true, data: [] });
-    } else {
-      return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
-    }
+    const query = `
+      SELECT source_file_id, file_name, file_path, store_code, file_month,
+             total_rows, covered_rows, unclassified_rows, coverage_rate_rows,
+             total_in_amt, covered_in_amt, unclassified_in_amt, coverage_rate_in_amt,
+             total_out_amt, covered_out_amt, unclassified_out_amt, coverage_rate_out_amt,
+             uploaded_at, import_status
+      FROM ${schema}.v_coverage_by_file
+      ORDER BY uploaded_at DESC
+      LIMIT 20
+    `;
 
     const result = await pool.query(query);
 

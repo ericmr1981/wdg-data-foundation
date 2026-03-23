@@ -332,6 +332,12 @@ main() {
     execute_sql_file "$PROJECT_DIR/sql/yufeng_dm_models.sql" "创建 Yufeng DM 模型"
     execute_sql_file "$PROJECT_DIR/sql/bonjur_dm_models.sql" "创建 Bonjur DM 模型"
 
+    # 3.9.1 Bonjur 分类 + 覆盖率 + 未分类（对齐 Yufeng 能力）
+    # 说明：按需求放在 bonjur_dm_models.sql 之后接入执行顺序
+    execute_sql_file "$PROJECT_DIR/sql/bonjur_apply_classification.sql" "Bonjur 应用分类规则"
+    execute_sql_file "$PROJECT_DIR/sql/bonjur_coverage_and_unclassified.sql" "Bonjur 覆盖率与未分类视图"
+    execute_sql_file "$PROJECT_DIR/sql/bonjur_coverage_by_file.sql" "Bonjur 按文件维度覆盖率视图"
+
     # 3.10 Yufeng 回归测试
     execute_sql_file "$PROJECT_DIR/sql/yufeng_rule_regression.sql" "创建回归测试视图"
 

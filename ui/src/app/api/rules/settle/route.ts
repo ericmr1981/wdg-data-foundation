@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { getCfgRuleTable, getOdsBankTxnTable, normalizeBrand } from '@/lib/brand-server';
 
 // POST /api/rules/settle - 规则沉淀：人工匹配后沉淀为规则
 // 功能：
@@ -11,18 +12,26 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const {
-      brand = 'yufeng',
-      bank_txn_id,      // 可选：关联的流水 ID
-      lvl1,             // 一级分类
-      lvl2,             // 二级分类
-      match_field = 'summary',   // 匹配字段（默认摘要）
-      match_value,     // 匹配关键词
-      match_field2,    // 第二匹配字段（可选）
-      match_value2,    // 第二匹配值（可选）
+      brand: brandParam = 'yufeng',
+      bank_txn_id, // 可选：关联的流水 ID
+      lvl1, // 一级分类
+      lvl2, // 二级分类
+      match_field = 'summary', // 匹配字段（默认摘要）
+      match_value, // 匹配关键词
+      match_field2, // 第二匹配字段（可选）
+      match_value2, // 第二匹配值（可选）
       direction = 'any', // 收/支方向
-      priority,        // 可选：指定优先级
-      note             // 备注
+      priority, // 可选：指定优先级
+      note // 备注
     } = body;
+
+    const brand = normalizeBrand(brandParam);
+    if (!brand) {
+      return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
+    }
+
+    const ruleTable = getCfgRuleTable(brand);
+    const bankTxnTable = getOdsBankTxnTable(brand);
 
     // 验证必填字段
     if (!lvl1 || !match_value) {
@@ -35,10 +44,9 @@ export async function POST(request: Request) {
     // 确定 direction：如果是收入 (in)，则检查 in_amt；否则检查 out_amt
     let actualDirection = direction;
     if (bank_txn_id) {
-      const txnResult = await pool.query(
-        'SELECT in_amt, out_amt FROM yufeng_ods.bank_txn WHERE id = $1',
-        [bank_txn_id]
-      );
+      const txnResult = await pool.query(`SELECT in_amt, out_amt FROM ${bankTxnTable} WHERE id = $1`, [
+        bank_txn_id
+      ]);
       if (txnResult.rows.length > 0) {
         const txn = txnResult.rows[0];
         if (txn.in_amt > 0 && txn.in_amt !== null) {
@@ -50,14 +58,17 @@ export async function POST(request: Request) {
     }
 
     // Step 1: 检查冲突（仅检查主条件）
-    const conflictResult = await pool.query(`
+    const conflictResult = await pool.query(
+      `
       SELECT rule_id, priority, match_field, match_value, lvl1, lvl2, note
-      FROM yufeng_cfg.bank_rule_map
+      FROM ${ruleTable}
       WHERE enabled = true
         AND match_field = $1
         AND match_value = $2
         AND NOT (lvl1 = $3 AND COALESCE(lvl2, '') = COALESCE($4, ''))
-    `, [match_field, match_value, lvl1, lvl2 || null]);
+      `,
+      [match_field, match_value, lvl1, lvl2 || null]
+    );
 
     // 如果存在冲突
     if (conflictResult.rows.length > 0) {
@@ -82,32 +93,35 @@ export async function POST(request: Request) {
     let newPriority = priority;
     if (!newPriority) {
       const maxPriorityResult = await pool.query(
-        'SELECT COALESCE(MAX(priority), 0) + 10 as new_priority FROM yufeng_cfg.bank_rule_map'
+        `SELECT COALESCE(MAX(priority), 0) + 10 as new_priority FROM ${ruleTable}`
       );
       newPriority = maxPriorityResult.rows[0].new_priority;
     }
 
     // 确定 match_field 和 match_field2
     const actualMatchField = match_field || 'summary';
-    const actualMatchField2 = (match_field2 && match_value2) ? match_field2 : null;
-    const actualMatchValue2 = (match_field2 && match_value2) ? match_value2 : null;
+    const actualMatchField2 = match_field2 && match_value2 ? match_field2 : null;
+    const actualMatchValue2 = match_field2 && match_value2 ? match_value2 : null;
 
-    const insertResult = await pool.query(`
-      INSERT INTO yufeng_cfg.bank_rule_map
+    const insertResult = await pool.query(
+      `
+      INSERT INTO ${ruleTable}
       (enabled, priority, match_field, match_type, match_value, match_field2, match_value2, direction, lvl1, lvl2, note)
       VALUES (true, $1, $2, 'contains', $3, $4, $5, $6, $7, $8, $9)
       RETURNING rule_id, priority, match_field, match_value, match_field2, match_value2, direction, lvl1, lvl2, note, created_at
-    `, [
-      newPriority,
-      actualMatchField,
-      match_value,
-      actualMatchField2,
-      actualMatchValue2,
-      actualDirection,
-      lvl1,
-      lvl2 || null,
-      note || `人工沉淀：${bank_txn_id ? '关联流水 ' + bank_txn_id : '直接创建'}`
-    ]);
+      `,
+      [
+        newPriority,
+        actualMatchField,
+        match_value,
+        actualMatchField2,
+        actualMatchValue2,
+        actualDirection,
+        lvl1,
+        lvl2 || null,
+        note || `人工沉淀：${bank_txn_id ? '关联流水 ' + bank_txn_id : '直接创建'}`
+      ]
+    );
 
     return NextResponse.json({
       success: true,
@@ -115,7 +129,6 @@ export async function POST(request: Request) {
       message: '规则创建成功',
       data: insertResult.rows[0]
     });
-
   } catch (error: any) {
     console.error('Error in rule settle:', error);
     // 将 pg 的关键信息回传给前端，便于定位（仅本地环境使用）
@@ -127,8 +140,8 @@ export async function POST(request: Request) {
           code: error?.code,
           message: error?.message,
           detail: error?.detail,
-          hint: error?.hint,
-        },
+          hint: error?.hint
+        }
       },
       { status: 500 }
     );

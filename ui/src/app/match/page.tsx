@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { UnclassifiedTxn } from '@/lib/types';
+import { useBrand } from '@/lib/brand-context';
 
 // 一级分类选项
 const LVL1_OPTIONS = [
@@ -53,6 +54,8 @@ interface ConflictRule {
 }
 
 export default function MatchPage() {
+  const { brand } = useBrand();
+
   const [txns, setTxns] = useState<UnclassifiedTxn[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,12 +97,13 @@ export default function MatchPage() {
 
   useEffect(() => {
     fetchUnclassified();
-  }, [month, page]);
+  }, [brand, month, page]);
 
   async function fetchUnclassified() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
+      params.set('brand', brand);
       if (month) params.set('month', month);
       params.set('page', page.toString());
       params.set('pageSize', '20');
@@ -128,6 +132,7 @@ export default function MatchPage() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          brand,
           bank_txn_ids: selectedIds,
           lvl1: batchLvl1,
           lvl2: batchLvl2 || null,
@@ -173,6 +178,7 @@ export default function MatchPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          brand,
           bank_txn_id: txnId,
           lvl1,
           lvl2: lvl2 || null,
@@ -207,7 +213,7 @@ export default function MatchPage() {
 
   async function handleUndo(txnId: number) {
     try {
-      const res = await fetch(`/api/match/override?bank_txn_id=${txnId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/match/override?bank_txn_id=${txnId}&brand=${brand}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         // 从待发送队列中移除
@@ -238,6 +244,7 @@ export default function MatchPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          brand,
           items: pendingItems.map(item => ({
             bank_txn_id: item.bank_txn_id,
             lvl1: item.lvl1,
@@ -282,6 +289,7 @@ export default function MatchPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          brand,
           items: pendingItems.map(item => ({
             bank_txn_id: item.bank_txn_id,
             lvl1: item.lvl1,
@@ -344,6 +352,7 @@ export default function MatchPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          brand,
           bank_txn_id: settleTxn.bank_txn_id,
           lvl1: settleLvl1,
           lvl2: settleLvl2 || null,
@@ -390,6 +399,7 @@ export default function MatchPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          brand,
           bank_txn_id: settleTxn.bank_txn_id,
           lvl1: settleLvl1,
           lvl2: settleLvl2 || null,
