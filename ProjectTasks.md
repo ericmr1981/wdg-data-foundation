@@ -2,6 +2,8 @@
 
 ## 0) 基本信息
 - **ID**: WDG Data Foundation
+- **变更记录**:
+  - 2026-03-23：Bonjur 新增门店 `hz_in77`（杭州in77）；补齐 Bonjur DM 三张视图骨架（revenue/expense/profit）并接入 init 脚本；已推送 GitHub：<https://github.com/ericmr1981/wdg-data-foundation>
 - **优先级**: P1
 - **负责人(Agent)**: polo_engineer
 - **提出人**: Eric
