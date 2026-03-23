@@ -65,8 +65,12 @@ create index if not exists idx_bank_rule_lvl1 on yufeng_cfg.bank_rule_map(lvl1);
 -- T2.3 初版规则入库
 -- 目标：覆盖 营业收入渠道、手续费、税金、材料采购、管理费用、往来/借款/注资/还款
 -- 说明：first-match wins；priority 越小优先级越高。
+-- 幂等策略：仅当规则表为空时才进行 seed（避免 init 重复插入导致膨胀/重复）
 ------------------------------------------------------------
-insert into yufeng_cfg.bank_rule_map
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM yufeng_cfg.bank_rule_map LIMIT 1) THEN
+    insert into yufeng_cfg.bank_rule_map
 (enabled, priority, match_field, match_type, match_value, direction, lvl1, lvl2, note)
 values
 -- ============================================================
@@ -215,7 +219,9 @@ values
 -- 兜底规则（优先级 999）
 -- ============================================================
 (true, 999, 'any', 'regex', '.*', 'any', '未分类', null, '兜底规则：未匹配到任何规则的流水')
-on conflict do nothing;
+    on conflict do nothing;
+  END IF;
+END $$;
 
 ------------------------------------------------------------
 -- T4.2 人工匹配覆盖表（DM）
