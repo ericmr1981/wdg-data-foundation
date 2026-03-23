@@ -15,7 +15,7 @@ drop view if exists yufeng_dm.revenue_monthly;
 
 create view yufeng_dm.revenue_monthly as
 select
-    to_char(t.txn_time, 'YYYY-MM') as month,
+    date_trunc('month', t.txn_time)::date as month,
 
     -- 业务口径（暂无可用数据，留 NULL）
     -- TODO: 待 Yufeng 导入营业数据后，从 bonjur_ods.sales_monthly 或 yufeng_ods.sales_* 获取
@@ -34,8 +34,8 @@ select
 from yufeng_ods.bank_txn t
 left join yufeng_dm.v_bank_txn_classified c on t.id = c.bank_txn_id
 where t.txn_time is not null
-group by to_char(t.txn_time, 'YYYY-MM')
-order by to_char(t.txn_time, 'YYYY-MM') desc;
+group by date_trunc('month', t.txn_time)::date
+order by date_trunc('month', t.txn_time)::date desc;
 
 
 ------------------------------------------------------------
@@ -58,7 +58,7 @@ select
 
 from (
     select
-        to_char(t.txn_time, 'YYYY-MM') as month,
+        date_trunc('month', t.txn_time)::date as month,
         c.lvl1,
         c.lvl2,
         coalesce(t.out_amt, 0) as out_amt
@@ -83,7 +83,7 @@ drop view if exists yufeng_dm.profit_monthly;
 
 create view yufeng_dm.profit_monthly as
 select
-    to_char(t.txn_time, 'YYYY-MM') as month,
+    date_trunc('month', t.txn_time)::date as month,
 
     -- 收入（银行口径）
     coalesce(sum(case when c.lvl1 = '营业收入' then c.in_amt else 0 end), 0) as bank_revenue_amt,
@@ -104,8 +104,8 @@ select
 from yufeng_ods.bank_txn t
 left join yufeng_dm.v_bank_txn_classified c on t.id = c.bank_txn_id
 where t.txn_time is not null
-group by to_char(t.txn_time, 'YYYY-MM')
-order by to_char(t.txn_time, 'YYYY-MM') desc;
+group by date_trunc('month', t.txn_time)::date
+order by date_trunc('month', t.txn_time)::date desc;
 
 
 ------------------------------------------------------------

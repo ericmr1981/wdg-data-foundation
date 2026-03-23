@@ -14,7 +14,7 @@ select
     f.file_name,
     f.file_path,
     f.store_code,
-    to_char(min(t.txn_time), 'YYYY-MM') as file_month,
+    date_trunc('month', min(t.txn_time))::date as file_month,
 
     -- 笔数
     coalesce(sub.total_rows, 0) as total_rows,
@@ -85,7 +85,7 @@ create view bonjur_dm.v_unclassified_top_by_file as
 select
     t.source_file_id,
     f.file_name,
-    to_char(t.txn_time, 'YYYY-MM') as month,
+    date_trunc('month', t.txn_time)::date as month,
     t.counterparty_name,
     t.summary,
     t.memo,
@@ -103,7 +103,7 @@ inner join raw.ingest_file f on t.source_file_id = f.id
 where c.classified_source = 'unclassified'
   and f.brand_code = 'bonjur'
 
-group by t.source_file_id, f.file_name, to_char(t.txn_time, 'YYYY-MM'), t.counterparty_name, t.summary, t.memo
+group by t.source_file_id, f.file_name, date_trunc('month', t.txn_time)::date, t.counterparty_name, t.summary, t.memo
 order by t.source_file_id desc, txn_rows desc, total_amt desc;
 
 ------------------------------------------------------------

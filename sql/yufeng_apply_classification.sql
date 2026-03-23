@@ -410,7 +410,7 @@ $$ language plpgsql;
 ------------------------------------------------------------
 create or replace view yufeng_dm.v_coverage_monthly as
 select
-    to_char(t.txn_time, 'YYYY-MM') as month,
+    date_trunc('month', t.txn_time)::date as month,
     count(*) as total_rows,
     sum(case when c.lvl1 != '未分类' then 1 else 0 end) as covered_rows,
     sum(case when c.lvl1 = '未分类' then 1 else 0 end) as unclassified_rows,
@@ -420,7 +420,7 @@ select
     sum(case when c.lvl1 = '未分类' then coalesce(t.in_amt, 0) + coalesce(t.out_amt, 0) else 0 end) as unclassified_amt
 from yufeng_ods.bank_txn t
 left join yufeng_dm.v_bank_txn_classified c on t.id = c.bank_txn_id
-group by to_char(t.txn_time, 'YYYY-MM')
+group by date_trunc('month', t.txn_time)::date
 order by month desc;
 
 ------------------------------------------------------------

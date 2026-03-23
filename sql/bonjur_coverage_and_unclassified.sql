@@ -31,7 +31,7 @@ select
 
 from (
     select
-        to_char(t.txn_time, 'YYYY-MM') as month,
+        date_trunc('month', t.txn_time)::date as month,
 
         -- 笔数
         count(*) as total_rows,
@@ -50,7 +50,7 @@ from (
 
     from bonjur_ods.bank_txn t
     left join bonjur_dm.v_bank_txn_classified c on t.id = c.bank_txn_id
-    group by to_char(t.txn_time, 'YYYY-MM')
+    group by date_trunc('month', t.txn_time)::date
 ) sub
 order by month desc;
 
@@ -61,7 +61,7 @@ drop view if exists bonjur_dm.v_unclassified_top;
 
 create view bonjur_dm.v_unclassified_top as
 select
-    to_char(t.txn_time, 'YYYY-MM') as month,
+    date_trunc('month', t.txn_time)::date as month,
     t.counterparty_name,
     t.summary,
     t.memo,
@@ -76,7 +76,7 @@ select
 from bonjur_ods.bank_txn t
 inner join bonjur_dm.v_bank_txn_classified c on t.id = c.bank_txn_id
 where c.classified_source = 'unclassified'
-group by to_char(t.txn_time, 'YYYY-MM'), t.counterparty_name, t.summary, t.memo
+group by date_trunc('month', t.txn_time)::date, t.counterparty_name, t.summary, t.memo
 order by month desc, txn_rows desc, total_amt desc;
 
 ------------------------------------------------------------
@@ -86,7 +86,7 @@ drop view if exists bonjur_dm.v_unclassified_detail;
 
 create view bonjur_dm.v_unclassified_detail as
 select
-    to_char(t.txn_time, 'YYYY-MM') as month,
+    date_trunc('month', t.txn_time)::date as month,
     t.id as bank_txn_id,
     t.txn_time,
     t.counterparty_name,
@@ -108,4 +108,4 @@ order by month desc, t.txn_time desc;
 ------------------------------------------------------------
 -- select * from bonjur_dm.v_coverage_monthly;
 -- select * from bonjur_dm.v_unclassified_top limit 20;
--- select * from bonjur_dm.v_unclassified_detail where month = '2026-02' limit 200;
+-- select * from bonjur_dm.v_unclassified_detail where month = date '2026-02-01' limit 200;

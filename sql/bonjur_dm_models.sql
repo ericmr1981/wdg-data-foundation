@@ -12,14 +12,14 @@ drop view if exists bonjur_dm.revenue_monthly;
 
 create view bonjur_dm.revenue_monthly as
 select
-  to_char(sm.month, 'YYYY-MM') as month,
+  sm.month as month,
   coalesce(sum(sm.revenue_amt), 0) as biz_revenue_amt,
   null::numeric as bank_revenue_amt,
   null::numeric as diff_amt
 from bonjur_ods.sales_monthly sm
 where sm.month is not null
-group by to_char(sm.month, 'YYYY-MM')
-order by to_char(sm.month, 'YYYY-MM') desc;
+group by sm.month
+order by sm.month desc;
 
 ------------------------------------------------------------
 -- expense_monthly（占位：0 行，但字段对齐 yufeng_dm.expense_monthly）
@@ -28,7 +28,7 @@ drop view if exists bonjur_dm.expense_monthly;
 
 create view bonjur_dm.expense_monthly as
 select
-  null::text as month,
+  null::date as month,
   null::text as lvl1,
   null::text as lvl2,
   null::numeric as total_out_amt,
@@ -42,7 +42,7 @@ drop view if exists bonjur_dm.profit_monthly;
 
 create view bonjur_dm.profit_monthly as
 select
-  to_char(sm.month, 'YYYY-MM') as month,
+  sm.month as month,
 
   -- 银行口径（暂缺）
   null::numeric as bank_revenue_amt,
@@ -57,5 +57,5 @@ select
 
 from bonjur_ods.sales_monthly sm
 where sm.month is not null
-group by to_char(sm.month, 'YYYY-MM')
-order by to_char(sm.month, 'YYYY-MM') desc;
+group by sm.month
+order by sm.month desc;
