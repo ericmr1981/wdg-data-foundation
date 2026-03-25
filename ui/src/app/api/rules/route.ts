@@ -80,7 +80,7 @@ export async function GET(request: Request) {
       SELECT
         r.rule_id, r.priority, r.direction, r.match_field, r.match_type, r.match_value,
         r.match_field2, r.match_value2,
-        r.lvl1_code, r.lvl2_code, r.enabled, r.created_at,
+        r.lvl1_code, r.lvl2_code, r.group_name, r.enabled, r.created_at,
         l1.lvl1_name,
         l2.lvl2_name
       FROM ${ruleTable} r
@@ -165,10 +165,10 @@ export async function POST(request: Request) {
           priority, direction,
           match_field, match_type, match_value,
           match_field2, match_value2,
-          lvl1_code, lvl2_code, enabled
+          lvl1_code, lvl2_code, group_name, enabled
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING rule_id, priority, direction, match_field, match_type, match_value, match_field2, match_value2, lvl1_code, lvl2_code, enabled, created_at
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING rule_id, priority, direction, match_field, match_type, match_value, match_field2, match_value2, lvl1_code, lvl2_code, group_name, enabled, created_at
         `,
         [
           priority,
@@ -180,6 +180,7 @@ export async function POST(request: Request) {
           mv2,
           lvl1_code,
           lvl2_code || null,
+          body.group_name || null,
           enabled !== false
         ]
       );
@@ -288,10 +289,11 @@ export async function PUT(request: Request) {
             match_value2 = $7,
             lvl1_code = COALESCE($8, lvl1_code),
             lvl2_code = $9,
-            enabled = COALESCE($10, enabled),
+            group_name = $10,
+            enabled = COALESCE($11, enabled),
             updated_at = now()
-        WHERE rule_id = $11
-        RETURNING rule_id, priority, direction, match_field, match_type, match_value, match_field2, match_value2, lvl1_code, lvl2_code, enabled, created_at
+        WHERE rule_id = $12
+        RETURNING rule_id, priority, direction, match_field, match_type, match_value, match_field2, match_value2, lvl1_code, lvl2_code, group_name, enabled, created_at
         `,
         [
           priority,
@@ -303,6 +305,7 @@ export async function PUT(request: Request) {
           match_value2 || null,
           lvl1_code,
           lvl2_code ?? null,
+          body.group_name ?? null,
           enabled,
           rule_id
         ]

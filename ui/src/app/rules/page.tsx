@@ -102,6 +102,7 @@ function SortableRuleRow({
         </div>
         <div className="text-xs text-gray-400">{rule.lvl1_code}{rule.lvl2_code ? `/${rule.lvl2_code}` : ''}</div>
       </td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{rule.group_name || '-'}</td>
       <td className="px-4 py-3 whitespace-nowrap text-center">
         <button
           onClick={onToggle}
@@ -149,6 +150,7 @@ export default function RulesPage() {
     match_value2: '' as string | '',
     lvl1_code: '',
     lvl2_code: '',
+    group_name: '',
     enabled: true
   });
 
@@ -425,6 +427,7 @@ export default function RulesPage() {
       match_value2: '',
       lvl1_code: '',
       lvl2_code: '',
+      group_name: '',
       enabled: true
     });
     setPreviewData(null);
@@ -442,6 +445,7 @@ export default function RulesPage() {
       match_value2: (rule.match_value2 as any) || '',
       lvl1_code: rule.lvl1_code,
       lvl2_code: rule.lvl2_code || '',
+      group_name: (rule as any).group_name || '',
       enabled: rule.enabled
     });
 
@@ -624,6 +628,7 @@ export default function RulesPage() {
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">关键词</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">对方单位</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">分类</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">分组</th>
               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">启用</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">操作</th>
             </tr>
@@ -724,6 +729,18 @@ export default function RulesPage() {
                   required
                 />
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">分组（可选）</label>
+                <input
+                  type="text"
+                  value={(formData as any).group_name || ''}
+                  onChange={(e) => setFormData({ ...(formData as any), group_name: e.target.value })}
+                  placeholder="例如：基础规则 / 门店特例 / 临时"
+                  className="mt-1 block w-full border rounded-md px-3 py-2"
+                />
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700">方向</label>
                 <select

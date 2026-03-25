@@ -96,6 +96,7 @@ export interface BankRule {
 
   lvl1_code: string;
   lvl2_code: string | null;
+  group_name?: string | null;
   enabled: boolean;
   created_at: string;
 

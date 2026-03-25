@@ -247,6 +247,7 @@ main() {
 
   execute_sql_file "$PROJECT_DIR/ops/OPS_DDL.sql" "创建 ops 表"
   execute_sql_file "$PROJECT_DIR/ops/BRANDS_DDL.sql" "创建 brands/stores registry"
+  execute_sql_file "$PROJECT_DIR/ops/RULE_GROUPS_DDL.sql" "创建 rule_groups registry"
   execute_sql_file "$PROJECT_DIR/sql/raw_ingest_file.sql" "创建 raw.ingest_file 表"
 
   execute_sql_file "$PROJECT_DIR/brand-docs/Yufeng_ODS_DDL.sql" "创建 yufeng_ods 表"
@@ -260,6 +261,8 @@ main() {
 
   # 规则历史（A2）
   execute_sql_file "$PROJECT_DIR/sql/rules_history.sql" "安装规则 history triggers"
+  # 分组字段（B）
+  execute_sql_file "$PROJECT_DIR/sql/rule_grouping.sql" "bank_rule_map 增加 group_name"
 
   # 分类函数 + 兼容视图（v_bank_txn_classified / v_bank_txn_classified_v2）
   execute_sql_file "$PROJECT_DIR/sql/yufeng_apply_classification.sql" "Yufeng：应用分类（v2）"
