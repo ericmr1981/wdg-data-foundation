@@ -18,6 +18,9 @@ inputs/**
 # harness backups
 .harness-backup-*/
 
+# local credentials (NEVER commit)
+Account.md
+
 # python
 __pycache__/
 *.pyc
