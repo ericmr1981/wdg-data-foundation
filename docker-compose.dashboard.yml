@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - dataplatform_pg_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -18,7 +18,7 @@ services:
     depends_on:
       - postgres
     ports:
-      - "${METABASE_PORT:-3001}:3000"
+      - "${METABASE_PORT:-8081}:3000"
     environment:
       # Metabase 自身的应用数据库（用 H2 内置最简单；要持久化可改成 Postgres）
       MB_DB_TYPE: h2

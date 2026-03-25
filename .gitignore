@@ -1,6 +1,7 @@
 # env
 .env
 .env.*
+!.env.example
 
 # local private notes
 Account.private.md
