@@ -28,7 +28,7 @@ select
     -- 当 biz_revenue_amt 有值后，改为: bank_revenue_amt - biz_revenue_amt
     case
         when null is null then null  -- 业务口径暂无数据
-        else sum(case when c.lvl1 = '营业收入' then c.in_amt else 0 end) - null
+        else sum(case when c.lvl1_code = 'REV_BIZ' then coalesce(t.in_amt,0) else 0 end) - null
     end as diff_amt
 
 from yufeng_ods.bank_txn t
@@ -51,16 +51,16 @@ drop view if exists yufeng_dm.expense_monthly;
 create view yufeng_dm.expense_monthly as
 select
     month,
-    lvl1,
-    lvl2,
+    lvl1_code,
+    lvl2_code,
     sum(out_amt) as total_out_amt,
     count(*) as txn_rows
 
 from (
     select
         date_trunc('month', t.txn_time)::date as month,
-        c.lvl1,
-        c.lvl2,
+        c.lvl1_code,
+        c.lvl2_code,
         coalesce(t.out_amt, 0) as out_amt
 
     from yufeng_ods.bank_txn t
@@ -68,16 +68,45 @@ from (
     where t.txn_time is not null
       and t.out_amt > 0  -- 只统计支出
 ) sub
-group by month, lvl1, lvl2
+group by month, lvl1_code, lvl2_code
 order by month desc, total_out_amt desc;
 
 
 ------------------------------------------------------------
--- T5.3 利润月报（profit_monthly）
--- 输出：month, bank_revenue_amt, total_expense_amt, profit_amt, biz_revenue_amt, diff_amt
+-- T5.2.1 一级费用趋势（v_expense_lvl1_monthly）
+-- 输出：month, lvl1_code, lvl1_name, total_out_amt, txn_rows
+-- 用途：Metabase 折线图（X=month, Y=total_out_amt, series=lvl1_name）
 -- 说明：
---   - profit_amt = bank_revenue_amt - total_expense_amt
---   - biz_revenue_amt/diff_amt 保留（当业务数据可用时）
+--   - 从 expense_monthly 汇总到 lvl1 级别
+--   - 通过 dim_category_lvl1 补齐展示名称/排序
+------------------------------------------------------------
+drop view if exists yufeng_dm.v_expense_lvl1_monthly;
+
+create view yufeng_dm.v_expense_lvl1_monthly as
+select
+    e.month,
+    e.lvl1_code,
+    coalesce(l1.lvl1_name, e.lvl1_code) as lvl1_name,
+    sum(e.total_out_amt) as total_out_amt,
+    sum(e.txn_rows) as txn_rows,
+    coalesce(l1.sort_order, 9999) as sort_order
+from yufeng_dm.expense_monthly e
+left join yufeng_cfg.dim_category_lvl1 l1
+  on e.lvl1_code = l1.lvl1_code
+where (l1.direction in ('out','any') or l1.direction is null)
+group by e.month, e.lvl1_code, coalesce(l1.lvl1_name, e.lvl1_code), coalesce(l1.sort_order, 9999)
+order by e.month desc, sort_order, total_out_amt desc;
+
+
+------------------------------------------------------------
+-- T5.3 利润月报（profit_monthly）
+-- 输出：month, store_code, bank_revenue_amt, total_in_amt, total_expense_amt, build_expense_amt,
+--      profit_amt, cashflow_amt, material_purchase_amt, gross_profit_amt, gross_margin_rate,
+--      biz_revenue_amt, diff_amt
+-- 说明：
+--   - profit_amt（新口径） = 营业收入 - 支出总金额 + 营建费用
+--   - total_in_amt / total_expense_amt：完全按银行流水金额汇总（与分类无关）
+--   - gross_margin_rate = (营业收入 - 材料采购) / 营业收入
 ------------------------------------------------------------
 drop view if exists yufeng_dm.profit_monthly;
 
@@ -145,11 +174,8 @@ order by month desc, store_code;
 -- T5.2 费用月报（按月+分类）
 -- select * from yufeng_dm.expense_monthly;
 
--- T5.3 费用月报（按月汇总，简化版）
--- select month, sum(total_out_amt) as total_expense_amt
--- from yufeng_dm.expense_monthly
--- group by month
--- order by month desc;
+-- T5.2.1 一级费用趋势
+-- select * from yufeng_dm.v_expense_lvl1_monthly;
 
--- T5.4 利润月报
+-- T5.3 利润月报
 -- select * from yufeng_dm.profit_monthly;

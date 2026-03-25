@@ -234,7 +234,25 @@ install_python_deps() {
     # 检查 psycopg2
     if ! "$PYTHON" -c "import psycopg2" 2>/dev/null; then
         log_info "安装 psycopg2-binary..."
-        "$PYTHON" -m pip install psycopg2-binary -q
+
+        # macOS/Homebrew Python 可能启用 PEP 668（externally-managed-environment），
+        # 不能直接向系统环境 pip install。这里统一用项目内 venv。
+        if [ ! -f "$PROJECT_DIR/.venv/bin/python" ]; then
+            log_info "创建项目虚拟环境 .venv..."
+            python3 -m venv "$PROJECT_DIR/.venv" || {
+                log_warn "创建 .venv 失败，跳过 Python 依赖安装"
+                return 0
+            }
+        fi
+
+        "$PROJECT_DIR/.venv/bin/python" -m pip install -U pip -q || true
+        "$PROJECT_DIR/.venv/bin/python" -m pip install psycopg2-binary -q || {
+            log_warn "psycopg2-binary 安装失败（可手动进入 .venv 再安装）"
+            return 0
+        }
+
+        PYTHON="$PROJECT_DIR/.venv/bin/python"
+        log_info "Python 依赖安装完成，切换为: $PYTHON"
     else
         log_info "psycopg2 已安装"
     fi
@@ -320,7 +338,8 @@ main() {
 
     # 3.7 Yufeng DM DDL (额外视图)
     # 注意：该文件会 DROP/重建分类函数，并可能 CASCADE 掉依赖视图；因此必须放在 coverage/dm_models 之前
-    execute_sql_file "$PROJECT_DIR/brand-docs/Yufeng_DM_DDL_override_and_classified.sql" "创建 DM 额外视图"
+    # T2.10：DM override/classified 已在 sql/yufeng_apply_classification.sql 中统一维护，避免重复定义函数/视图
+    # execute_sql_file "$PROJECT_DIR/brand-docs/Yufeng_DM_DDL_override_and_classified.sql" "创建 DM 额外视图"
 
     # 3.8 Yufeng 覆盖率与未分类视图
     execute_sql_file "$PROJECT_DIR/sql/yufeng_coverage_and_unclassified.sql" "创建覆盖率视图"
@@ -332,7 +351,12 @@ main() {
     execute_sql_file "$PROJECT_DIR/sql/yufeng_dim_store.sql" "创建 Yufeng 门店维表"
     execute_sql_file "$PROJECT_DIR/sql/bonjur_dim_store.sql" "创建 Bonjur 门店维表"
 
-    # 3.9.1 DM 模型
+    # 3.9.1 Yufeng 分类字典表 v1.1（T2.10）
+    # 说明：DM 视图（含 v_expense_lvl1_monthly）会 join 该字典表；必须先建表再建 view
+    execute_sql_file "$PROJECT_DIR/sql/yufeng_category_dictionary_v1_1.sql" "创建分类字典表 v1.1"
+    execute_sql_file "$PROJECT_DIR/sql/yufeng_category_migration_v1_1.sql" "迁移规则/覆盖表到 code 引用"
+
+    # 3.9.2 DM 模型
     execute_sql_file "$PROJECT_DIR/sql/yufeng_dm_models.sql" "创建 Yufeng DM 模型"
     execute_sql_file "$PROJECT_DIR/sql/bonjur_dm_models.sql" "创建 Bonjur DM 模型"
 

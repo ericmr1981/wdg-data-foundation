@@ -100,6 +100,9 @@ SELECT * FROM yufeng_dm.revenue_monthly;
 -- Yufeng 费用月报（按 lvl1/lvl2 分类）
 SELECT * FROM yufeng_dm.expense_monthly;
 
+-- Yufeng 一级支出分类趋势（用于 Metabase 折线图：X=month, series=lvl1_name）
+SELECT * FROM yufeng_dm.v_expense_lvl1_monthly;
+
 -- Yufeng 利润月报
 SELECT * FROM yufeng_dm.profit_monthly;
 

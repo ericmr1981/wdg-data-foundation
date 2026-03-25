@@ -87,6 +87,7 @@ Dashboard 名：**Pipeline Health / 数据链路健康度**
 6. 未分类 Top 对方单位/关键词（当月）
 7. DM 产出校验：revenue/expense/profit 是否为 NULL、是否缺月
 8. DQ Checks 告警列表（warn/fail）
+9. 一级支出分类趋势（按月折线图，series=lvl1）
 
 ---
 
