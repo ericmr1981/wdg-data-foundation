@@ -16,17 +16,21 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-FROM node:20-alpine AS runner
+FROM node:20-bullseye-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Python runtime + libs for import scripts
-RUN apk add --no-cache \
+# Use apt for pandas/psycopg2 (stable), pip for openpyxl (need >=3.1 for proper xlsx support)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
-    py3-pandas \
-    py3-openpyxl \
-    py3-psycopg2
+    python3-pandas \
+    python3-psycopg2 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m pip install --no-cache-dir --upgrade pip && \
+    python3 -m pip install --no-cache-dir openpyxl==3.1.2
 
 COPY --from=builder /app .
 
