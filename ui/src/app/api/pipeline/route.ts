@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { getSessionUser, assertRole } from '@/lib/auth-server';
 
 // GET /api/pipeline - 获取 pipeline 运行记录和步骤
 export async function GET() {
+  const user = await getSessionUser();
   try {
+    assertRole(user, ['admin', 'operator']);
     // 获取最近 20 条 pipeline_run
     const runsResult = await pool.query(`
       SELECT run_id, brand_code, store_code, started_at, finished_at, status, triggered_by, month, note

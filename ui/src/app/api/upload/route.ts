@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { writeFile, mkdir } from 'fs/promises';
+import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { existsSync } from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
@@ -7,7 +8,9 @@ import pool from '@/lib/db';
 
 // POST /api/upload - 上传文件并触发导入
 export async function POST(request: Request) {
+  const user = await getSessionUser();
   try {
+    assertRole(user, ['admin', 'operator']);
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const brand = formData.get('brand') as string;

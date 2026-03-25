@@ -1,20 +1,25 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getDmSchema, normalizeBrand } from '@/lib/brand-server';
+import { getSessionUser, assertRole } from '@/lib/auth-server';
 
 // GET /api/coverage?brand=xxx - 获取覆盖率统计
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const brandParam = searchParams.get('brand') || 'yufeng';
-  const brand = normalizeBrand(brandParam);
-
-  if (!brand) {
-    return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
-  }
-
-  const schema = getDmSchema(brand);
-
+  const user = await getSessionUser();
   try {
+    assertRole(user, ['admin', 'operator']);
+
+    const { searchParams } = new URL(request.url);
+    const brandParam = searchParams.get('brand') || 'yufeng';
+    const brand = normalizeBrand(brandParam);
+
+    if (!brand) {
+      return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
+    }
+
+    const schema = getDmSchema(brand);
+
+    try {
     const result = await pool.query(`
       SELECT month, total_rows, covered_rows, unclassified_rows, coverage_rate_rows,
              total_in_amt, covered_in_amt, unclassified_in_amt, coverage_rate_in_amt,

@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { getDmSchema, getCfgSchema, getOpsSchema, normalizeBrand } from '@/lib/brand-server';
 
 // GET /api/match?brand=xxx - 获取未分类列表
 export async function GET(request: Request) {
+  const user = await getSessionUser();
   try {
+    assertRole(user, ['admin', 'operator']);
     const { searchParams } = new URL(request.url);
     const brandParam = searchParams.get('brand') || 'yufeng';
     const brand = normalizeBrand(brandParam);
@@ -71,8 +74,10 @@ export async function GET(request: Request) {
 // POST /api/match - 直接写入 bank_rule_map（同时写入 override 让流水立即消失）
 // body: { brand, bank_txn_id, direction, lvl1_code, lvl2_code, match_field, match_value, priority?, enabled?, bank_txn? }
 export async function POST(request: Request) {
-  const client = await pool.connect();
+  const user = await getSessionUser();
   try {
+    assertRole(user, ['admin', 'operator']);
+
     const body = await request.json();
     const brand = normalizeBrand(body.brand || 'yufeng');
     const {

@@ -4,6 +4,34 @@
 
 create schema if not exists ops;
 
+-- Needed for gen_random_uuid() and crypt()
+create extension if not exists pgcrypto;
+
+-- ============================================================
+-- 0. Auth (B1): users + sessions
+-- ============================================================
+create table if not exists ops.users (
+    user_id       uuid primary key default gen_random_uuid(),
+    username      text not null unique,
+    password_hash text not null,
+    role          text not null check (role in ('admin','operator')),
+    enabled       boolean not null default true,
+    created_at    timestamptz not null default now(),
+    updated_at    timestamptz not null default now()
+);
+
+create table if not exists ops.sessions (
+    session_id    uuid primary key default gen_random_uuid(),
+    token         text not null unique,
+    user_id       uuid not null references ops.users(user_id),
+    created_at    timestamptz not null default now(),
+    expires_at    timestamptz not null,
+    last_seen_at  timestamptz
+);
+
+create index if not exists idx_sessions_token on ops.sessions(token);
+create index if not exists idx_sessions_user on ops.sessions(user_id);
+
 -- ============================================================
 -- 1. Pipeline Run：一次完整的 T+1 批处理运行
 -- ============================================================

@@ -257,6 +257,9 @@ main() {
   # 分类字典（共享给 Bonjur / Yufeng）
   execute_sql_file "$PROJECT_DIR/sql/yufeng_category_dictionary_v1_1.sql" "创建分类字典表 v1.1（共享）"
 
+  # 规则历史（A2）
+  execute_sql_file "$PROJECT_DIR/sql/rules_history.sql" "安装规则 history triggers"
+
   # 分类函数 + 兼容视图（v_bank_txn_classified / v_bank_txn_classified_v2）
   execute_sql_file "$PROJECT_DIR/sql/yufeng_apply_classification.sql" "Yufeng：应用分类（v2）"
   execute_sql_file "$PROJECT_DIR/sql/bonjur_apply_classification.sql" "Bonjur：应用分类（v2）"

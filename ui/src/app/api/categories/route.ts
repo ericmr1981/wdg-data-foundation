@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getCfgSchema, normalizeBrand } from '@/lib/brand-server';
+import { getSessionUser, assertRole } from '@/lib/auth-server';
 
 // GET /api/categories?brand=yufeng
 // 用途：给 UI 提供“字典表驱动”的分类下拉选项
 // 约定：不把系统保留分类暴露给 UI（如 UNCLASSIFIED/OTHER_OUT），避免被误选
 export async function GET(request: Request) {
+  const user = await getSessionUser();
   try {
+    assertRole(user, ['admin', 'operator']);
     const { searchParams } = new URL(request.url);
     const brandParam = searchParams.get('brand') || 'yufeng';
     const brand = normalizeBrand(brandParam);

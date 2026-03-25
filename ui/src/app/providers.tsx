@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BrandProvider, BRAND_OPTIONS, useBrand } from '@/lib/brand-context';
 
@@ -23,45 +23,55 @@ function BrandSelector() {
 }
 
 function NavBar() {
+  const [me, setMe] = useState<{ username: string; role: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.success) setMe(d.data);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.href = '/login';
+  }
+
   return (
     <nav className="bg-white shadow-sm border-b">
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex justify-between h-14">
           <div className="flex space-x-8 items-center">
-            <Link
-              href="/"
-              className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-900 hover:text-blue-600"
-            >
+            <Link href="/" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-900 hover:text-blue-600">
               首页
             </Link>
-            <Link
-              href="/pipeline"
-              className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600"
-            >
+            <Link href="/pipeline" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
               Pipeline 监控
             </Link>
-            <Link
-              href="/rules"
-              className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600"
-            >
+            <Link href="/rules" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
               规则管理
             </Link>
-            <Link
-              href="/match"
-              className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600"
-            >
+            <Link href="/match" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
               人工匹配
             </Link>
-            <Link
-              href="/upload"
-              className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600"
-            >
+            <Link href="/upload" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
               文件上传
             </Link>
           </div>
-          <div className="flex items-center">
+
+          <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500">品牌:</span>
             <BrandSelector />
+
+            {me && (
+              <span className="text-xs text-gray-500">{me.username} ({me.role})</span>
+            )}
+
+            <button onClick={logout} className="text-xs border rounded px-2 py-1 bg-white hover:bg-gray-50">
+              退出
+            </button>
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getCfgRuleTable, getCfgSchema, normalizeBrand } from '@/lib/brand-server';
+import { getSessionUser, assertRole } from '@/lib/auth-server';
 
 const RESERVED_LVL1_CODES = new Set(['UNCLASSIFIED', 'OTHER_OUT']);
 
@@ -71,7 +72,9 @@ export async function GET(request: Request) {
   const ruleTable = getCfgRuleTable(brand);
   const cfgSchema = getCfgSchema(brand);
 
+  const user = await getSessionUser();
   try {
+    assertRole(user, ['admin', 'operator']);
     const result = await pool.query(
       `
       SELECT
@@ -98,7 +101,10 @@ export async function GET(request: Request) {
 
 // POST /api/rules - 创建规则（body.brand 可选，默认 yufeng）
 export async function POST(request: Request) {
+  const user = await getSessionUser();
   try {
+    assertRole(user, ['admin', 'operator']);
+
     const body = await request.json();
     const brandParam = body.brand || 'yufeng';
     const brand = normalizeBrand(brandParam);
@@ -148,32 +154,44 @@ export async function POST(request: Request) {
 
     await assertCategoryEnabled(cfgSchema, lvl1_code, lvl2_code || null);
 
-    const result = await pool.query(
-      `
-      INSERT INTO ${ruleTable} (
-        priority, direction,
-        match_field, match_type, match_value,
-        match_field2, match_value2,
-        lvl1_code, lvl2_code, enabled
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      RETURNING rule_id, priority, direction, match_field, match_type, match_value, match_field2, match_value2, lvl1_code, lvl2_code, enabled, created_at
-      `,
-      [
-        priority,
-        direction,
-        match_field,
-        mt,
-        match_value,
-        mf2,
-        mv2,
-        lvl1_code,
-        lvl2_code || null,
-        enabled !== false
-      ]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL wdg.user = $1', [user?.username || 'unknown']);
 
-    return NextResponse.json({ success: true, data: result.rows[0] });
+      const result = await client.query(
+        `
+        INSERT INTO ${ruleTable} (
+          priority, direction,
+          match_field, match_type, match_value,
+          match_field2, match_value2,
+          lvl1_code, lvl2_code, enabled
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING rule_id, priority, direction, match_field, match_type, match_value, match_field2, match_value2, lvl1_code, lvl2_code, enabled, created_at
+        `,
+        [
+          priority,
+          direction,
+          match_field,
+          mt,
+          match_value,
+          mf2,
+          mv2,
+          lvl1_code,
+          lvl2_code || null,
+          enabled !== false
+        ]
+      );
+
+      await client.query('COMMIT');
+      return NextResponse.json({ success: true, data: result.rows[0] });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   } catch (error: any) {
     const status = error?.status || 500;
     if (status === 400) {
@@ -186,7 +204,10 @@ export async function POST(request: Request) {
 
 // PUT /api/rules - 更新规则（body.brand 可选，默认 yufeng）
 export async function PUT(request: Request) {
+  const user = await getSessionUser();
   try {
+    assertRole(user, ['admin', 'operator']);
+
     const body = await request.json();
     const brandParam = body.brand || 'yufeng';
     const brand = normalizeBrand(brandParam);
@@ -250,37 +271,56 @@ export async function PUT(request: Request) {
       await assertCategoryEnabled(cfgSchema, lvl1_code, lvl2_code || null);
     }
 
-    const result = await pool.query(
-      `
-      UPDATE ${ruleTable}
-      SET priority = COALESCE($1, priority),
-          direction = COALESCE($2, direction),
-          match_field = COALESCE($3, match_field),
-          match_type = COALESCE($4, match_type),
-          match_value = COALESCE($5, match_value),
-          match_field2 = $6,
-          match_value2 = $7,
-          lvl1_code = COALESCE($8, lvl1_code),
-          lvl2_code = $9,
-          enabled = COALESCE($10, enabled),
-          updated_at = now()
-      WHERE rule_id = $11
-      RETURNING rule_id, priority, direction, match_field, match_type, match_value, match_field2, match_value2, lvl1_code, lvl2_code, enabled, created_at
-      `,
-      [
-        priority,
-        direction,
-        match_field,
-        match_type,
-        match_value,
-        match_field2 || null,
-        match_value2 || null,
-        lvl1_code,
-        lvl2_code ?? null,
-        enabled,
-        rule_id
-      ]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL wdg.user = $1', [user?.username || 'unknown']);
+
+      const result = await client.query(
+        `
+        UPDATE ${ruleTable}
+        SET priority = COALESCE($1, priority),
+            direction = COALESCE($2, direction),
+            match_field = COALESCE($3, match_field),
+            match_type = COALESCE($4, match_type),
+            match_value = COALESCE($5, match_value),
+            match_field2 = $6,
+            match_value2 = $7,
+            lvl1_code = COALESCE($8, lvl1_code),
+            lvl2_code = $9,
+            enabled = COALESCE($10, enabled),
+            updated_at = now()
+        WHERE rule_id = $11
+        RETURNING rule_id, priority, direction, match_field, match_type, match_value, match_field2, match_value2, lvl1_code, lvl2_code, enabled, created_at
+        `,
+        [
+          priority,
+          direction,
+          match_field,
+          match_type,
+          match_value,
+          match_field2 || null,
+          match_value2 || null,
+          lvl1_code,
+          lvl2_code ?? null,
+          enabled,
+          rule_id
+        ]
+      );
+
+      if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return NextResponse.json({ success: false, error: 'Rule not found' }, { status: 404 });
+      }
+
+      await client.query('COMMIT');
+      return NextResponse.json({ success: true, data: result.rows[0] });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
 
     if (result.rows.length === 0) {
       return NextResponse.json({ success: false, error: 'Rule not found' }, { status: 404 });
@@ -299,7 +339,10 @@ export async function PUT(request: Request) {
 
 // DELETE /api/rules?id={id}&brand=xxx - 删除规则（硬删除）
 export async function DELETE(request: Request) {
+  const user = await getSessionUser();
   try {
+    assertRole(user, ['admin', 'operator']);
+
     const { searchParams } = new URL(request.url);
     const rule_id = searchParams.get('id');
     const brandParam = searchParams.get('brand') || 'yufeng';
@@ -315,13 +358,44 @@ export async function DELETE(request: Request) {
 
     const ruleTable = getCfgRuleTable(brand);
 
-    const result = await pool.query(`DELETE FROM ${ruleTable} WHERE rule_id = $1 RETURNING rule_id`, [rule_id]);
+    // operator: soft delete (enabled=false)
+    // admin: can hard delete with ?hard=true
+    const hard = searchParams.get('hard') === 'true';
 
-    if (result.rows.length === 0) {
-      return NextResponse.json({ success: false, error: 'Rule not found' }, { status: 404 });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL wdg.user = $1', [user?.username || 'unknown']);
+
+      if (hard) {
+        assertRole(user, ['admin']);
+        const result = await client.query(`DELETE FROM ${ruleTable} WHERE rule_id = $1 RETURNING rule_id`, [rule_id]);
+        if (result.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return NextResponse.json({ success: false, error: 'Rule not found' }, { status: 404 });
+        }
+        await client.query('COMMIT');
+        return NextResponse.json({ success: true, message: 'Rule hard-deleted' });
+      }
+
+      const result = await client.query(
+        `UPDATE ${ruleTable} SET enabled=false WHERE rule_id=$1 RETURNING rule_id`,
+        [rule_id]
+      );
+
+      if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return NextResponse.json({ success: false, error: 'Rule not found' }, { status: 404 });
+      }
+
+      await client.query('COMMIT');
+      return NextResponse.json({ success: true, message: 'Rule disabled (soft delete)' });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
     }
-
-    return NextResponse.json({ success: true, message: 'Rule deleted' });
   } catch (error) {
     console.error('Error deleting rule:', error);
     return NextResponse.json({ success: false, error: 'Failed to delete rule' }, { status: 500 });
