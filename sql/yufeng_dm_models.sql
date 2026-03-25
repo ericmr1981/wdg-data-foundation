@@ -90,8 +90,14 @@ with agg as (
         -- 收入（银行口径）：营业收入（REV_BIZ）
         coalesce(sum(case when c.lvl1_code = 'REV_BIZ' then coalesce(t.in_amt,0) else 0 end), 0) as bank_revenue_amt,
 
+        -- 收入总金额：所有 in_amt>0（与分类无关）
+        coalesce(sum(case when coalesce(t.in_amt,0) > 0 then coalesce(t.in_amt,0) else 0 end), 0) as total_in_amt,
+
         -- 支出总金额：所有 out_amt>0（与分类无关，包含 unclassified）
         coalesce(sum(case when coalesce(t.out_amt,0) > 0 then coalesce(t.out_amt,0) else 0 end), 0) as total_expense_amt,
+
+        -- 营建费用（BUILD）：用于新利润口径（把营建费用加回去）
+        coalesce(sum(case when c.lvl1_code = 'BUILD' and coalesce(t.out_amt,0) > 0 then coalesce(t.out_amt,0) else 0 end), 0) as build_expense_amt,
 
         -- 材料采购（用于毛利率）
         coalesce(sum(case when c.lvl1_code = 'MATERIAL' and coalesce(t.out_amt,0) > 0 then coalesce(t.out_amt,0) else 0 end), 0) as material_purchase_amt
@@ -105,12 +111,17 @@ select
     month,
     store_code,
     bank_revenue_amt,
+    total_in_amt,
     total_expense_amt,
+    build_expense_amt,
 
-    -- 利润 = 营业收入 - 支出总金额
-    bank_revenue_amt - total_expense_amt as profit_amt,
+    -- 利润（新口径） = 营业收入 - 支出总金额 + 营建费用
+    bank_revenue_amt - total_expense_amt + build_expense_amt as profit_amt,
 
-    -- 毛利率口径（你刚定的）：(营业收入 - 材料采购) / 营业收入
+    -- 当月现金流 = 收入总金额 - 支出总金额
+    total_in_amt - total_expense_amt as cashflow_amt,
+
+    -- 毛利率口径（不变）：(营业收入 - 材料采购) / 营业收入
     material_purchase_amt,
     (bank_revenue_amt - material_purchase_amt) as gross_profit_amt,
     (bank_revenue_amt - material_purchase_amt) / nullif(bank_revenue_amt, 0) as gross_margin_rate,
