@@ -263,6 +263,8 @@ main() {
   execute_sql_file "$PROJECT_DIR/sql/rules_history.sql" "安装规则 history triggers"
   # 分组字段（B）
   execute_sql_file "$PROJECT_DIR/sql/rule_grouping.sql" "bank_rule_map 增加 group_name"
+  # 品牌/门店排序（C2）
+  execute_sql_file "$PROJECT_DIR/sql/brands_stores_sort.sql" "brands/stores 增加 sort_order"
 
   # 分类函数 + 兼容视图（v_bank_txn_classified / v_bank_txn_classified_v2）
   execute_sql_file "$PROJECT_DIR/sql/yufeng_apply_classification.sql" "Yufeng：应用分类（v2）"
