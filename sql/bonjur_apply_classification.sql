@@ -1,129 +1,163 @@
--- Bonjur｜分类规则应用（override + classified）
--- 用途：与 yufeng_dm 对齐的“规则分类 + 人工覆盖”能力
--- 依赖：bonjur_ods.bank_txn, bonjur_cfg.bank_rule_map
+-- Bonjur｜分类规则应用 v2（对齐 Yufeng v2 策略）
+-- 执行日期：2026-03-25
+-- 变更：
+--   1. 移除 override 参与分类（override 仅日志/审计）
+--   2. 按字段策略匹配：summary→memo→purpose (contains)；三者空才 counterparty (contains/exact)
+--   3. 共享 yufeng_cfg 字典（lvl1_code/lvl2_code）
 
 ------------------------------------------------------------
--- 人工匹配覆盖表（override）
+-- DM Schema
 ------------------------------------------------------------
-create schema if not exists bonjur_dm;
+CREATE SCHEMA IF NOT EXISTS bonjur_dm;
 
-create table if not exists bonjur_dm.bank_txn_override (
-    id              bigserial primary key,
-    bank_txn_id     bigint not null unique,  -- FK -> bonjur_ods.bank_txn.id
+------------------------------------------------------------
+-- 人工匹配覆盖表（仅日志，不参与分类）
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS bonjur_dm.bank_txn_override (
+    id              BIGSERIAL PRIMARY KEY,
+    bank_txn_id     BIGINT NOT NULL UNIQUE,  -- FK -> bonjur_ods.bank_txn.id
 
-    lvl1            text not null,
-    lvl2            text,
-    note            text,
+    lvl1_code       TEXT NOT NULL,
+    lvl2_code       TEXT,
+    note            TEXT,
 
-    created_by      text not null default 'ui',
-    created_at      timestamptz not null default now(),
-    updated_at      timestamptz not null default now()
+    created_by      TEXT NOT NULL DEFAULT 'ui',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-create index if not exists idx_bonjur_override_bank_txn_id on bonjur_dm.bank_txn_override(bank_txn_id);
-create index if not exists idx_bonjur_override_lvl1 on bonjur_dm.bank_txn_override(lvl1);
+CREATE INDEX IF NOT EXISTS idx_bonjur_override_bank_txn_id ON bonjur_dm.bank_txn_override(bank_txn_id);
+CREATE INDEX IF NOT EXISTS idx_bonjur_override_lvl1_code ON bonjur_dm.bank_txn_override(lvl1_code);
 
 ------------------------------------------------------------
--- 规则命中计算（classified）
--- 优先级：override > rule > unclassified
+-- 审计日志表（记录人工匹配操作）
 ------------------------------------------------------------
-
--- 返回类型（用于函数返回，便于 UI/视图消费）
-DROP TYPE IF EXISTS bonjur_dm.classify_result CASCADE;
-CREATE TYPE bonjur_dm.classify_result AS (
-    matched_rule_id bigint,
-    lvl1 text,
-    lvl2 text,
-    classified_source text
+CREATE TABLE IF NOT EXISTS bonjur_dm.unclassified_resolution_log (
+    id                  BIGSERIAL PRIMARY KEY,
+    bank_txn_id         BIGINT NOT NULL,
+    selected_lvl1_code  TEXT NOT NULL,
+    selected_lvl2_code  TEXT,
+    generated_rule_id   BIGINT,
+    resolved_by         TEXT NOT NULL DEFAULT 'ui',
+    resolved_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 幂等：避免 return type 变更导致的报错
-DROP FUNCTION IF EXISTS bonjur_dm.fn_classify_bank_txn(bigint) CASCADE;
+CREATE INDEX IF NOT EXISTS idx_bonjur_resolve_log_bank_txn_id ON bonjur_dm.unclassified_resolution_log(bank_txn_id);
 
-create or replace function bonjur_dm.fn_classify_bank_txn(p_bank_txn_id bigint)
-returns bonjur_dm.classify_result as $$
-declare
-    v_counterparty_name text;
-    v_summary text;
-    v_memo text;
-    v_purpose text;
-    v_in_amt numeric;
-    v_out_amt numeric;
+------------------------------------------------------------
+-- 规则沉淀函数（UI 调用）
+-- 将人工匹配结果写入 bank_rule_map（对未来文件立即生效）
+------------------------------------------------------------
+CREATE OR REPLACE FUNCTION bonjur_cfg.settle_rule(
+    p_match_field TEXT,
+    p_match_value TEXT,
+    p_match_type TEXT DEFAULT 'contains',
+    p_direction TEXT,
+    p_lvl1_code TEXT,
+    p_lvl2_code TEXT,
+    p_priority INT DEFAULT 100,
+    p_enabled BOOLEAN DEFAULT true
+)
+RETURNS BIGINT AS $$
+DECLARE
+    v_rule_id BIGINT;
+BEGIN
+    INSERT INTO bonjur_cfg.bank_rule_map (
+        match_field,
+        match_value,
+        match_type,
+        direction,
+        lvl1_code,
+        lvl2_code,
+        priority,
+        enabled,
+        created_by
+    ) VALUES (
+        p_match_field,
+        p_match_value,
+        p_match_type,
+        p_direction,
+        p_lvl1_code,
+        p_lvl2_code,
+        p_priority,
+        p_enabled,
+        'ui'
+    )
+    ON CONFLICT DO NOTHING
+    RETURNING rule_id INTO v_rule_id;
 
-    v_rule_id bigint;
-    v_lvl1 text;
-    v_lvl2 text;
-    v_classified_source text;
+    RETURN v_rule_id;
+END;
+$$ LANGUAGE plpgsql;
 
-    rec record;
-begin
-    -- 获取原始流水字段
-    select
-        t.counterparty_name,
-        t.summary,
-        t.memo,
-        t.purpose,
-        t.in_amt,
-        t.out_amt
-    into v_counterparty_name, v_summary, v_memo, v_purpose, v_in_amt, v_out_amt
-    from bonjur_ods.bank_txn t
-    where t.id = p_bank_txn_id;
+------------------------------------------------------------
+-- 批量沉淀函数
+------------------------------------------------------------
+CREATE OR REPLACE FUNCTION bonjur_cfg.settle_rules_batch(
+    p_rules JSONB
+)
+RETURNS INT AS $$
+DECLARE
+    v_count INT := 0;
+    rec JSONB;
+BEGIN
+    FOR rec IN SELECT * FROM jsonb_array_elements(p_rules)
+    LOOP
+        PERFORM bonjur_cfg.settle_rule(
+            rec->>'match_field',
+            rec->>'match_value',
+            COALESCE(rec->>'match_type', 'contains'),
+            rec->>'direction',
+            rec->>'lvl1_code',
+            rec->>'lvl2_code',
+            COALESCE((rec->>'priority')::INT, 100),
+            COALESCE((rec->>'enabled')::BOOLEAN, true)
+        );
+        v_count := v_count + 1;
+    END LOOP;
 
-    -- Step 1: override（优先级最高）
-    select o.lvl1, o.lvl2, o.bank_txn_id
-    into v_lvl1, v_lvl2, v_rule_id
-    from bonjur_dm.bank_txn_override o
-    where o.bank_txn_id = p_bank_txn_id;
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql;
 
-    if found then
-        v_classified_source := 'override';
-        return row(v_rule_id, v_lvl1, v_lvl2, v_classified_source);
-    end if;
+------------------------------------------------------------
+-- 验证：覆盖写回函数（写 override 审计日志，不参与分类）
+------------------------------------------------------------
+CREATE OR REPLACE FUNCTION bonjur_dm.upsert_bank_txn_override(
+    p_bank_txn_id BIGINT,
+    p_lvl1_code TEXT,
+    p_lvl2_code TEXT,
+    p_note TEXT,
+    p_created_by TEXT DEFAULT 'ui'
+)
+RETURNS VOID AS $$
+BEGIN
+    -- 写入 override（仅作为审计日志，不参与分类）
+    INSERT INTO bonjur_dm.bank_txn_override (bank_txn_id, lvl1_code, lvl2_code, note, created_by)
+    VALUES (p_bank_txn_id, p_lvl1_code, p_lvl2_code, p_note, p_created_by)
+    ON CONFLICT (bank_txn_id) DO UPDATE SET
+        lvl1_code = excluded.lvl1_code,
+        lvl2_code = excluded.lvl2_code,
+        note = excluded.note,
+        updated_at = NOW();
+END;
+$$ LANGUAGE plpgsql;
 
-    -- Step 2: 规则匹配（first-match by priority）
-    for rec in (
-        select r.rule_id, r.lvl1, r.lvl2, r.priority
-        from bonjur_cfg.bank_rule_map r
-        where r.enabled = true
-          and (
-            (r.direction = 'any')
-            or (r.direction = 'in' and v_in_amt is not null and v_in_amt > 0)
-            or (r.direction = 'out' and v_out_amt is not null and v_out_amt > 0)
-          )
-          and (
-            (r.match_field = 'any' and (
-                v_counterparty_name ilike '%' || r.match_value || '%'
-                or v_summary ilike '%' || r.match_value || '%'
-                or v_memo ilike '%' || r.match_value || '%'
-                or v_purpose ilike '%' || r.match_value || '%'
-            ))
-            or (r.match_field = 'counterparty_name' and v_counterparty_name ilike '%' || r.match_value || '%')
-            or (r.match_field = 'summary' and v_summary ilike '%' || r.match_value || '%')
-            or (r.match_field = 'memo' and v_memo ilike '%' || r.match_value || '%')
-            or (r.match_field = 'purpose' and v_purpose ilike '%' || r.match_value || '%')
-          )
-        order by r.priority asc
-        limit 1
-    ) loop
-        v_rule_id := rec.rule_id;
-        v_lvl1 := rec.lvl1;
-        v_lvl2 := rec.lvl2;
-        v_classified_source := 'rule';
-        return row(v_rule_id, v_lvl1, v_lvl2, v_classified_source);
-    end loop;
+-- 覆盖删除函数
+CREATE OR REPLACE FUNCTION bonjur_dm.delete_bank_txn_override(p_bank_txn_id BIGINT)
+RETURNS VOID AS $$
+BEGIN
+    DELETE FROM bonjur_dm.bank_txn_override WHERE bank_txn_id = p_bank_txn_id;
+END;
+$$ LANGUAGE plpgsql;
 
-    -- Step 3: 未分类
-    v_rule_id := null;
-    v_lvl1 := '未分类';
-    v_lvl2 := null;
-    v_classified_source := 'unclassified';
-    return row(v_rule_id, v_lvl1, v_lvl2, v_classified_source);
-end;
-$$ language plpgsql;
-
-create or replace view bonjur_dm.v_bank_txn_classified as
-select
-    t.id as bank_txn_id,
+------------------------------------------------------------
+-- 旧版函数/视图保留（兼容）
+------------------------------------------------------------
+-- 旧版 v1 视图保留（兼容旧 UI）
+CREATE OR REPLACE VIEW bonjur_dm.v_bank_txn_classified AS
+SELECT 
+    t.id AS bank_txn_id,
     t.store_code,
     t.txn_time,
     t.counterparty_name,
@@ -132,43 +166,10 @@ select
     t.purpose,
     t.in_amt,
     t.out_amt,
-
-    (bonjur_dm.fn_classify_bank_txn(t.id)).matched_rule_id as matched_rule_id,
-    (bonjur_dm.fn_classify_bank_txn(t.id)).lvl1 as lvl1,
-    (bonjur_dm.fn_classify_bank_txn(t.id)).lvl2 as lvl2,
-    (bonjur_dm.fn_classify_bank_txn(t.id)).classified_source as classified_source,
-
-    t.source_file_id
-from bonjur_ods.bank_txn t;
-
-------------------------------------------------------------
--- 覆盖写回函数（UI 调用）
-------------------------------------------------------------
-create or replace function bonjur_dm.upsert_bank_txn_override(
-    p_bank_txn_id bigint,
-    p_lvl1 text,
-    p_lvl2 text,
-    p_note text,
-    p_created_by text default 'ui'
-)
-returns void as $$
-begin
-    insert into bonjur_dm.bank_txn_override (bank_txn_id, lvl1, lvl2, note, created_by)
-    values (p_bank_txn_id, p_lvl1, p_lvl2, p_note, p_created_by)
-    on conflict (bank_txn_id) do update set
-        lvl1 = excluded.lvl1,
-        lvl2 = excluded.lvl2,
-        note = excluded.note,
-        updated_at = now();
-end;
-$$ language plpgsql;
-
-------------------------------------------------------------
--- 覆盖删除函数（UI 调用）
-------------------------------------------------------------
-create or replace function bonjur_dm.delete_bank_txn_override(p_bank_txn_id bigint)
-returns void as $$
-begin
-    delete from bonjur_dm.bank_txn_override where bank_txn_id = p_bank_txn_id;
-end;
-$$ language plpgsql;
+    t.source_file_id,
+    -- 使用 v2 函数，但显示兼容字段名
+    (bonjur_dm.fn_classify_bank_txn_v2(t.id)).matched_rule_id AS matched_rule_id,
+    (bonjur_dm.fn_classify_bank_txn_v2(t.id)).lvl1_code AS lvl1_code,
+    (bonjur_dm.fn_classify_bank_txn_v2(t.id)).lvl2_code AS lvl2_code,
+    (bonjur_dm.fn_classify_bank_txn_v2(t.id)).classified_source AS classified_source
+FROM bonjur_ods.bank_txn t;

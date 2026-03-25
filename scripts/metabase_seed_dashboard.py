@@ -491,12 +491,41 @@ ORDER BY month;"""
         ],
     )
 
+    # Card 46: 支出一级分类趋势图（按月，多条线）
+    sql_46 = r"""SELECT
+  date_trunc('month', t.txn_time)::date AS "月份",
+  COALESCE(c.lvl1, '（未分类）') AS "一级分类",
+  ROUND(SUM(COALESCE(t.out_amt, 0)), 2) AS "金额(元)"
+FROM yufeng_ods.bank_txn t
+LEFT JOIN yufeng_dm.v_bank_txn_classified c
+  ON c.bank_txn_id = t.id
+WHERE t.txn_time IS NOT NULL
+  AND COALESCE(t.out_amt, 0) > 0
+  [[ AND t.store_code = {{store_code}} ]]
+GROUP BY 1, 2
+ORDER BY 1, 2;"""
+
+    card46_id = upsert_card(
+        name="Yufeng｜支出一级分类趋势（多线图）",
+        database_id=db_id,
+        sql=sql_46,
+        description="支出的一级分类按月趋势（多线图）；支持 Store 筛选。",
+        display="line",
+        visualization_settings={"graph.show_values": True, "graph.value_formatting": "currency"},
+        template_tags={
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
+        },
+        parameters=[
+            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "target": ["variable", ["template-tag", "store_code"]]},
+        ],
+    )
+
     # -----------------
     # Dashboard
     # -----------------
 
     dash_name = "榆枫与山｜经营看板"
-    dash_desc = "榆枫与山：收支总揽/支出一级/支出二级/收入二级 + 营业收入vs支出（不含营建）。统一筛选：月/门店/一级/二级。"
+    dash_desc = "榆枫与山：收支总揽/支出一级/支出二级/收入二级 + 营业收入vs支出（不含营建）+ 支出一级分类趋势。统一筛选：月/门店/一级/二级。"
 
     dash_params = [
         {"id": PID_MONTH, "name": "Month", "slug": "month_date", "type": "date/single", "sectionId": "date", "required": False},
@@ -570,6 +599,17 @@ ORDER BY month;"""
             "parameter_mappings": [
                 mp(card45_id, PID_MONTH, "month_date"),
                 mp(card45_id, PID_STORE, "store_code"),
+            ],
+        },
+        {
+            "id": -106,
+            "card_id": card46_id,
+            "col": 0,
+            "row": 32,
+            "size_x": 24,
+            "size_y": 8,
+            "parameter_mappings": [
+                mp(card46_id, PID_STORE, "store_code"),
             ],
         },
     ]

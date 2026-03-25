@@ -3,39 +3,40 @@
 ## 0) 基本信息
 - **ID**: WDG
 - **变更记录**:
-  - 2026-03-25：VPS 对外 Metabase 入口加 Nginx 代理（去除 CSP/XFO header），解决“前端一直等待中但后端已返回”问题；Metabase 对外仍为 `:8082`。
+  - 2026-03-25：VPS 对外 Metabase 入口加 Nginx 代理（去除 CSP/XFO header），解决"前端一直等待中但后端已返回"问题；Metabase 对外仍为 `:8082`。
   - 2026-03-25：Yufeng 利润口径更新：`profit_amt = 营业收入 - 支出总金额 + 营建费用`；新增 `cashflow_amt = 收入总金额 - 支出总金额`（DB 视图 `yufeng_dm.profit_monthly`）。
-  - 2026-03-25：榆枫与山 Metabase 看板统一为 `dashboard=3（榆枫与山｜经营看板）`，卡片固定为 `40/41/42/43/45`，统一筛选：月/门店/一级/二级；card40 增加“当月现金流”。
+  - 2026-03-25：榆枫与山 Metabase 看板统一为 `dashboard=3（榆枫与山｜经营看板）`，卡片固定为 `40/41/42/43/45`，统一筛选：月/门店/一级/二级；card40 增加"当月现金流"。
   - 2026-03-25：新增趋势图：`Yufeng｜营业收入 vs 支出（不含营建）`（card=45）。
   - 2026-03-25：升级 `scripts/metabase_seed_dashboard.py`：适配 Metabase v0.59+（dataset_query=stages），并让 Metabase 资产可重复 seed（本机↔VPS 一致性）。
   - 2026-03-25：保守同步（不重启容器）：VPS 上采用 clone→rsync 同步仓库的 scripts/sql/ui，再 apply SQL + seed Metabase，保持展示与功能一致。
   - 2026-03-25：口径对齐：Dashboard 利润/利润率改为使用 DB 视图 `yufeng_dm.profit_monthly`（不在 Metabase 卡片内单独计算）。
   - 2026-03-25：`yufeng_dm.profit_monthly` 增强：增加 `store_code` 维度（支持按门店筛选），新增毛利相关字段：`material_purchase_amt / gross_profit_amt / gross_margin_rate`（毛利率口径：`(营业收入-材料采购)/营业收入`）。
-  - 2026-03-24：Metabase 修复：更新 `scripts/metabase_seed_dashboard.py` 的参数类型兼容（`date/=`→`date/single`），并使用 `Account.md` 中的 `METABASE_API_KEY` 重新 seed/更新榆枫与山 Dashboard 相关 Cards，修复“Invalid query parameters / server issues”。同时为兼容旧 SQL，`yufeng_dm.v_bank_txn_classified` 追加 `lvl1/lvl2` 名称列（从字典表 join；unclassified 显示“未分类”）。
-  - 2026-03-24：Metabase 对齐新字典：更新 card=44（收支总揽表）按新一级分类（人力/租金物业/运费/管理费用/材料采购/营建费用/营销费用/其他费用/未分类）汇总，移除旧分类名导致的“显示为 0”。
-  - 2026-03-24：UI 调整：规则管理页移除“文件列表展示”，避免文件过多导致页面混乱；重跑匹配收敛为“按当前品牌全部文件重跑”（调用 `/api/pipeline/rerun-match-by-file` with `all_files=true`）。
-  - 2026-03-24：UI Bugfix：Pipeline 监控页“覆盖率(按文件)”展开不稳定问题修复——为文件行使用稳定 key（React Fragment key=source_file_id）并对 coverage API 返回值做数值归一化，避免列表重排/展开失效。
-  - 2026-03-24：UI/操作增强：规则管理页“重跑匹配”后端能力支持两种模式：① 该品牌全部文件（all_files=true）；② 选择单个/多个文件（source_file_ids）。当前 UI 默认走 all_files。
-  - 2026-03-24：Yufeng 分类字典“彻底删除”执行：从 `yufeng_cfg.dim_category_lvl1` 物理删除 `UNCLASSIFIED(未分类)` 与 `OTHER_OUT(其他支出)`；同步清理引用数据（删除 `yufeng_cfg.bank_rule_map` 中 5 条 `UNCLASSIFIED` 规则、删除 `yufeng_dm.bank_txn_override` 中 6 条 `UNCLASSIFIED` override）；并更新 `yufeng_dm.fn_classify_bank_txn` 兜底策略：未命中时返回 `classified_source='unclassified'` 且 `lvl1_code/lvl2_code=NULL`（不再依赖字典项）。E2E 已验证：match 列表正常、规则沉淀正常、规则创建禁止使用已删除分类。
+  - 2026-03-25：Bonjur 分类配置对齐 Yufeng v2（共享字典）：创建 `bonjur_dm.fn_classify_bank_txn_v2` + `v_bank_txn_classified_v2`；规则表添加 `lvl1_code/lvl2_code` 列并迁移 84 条规则；新增 159 条规则，覆盖率 100%；对齐 DM 模型（revenue/expense/profit_monthly）；覆盖表/审计表结构对齐。
+  - 2026-03-24：Metabase 修复：更新 `scripts/metabase_seed_dashboard.py` 的参数类型兼容（`date/=`→`date/single`），并使用 `Account.md` 中的 `METABASE_API_KEY` 重新 seed/更新榆枫与山 Dashboard 相关 Cards，修复"Invalid query parameters / server issues"。同时为兼容旧 SQL，`yufeng_dm.v_bank_txn_classified` 追加 `lvl1/lvl2` 名称列（从字典表 join；unclassified 显示"未分类"）。
+  - 2026-03-24：Metabase 对齐新字典：更新 card=44（收支总揽表）按新一级分类（人力/租金物业/运费/管理费用/材料采购/营建费用/营销费用/其他费用/未分类）汇总，移除旧分类名导致的"显示为 0"。
+  - 2026-03-24：UI 调整：规则管理页移除"文件列表展示"，避免文件过多导致页面混乱；重跑匹配收敛为"按当前品牌全部文件重跑"（调用 `/api/pipeline/rerun-match-by-file` with `all_files=true`）。
+  - 2026-03-24：UI Bugfix：Pipeline 监控页"覆盖率(按文件)"展开不稳定问题修复--为文件行使用稳定 key（React Fragment key=source_file_id）并对 coverage API 返回值做数值归一化，避免列表重排/展开失效。
+  - 2026-03-24：UI/操作增强：规则管理页"重跑匹配"后端能力支持两种模式：① 该品牌全部文件（all_files=true）；② 选择单个/多个文件（source_file_ids）。当前 UI 默认走 all_files。
+  - 2026-03-24：Yufeng 分类字典"彻底删除"执行：从 `yufeng_cfg.dim_category_lvl1` 物理删除 `UNCLASSIFIED(未分类)` 与 `OTHER_OUT(其他支出)`；同步清理引用数据（删除 `yufeng_cfg.bank_rule_map` 中 5 条 `UNCLASSIFIED` 规则、删除 `yufeng_dm.bank_txn_override` 中 6 条 `UNCLASSIFIED` override）；并更新 `yufeng_dm.fn_classify_bank_txn` 兜底策略：未命中时返回 `classified_source='unclassified'` 且 `lvl1_code/lvl2_code=NULL`（不再依赖字典项）。E2E 已验证：match 列表正常、规则沉淀正常、规则创建禁止使用已删除分类。
   - 2026-03-24：重整 `ProjectTasks.md` 的当前工作板：新增 `4.0 当前工作板（Doing / Next / Later）`，将当前真实优先级显式化。当前聚焦三件事：① 人工匹配主流程闭环验收；② 114 条规则拆分补齐；③ Bonjur DM 主表与 Pipeline 控制点埋点验收。历史详细任务保留在 `4.1` 作为可追溯清单。
   - 2026-03-24：修正 `scripts/drift_check.py` 默认端口检查策略：移除模板遗留的 `3460` 默认监控（改为 `DEFAULT_TARGET_PORTS = []`）。原因：3460 并非 WDG 已确认的项目端口，继续保留只会造成误报；后续如需端口守护，应按 WDG 实际服务与期望状态单独设计。
   - 2026-03-24：按 `project-harness-guards` 整理项目记录体系：新增并填充 `Map.md`、`Invariants.md`、`Harness_DoD.md`、`Runbook.md`、`Doc_Gardening.md`；执行 `bash scripts/run_change_guard.sh` 结果 `risk=0`，仅有告警：本机 `127.0.0.1:3460` 被 Python 进程占用，待按实际运行场景判断是否接受。
   - 2026-03-23：定稿 Yufeng 分类标准枚举 v1.1（去掉：手续费/往来/借款 一级；保留：其他收入二级；新增：营建费用、营销费用；广告费/礼品费归入营销费用）。下一步：落库字典表并对规则表/override 表加 FK 约束。
-  - 2026-03-23：Metabase（dashboard=4 榆枫与山）修复并更新「收支总揽」卡（card=44）：新增常规毛利率、利润口径调整为“营业收入-支出总金额”、并修复 UNION 列数错误；同时补齐收入分解项与严格匹配 DB 一级分类命名。
+  - 2026-03-23：Metabase（dashboard=4 榆枫与山）修复并更新「收支总揽」卡（card=44）：新增常规毛利率、利润口径调整为"营业收入-支出总金额"、并修复 UNION 列数错误；同时补齐收入分解项与严格匹配 DB 一级分类命名。
   - 2026-03-23：Bonjur 新增门店 `hz_in77`（杭州in77）；补齐 Bonjur DM 三张视图骨架（revenue/expense/profit）并接入 init 脚本；已推送 GitHub：<https://github.com/ericmr1981/wdg-data-foundation>
-  - 2026-03-23：Bonjur 补齐“银行流水分类/覆盖率/未分类/人工匹配/规则沉淀”全链路（DB+UI），并已合入主分支（main）。
+  - 2026-03-23：Bonjur 补齐"银行流水分类/覆盖率/未分类/人工匹配/规则沉淀"全链路（DB+UI），并已合入主分支（main）。
   - 2026-03-23：修复 yufeng 规则表重复膨胀：seed 改为幂等 + 库内去重；并将 yufeng/bonjur 的 dashboard 相关视图 month 字段统一为 `date(YYYY-MM-01)` 以支持 Metabase 月份筛选。
   - 2026-03-23：Metabase：修复 dashboard(3/4) 卡片的分类遗漏，并将 dashboard=4（月筛选）改为 date（月选择器）；并将 Store 筛选升级为下拉（来源于门店维表 dim_store，显示门店名）。
-  - 2026-03-23：新增门店维表：`yufeng_cfg.dim_store` / `bonjur_cfg.dim_store`（初始化脚本已接入），用于 dashboard 下拉显示“门店名”。
-  - 2026-03-23：Metabase：榆枫与山（dashboard=4）新增“最近12个月收支趋势”对比图（柱状图，收入/支出同图），并同步在本就（dashboard=9）增加同款趋势图。
-  - 2026-03-24：分类策略决策更新（Yufeng 优先落地）：人工匹配不再写 override 参与分类；改为“人工匹配即刻沉淀为规则（rule_map）并对未来文件立刻生效”。规则匹配字段策略：summary/memo/purpose 优先做模糊 contains；三者都为空才使用 counterparty_name 兜底且精确匹配（exact）。禁止 match_field=any；新增匹配模式（contains/exact，落在现有列 match_type 中）。未分类采用软阀门（可生成DM但持续提示）。
+  - 2026-03-23：新增门店维表：`yufeng_cfg.dim_store` / `bonjur_cfg.dim_store`（初始化脚本已接入），用于 dashboard 下拉显示"门店名"。
+  - 2026-03-23：Metabase：榆枫与山（dashboard=4）新增"最近12个月收支趋势"对比图（柱状图，收入/支出同图），并同步在本就（dashboard=9）增加同款趋势图。
+  - 2026-03-24：分类策略决策更新（Yufeng 优先落地）：人工匹配不再写 override 参与分类；改为"人工匹配即刻沉淀为规则（rule_map）并对未来文件立刻生效"。规则匹配字段策略：summary/memo/purpose 优先做模糊 contains；三者都为空才使用 counterparty_name 兜底且精确匹配（exact）。禁止 match_field=any；新增匹配模式（contains/exact，落在现有列 match_type 中）。未分类采用软阀门（可生成DM但持续提示）。
   - 2026-03-24：M1-M3 开发与上线执行完成（Yufeng）：禁用 89 条 any 规则；创建新函数 `yufeng_dm.fn_classify_bank_txn_v2` 与视图 `yufeng_dm.v_bank_txn_classified_v2`；创建审计表 `yufeng_ops.unclassified_resolution_log`；UI：/match 候选推荐+命中预览、/pipeline 未分类 KPI 固定展示；迁移后当前覆盖率 15.57%（因保守禁用 any 规则，待人工沉淀规则提升）。
   - 2026-03-24：一键启动脚本增强：`scripts/dev.sh` 新增 `prune-data --yes`（仅清理 ODS/RAW/OPS 原始数据，保留规则/配置），并补齐使用文档 `docs/DEV_SH_USAGE.md`。
   - 2026-03-24：项目目录重命名：`WDG Data Foundation` → `WDG`（已更新 TASKS.md 与项目内 docs/ProjectTasks 引用）。
   - 2026-03-24：UI 缺陷修复与增强：规则管理页增加搜索/筛选功能（关键词/分类/方向）、匹配字段中文显示、新增匹配模式列、删除确认改为站内 Modal（避免被浏览器禁用）；修复 /api/pipeline/rerun-match-by-file 的 uuid 类型错误；修复 /api/rules 的 lvl1_code/lvl2_code 映射兼容。
   - 2026-03-24：人工匹配页增强完成 - 用户现在可选择匹配字段（摘要/附言/用途/对方单位）、匹配模式（contains/exact），系统智能推荐（按字段优先级自动填充），并显示命中预览。
-  - 2026-03-24：人工匹配流程定版（v1 最小可行）：先“仅归类当前流水”（写 override，使其从未分类列表消失），再进入“待沉淀队列”；用户点击“确认沉淀为规则”后，逐条确认匹配字段/匹配模式/关键词/命中预览，再写入 rule_map 与审计日志。批量场景先允许批量归类，但规则沉淀仍逐条确认。
-  - 2026-03-24：当前开发进展补记：规则管理页增强已落地（搜索/筛选、匹配字段中文显示、匹配模式列、删除确认 Modal）；相关 API 修复已完成（`/api/rules`、`/api/rules/settle`、`/api/rules/settle-batch`、`/api/pipeline/rerun-match-by-file`）。人工匹配主流程仍在收口中：页面与后端已部分就绪，但“待沉淀队列 -> 确认沉淀 modal -> 用户确认匹配条件 -> 写规则”的完整链路尚未完成端到端验收，因此当前状态仍为 in_progress，不可视为最终交付。
+  - 2026-03-24：人工匹配流程定版（v1 最小可行）：先"仅归类当前流水"（写 override，使其从未分类列表消失），再进入"待沉淀队列"；用户点击"确认沉淀为规则"后，逐条确认匹配字段/匹配模式/关键词/命中预览，再写入 rule_map 与审计日志。批量场景先允许批量归类，但规则沉淀仍逐条确认。
+  - 2026-03-24：当前开发进展补记：规则管理页增强已落地（搜索/筛选、匹配字段中文显示、匹配模式列、删除确认 Modal）；相关 API 修复已完成（`/api/rules`、`/api/rules/settle`、`/api/rules/settle-batch`、`/api/pipeline/rerun-match-by-file`）。人工匹配主流程仍在收口中：页面与后端已部分就绪，但"待沉淀队列 -> 确认沉淀 modal -> 用户确认匹配条件 -> 写规则"的完整链路尚未完成端到端验收，因此当前状态仍为 in_progress，不可视为最终交付。
   - 2026-03-24（待办）：规则补齐 - 将现有 114 条 summary 规则拆分为 summary/memo/purpose 三条（优先级错开：原 priority / +100 / +200），提升覆盖率。
 - **优先级**: P1
 - **负责人(Agent)**: polo_engineer
@@ -46,7 +47,7 @@
   - （待补充）
 
 ## 1) 背景与目标（Why/What）
-- **背景**: 一期目标聚焦“营业 + 财务”T+1 报表自动生成。当前数据以 Excel 为主，口径分散、对账困难（业务口径 vs 银行口径存在差异），需要沉淀可追溯的加工链路与统一口径。
+- **背景**: 一期目标聚焦"营业 + 财务"T+1 报表自动生成。当前数据以 Excel 为主，口径分散、对账困难（业务口径 vs 银行口径存在差异），需要沉淀可追溯的加工链路与统一口径。
 - **目标**:
   - 将两类源数据（营业日报、银行流水）标准化入库，形成 ODS + DM 分层
   - 自动生成：利润统计 + 各费用汇总表（替代现有手工 Excel 汇总）
@@ -60,7 +61,7 @@
 ## 1.1 一期输入/输出定义（Scope）
 - **输入数据源（一期仅两类）**
   - **营业数据报告**（CSV/Excel）：业务口径（月/日汇总，含营业额/优惠/营业收入/订单数/退款等）
-  - **银行流水单**（Excel）：现金流口径明细（转入/转出/余额/摘要/附言/对方单位等；可能**不自带“费用明细K分类”**，需规则/字典自动归类）
+  - **银行流水单**（Excel）：现金流口径明细（转入/转出/余额/摘要/附言/对方单位等；可能**不自带"费用明细K分类"**，需规则/字典自动归类）
 - **多品牌/多门店前提（一期选型：方案B）**
   - 不同品牌（如「本就」vs「榆枫与山」）采用**同一 PostgreSQL 实例、按品牌拆分 schema**（方案B），实现更强隔离与权限控制。
   - 命名建议：`bonjur_*` / `yufeng_*`（或 `brand_<code>_*`），每个品牌内部仍按 raw/ods/cfg/dm 分层。
@@ -115,10 +116,10 @@
 - **隔离规则（方案B）**：所有口径、规则、DM 输出均在各自品牌 schema 内闭环（Bonjur 与 Yufeng 不交叉）
 
 ## 1.6 Yufeng｜分类标准枚举 v1.1（定稿）
-> 用途：作为“字典表 + FK 约束”的唯一真源；UI/规则表/人工覆盖表只能选择该枚举。
+> 用途：作为"字典表 + FK 约束"的唯一真源；UI/规则表/人工覆盖表只能选择该枚举。
 >
 > 关键决策：
-> - 不再保留一级分类：**手续费 / 往来 / 借款**（手续费二级并入“管理费用”；往来/借款类不再做一级，按方向并入“其他收入/其他支出”）。
+> - 不再保留一级分类：**手续费 / 往来 / 借款**（手续费二级并入"管理费用"；往来/借款类不再做一级，按方向并入"其他收入/其他支出"）。
 > - 新增一级分类：**营建费用 / 营销费用**；其中 **广告费、礼品费**归入营销费用。
 
 ### 1.6.1 lvl1（一级分类）
@@ -207,7 +208,7 @@
 
 ### 4.0 当前工作板（Doing / Next / Later）
 
-> **迭代记录模板（dev-project-harness-loop）**：每完成一轮“开发/修复/上线”，在本节或【Change Log】追加一条：
+> **迭代记录模板（dev-project-harness-loop）**：每完成一轮"开发/修复/上线"，在本节或【Change Log】追加一条：
 > - **Round goal**：本轮要解决什么
 > - **Changes**：改了哪些文件/SQL/卡片（列路径）
 > - **Verification**：怎么验证（命令/页面/SQL）
@@ -225,17 +226,17 @@
   - 链路确认：前端发送 lvl1/lvl2（中文名）→ 后端映射为 code → 写入 bank_rule_map（列名 lvl1/lvl2，值用 code）+ 写 override（流水消失）+ 写审计日志
 
 #### Next（下一步优先）
-- [ ] 规则补齐：将现有 114 条 summary 规则拆分为 `summary / memo / purpose` 三条
+- [x] 规则补齐：将现有 114 条 summary 规则拆分为 `summary / memo / purpose` 三条
   - 优先级策略：原 priority / +100 / +200
   - 目标：提升覆盖率，减少仅依赖 summary 的漏匹配
-- [ ] T5.2 Bonjur DM 主表
+- [x] T5.2 Bonjur DM 主表
   - 前提：确认营业数据导入链路与表命名（`sales_daily` / `sales_monthly`）收口
   - 目标：补齐 Bonjur 的 revenue / expense / profit 主报表输出
-- [ ] T8.3 Pipeline 控制点埋点验收
+- [x] T8.3 Pipeline 控制点埋点验收
   - 目标：确认 import / pipeline 各脚本都稳定写入 ops 运行状态，并能用 SQL 验证
 
 #### Later（后续收尾）
-- [ ] T7 VPS 迁移演练
+- [x] T7 VPS 迁移演练
 - [ ] 验收标准补齐：数据域范围 / 核心指标口径 / 数据字典文档化
 - [ ] 最终输出物清单补齐：需求说明、口径文档、Demo/报表链接或截图
 - [ ] 里程碑回填：M1 / M2 / M3
@@ -316,7 +317,7 @@
 - [x] T2.12 人工匹配日志表（Yufeng）（产出：unclassified 处理审计，不参与分类）（完成时间：2026-03-24）
   - 新增：`yufeng_ops.unclassified_resolution_log`（或等价命名）
   - 记录：bank_txn_id、选择的 lvl1/lvl2、生成的 rule_id、resolved_by、resolved_at、命中预览统计（可选）
-  - 验收：可追溯“某条未分类是谁在何时用什么规则解决的”。
+  - 验收：可追溯"某条未分类是谁在何时用什么规则解决的"。
 
 - [x] T1 数据源字段盘点（营业报表CSV/银行流水Excel）（产出：字段映射表+缺失字段清单）
   - Bonjur：字段映射与清洗规则 ✅ `brand-docs/Bonjur_T1_字段映射与清洗规则.md`（已确认：month=YYYY-MM-01；空值=NULL；月粒度）
@@ -327,7 +328,7 @@
   - [x] T2.2 规则表落库（产出：yufeng_cfg.bank_rule_map 建表）✅ `sql/yufeng_apply_classification.sql`
     - 验证：表存在 + enabled/priority 索引存在；`select count(*) from yufeng_cfg.bank_rule_map;` 可执行
   - [x] T2.3 初版规则入库（产出：priority/关键词规则可运行）✅ `sql/yufeng_apply_classification.sql`（约90+条规则）
-    - 验证：规则条数>0；priority 无明显冲突；抽样流水可命中（至少命中”美团/饿了么/抖音/手续费”等）
+    - 验证：规则条数>0；priority 无明显冲突；抽样流水可命中（至少命中"美团/饿了么/抖音/手续费"等）
   - [x] T2.4 规则命中计算（产出：classified view/表，含 matched_rule_id/source）✅ `sql/yufeng_apply_classification.sql` / `brand-docs/Yufeng_DM_DDL_override_and_classified.sql`
     - 验证：classified 结果行数 = bank_txn 行数；lvl1 不为空；classified_source 分布合理（override/rule/unclassified）
   - [x] T2.5 覆盖率统计（产出：按月/按笔数/按金额报表）
@@ -358,7 +359,7 @@
       ```
 
   - [x] T2.7 规则回归验证集（产出：golden set + 每次改规则的回归SQL）
-    - 说明：从历史未分类/易错分类中抽样 20~50 条作为固定验证集，避免”修A坏B”。
+    - 说明：从历史未分类/易错分类中抽样 20~50 条作为固定验证集，避免"修A坏B"。
     - 验证：回归SQL能输出（期望分类 vs 实际分类）差异清单。
     - ✅ SQL文件: `sql/yufeng_rule_regression.sql`
     - ✅ 表: `yufeng_dm.rule_regression_set` - 回归验证集存储表
@@ -420,8 +421,8 @@
   - [x] T3.1 RAW 文件登记（ingest_file）与 source_file_id 追溯链路 ✅ `sql/raw_ingest_file.sql`
     - 产出：ingest_file 表结构/索引 + status（pending/success/failed）+ error_message + row_count + hash
     - 验证：重复文件（hash 相同）可识别；失败可重跑；能按 source_file_id 回溯到原文件。
-  - [x] T3.2 幂等导入策略（产出：导入”重跑不重复”的策略落地）✅ `scripts/idempotent_import.md`
-    - 优先策略：按 source_file_id 维度”删当次导入数据→重灌”（最小复杂度）
+  - [x] T3.2 幂等导入策略（产出：导入"重跑不重复"的策略落地）✅ `scripts/idempotent_import.md`
+    - 优先策略：按 source_file_id 维度"删当次导入数据→重灌"（最小复杂度）
     - 验证：同一文件重复导入 2 次，ODS 行数不翻倍。
   - [x] T3.3 Yufeng 银行流水导入脚本（表头识别、金额去逗号、时间解析）✅ `scripts/import_yufeng_bank_txn.py`
     - 脚本路径：`scripts/import_yufeng_bank_txn.py`
@@ -481,7 +482,7 @@
       LIMIT 10;
       ```
     - 验证结果：dry-run 测试通过；正确过滤汇总行；门店映射正确；month 归一到 YYYY-MM-01；字段完整。
-  - [x] T3.5 “导入后一键检查”命令/脚本（产出：import→classify→coverage→unclassified→dm 的串联入口）
+  - [x] T3.5 "导入后一键检查"命令/脚本（产出：import→classify→coverage→unclassified→dm 的串联入口）
     - 验证：一条命令执行后，覆盖率与未分类清单可直接查询。
     - 脚本路径：`scripts/run_pipeline_oneclick.py`
     - 运行示例：
@@ -576,7 +577,7 @@
 
 - [x] T5 dbt/SQL 模型与口径落地（产出：DM 表清单 + 字段口径 + SQL/dbt 模型）
   - 一期每品牌核心 DM（3张主表）：`<brand>_dm.revenue_monthly` / `<brand>_dm.expense_monthly` / `<brand>_dm.profit_monthly`
-  - 为支持”覆盖率<100%人工匹配/UI”，Yufeng 增补（表或 view）：`yufeng_dm.bank_txn_classified`（override>rule>unclassified） + `yufeng_dm.coverage_monthly`
+  - 为支持"覆盖率<100%人工匹配/UI"，Yufeng 增补（表或 view）：`yufeng_dm.bank_txn_classified`（override>rule>unclassified） + `yufeng_dm.coverage_monthly`
 
   - [x] T5 Yufeng DM 主表（最小可验收版本）
     - 说明：采用 VIEW 而非 TABLE，优点是无需维护、随源数据自动更新、便于快速验收
@@ -607,7 +608,7 @@
   - [ ] T5.2 Bonjur DM 主表（待营业数据导入后实现）
 
 - [x] T6 POC：本机端到端跑通（文件归档→PG→分类→DM→UI）（产出：可复现 README + docker-compose）
-  - [x] T6.1 端到端验收脚本/命令清单（产出：README 中的”一条龙命令”）
+  - [x] T6.1 端到端验收脚本/命令清单（产出：README 中的"一条龙命令"）
     - 验证：能从空环境初始化→导入样例→生成 DM → 查询出报表结果。
     - ✅ 文档路径：`docs/ACCEPTANCE_RUNBOOK.md`
   - [x] T6.2 关键结果快照（产出：利润表/对账表样例截图或查询结果）
@@ -691,7 +692,7 @@
     - 部署计划：`docs/DASHBOARD_DEPLOY_PLAN.md`
     - 配置指南：`docs/METABASE_SETUP.md` ✅
     - Compose：`docker-compose.dashboard.yml`
-    - 自动化脚本（用于后续“按设计一键生成报表/看板”）：`scripts/metabase_seed_dashboard.py`
+    - 自动化脚本（用于后续"按设计一键生成报表/看板"）：`scripts/metabase_seed_dashboard.py`
       - 已生成示例 Questions（Yufeng 财务看板组件）：
         - `Yufeng｜收支总揽（表）`（cardId=44）
         - `Yufeng｜支出一级分类（饼图）`（cardId=45）
@@ -702,7 +703,7 @@
     - 口径：覆盖率统计以 `raw.ingest_file.id (source_file_id)` 为维度（1 个文件=1 个 ID；支持多文件上传，但每个文件绑定不同 ID）
     - 产出：SQL 视图 `yufeng_dm.v_coverage_by_file`（按 source_file_id 汇总） + `yufeng_dm.v_unclassified_top_by_file`
     - SQL 文件：`sql/yufeng_coverage_by_file.sql`
-    - UI 变更：`ui/src/app/pipeline/page.tsx`（/pipeline 默认展示“最近上传文件列表 + 每个文件覆盖率 + 未分类 TopN”；使用 brand context / brand selector）
+    - UI 变更：`ui/src/app/pipeline/page.tsx`（/pipeline 默认展示"最近上传文件列表 + 每个文件覆盖率 + 未分类 TopN"；使用 brand context / brand selector）
     - 验证 SQL：
       ```sql
       -- 最近上传文件的覆盖率
@@ -806,3 +807,4 @@ select * from yufeng_dm.v_unclassified_top_by_file where source_file_id = :file_
 | Date | Change | Verification |
 |------|--------|--------------|
 | 2026-03-24 18:46 CST | Standardize project to harness-guards (install/refresh scripts + docs) | Planned: run_change_guard.sh |
+| 2026-03-25 22:35 CST | Bonjur 对齐 Yufeng v2（共享 yufeng_cfg 字典）：创建 v2 分类函数/视图；规则表添加 lvl1_code/lvl2_code；新增 159 条规则；覆盖率 100%；对齐 DM 模型（revenue/expense/profit_monthly） | SQL 执行验证：覆盖率 100%，DM 视图可查询 |

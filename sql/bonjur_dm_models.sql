@@ -1,61 +1,112 @@
--- Bonjur｜DM 模型（三张主表，参考 Yufeng 结构）
--- 说明：Bonjur 一期只有营业数据（bonjur_ods.sales_monthly），暂无银行流水/费用分类。
--- 策略：先把 DM 视图结构搭起来：
---   - revenue_monthly：业务口径有值；银行口径留 NULL
---   - expense_monthly：先返回 0 行（结构就绪，后续接入 bonjur_ods.bank_txn 后补）
---   - profit_monthly：先只给 biz_revenue_amt，其余留 NULL
+-- Bonjur｜DM 模型（三张主表，对齐 Yufeng v2）
+-- 执行日期：2026-03-25
+-- 依赖：bonjur_ods.bank_txn, bonjur_dm.v_bank_txn_classified_v2, bonjur_ods.sales_monthly
+-- 变更：使用 lvl1_code/lvl2_code 字段，共享 yufeng_cfg 字典
 
 ------------------------------------------------------------
--- revenue_monthly
+-- revenue_monthly（收入月报）
 ------------------------------------------------------------
-drop view if exists bonjur_dm.revenue_monthly;
+DROP VIEW IF EXISTS bonjur_dm.revenue_monthly;
 
-create view bonjur_dm.revenue_monthly as
-select
-  sm.month as month,
-  coalesce(sum(sm.revenue_amt), 0) as biz_revenue_amt,
-  null::numeric as bank_revenue_amt,
-  null::numeric as diff_amt
-from bonjur_ods.sales_monthly sm
-where sm.month is not null
-group by sm.month
-order by sm.month desc;
+CREATE VIEW bonjur_dm.revenue_monthly AS
+WITH bank_revenue AS (
+    SELECT 
+        date_trunc('month', t.txn_time)::date AS month,
+        COALESCE(SUM(CASE WHEN c.lvl1_code = 'REV_BIZ' THEN COALESCE(t.in_amt, 0) ELSE 0 END), 0) AS bank_revenue_amt
+    FROM bonjur_ods.bank_txn t
+    LEFT JOIN bonjur_dm.v_bank_txn_classified_v2 c ON t.id = c.bank_txn_id
+    WHERE t.txn_time IS NOT NULL AND t.in_amt > 0
+    GROUP BY date_trunc('month', t.txn_time)::date
+),
+biz_revenue AS (
+    SELECT 
+        month,
+        COALESCE(SUM(revenue_amt), 0) AS biz_revenue_amt
+    FROM bonjur_ods.sales_monthly
+    WHERE month IS NOT NULL
+    GROUP BY month
+)
+SELECT 
+    COALESCE(b.month, s.month) AS month,
+    COALESCE(s.biz_revenue_amt, 0) AS biz_revenue_amt,
+    COALESCE(b.bank_revenue_amt, 0) AS bank_revenue_amt,
+    COALESCE(b.bank_revenue_amt, 0) - COALESCE(s.biz_revenue_amt, 0) AS diff_amt
+FROM bank_revenue b
+FULL OUTER JOIN biz_revenue s ON b.month = s.month
+ORDER BY COALESCE(b.month, s.month) DESC;
 
 ------------------------------------------------------------
--- expense_monthly（占位：0 行，但字段对齐 yufeng_dm.expense_monthly）
+-- expense_monthly（费用月报）
 ------------------------------------------------------------
-drop view if exists bonjur_dm.expense_monthly;
+DROP VIEW IF EXISTS bonjur_dm.expense_monthly;
 
-create view bonjur_dm.expense_monthly as
-select
-  null::date as month,
-  null::text as lvl1,
-  null::text as lvl2,
-  null::numeric as total_out_amt,
-  null::bigint as txn_rows
-where false;
+CREATE VIEW bonjur_dm.expense_monthly AS
+SELECT 
+    date_trunc('month', t.txn_time)::date AS month,
+    COALESCE(c.lvl1, '（未分类）') AS lvl1,
+    COALESCE(c.lvl2, NULL) AS lvl2,
+    SUM(COALESCE(t.out_amt, 0)) AS total_out_amt,
+    COUNT(*) AS txn_rows
+FROM bonjur_ods.bank_txn t
+INNER JOIN bonjur_dm.v_bank_txn_classified_v2 c ON t.id = c.bank_txn_id
+WHERE t.txn_time IS NOT NULL AND t.out_amt > 0
+GROUP BY date_trunc('month', t.txn_time)::date, c.lvl1, c.lvl2
+ORDER BY month DESC, total_out_amt DESC;
 
 ------------------------------------------------------------
--- profit_monthly
+-- profit_monthly（利润月报）
 ------------------------------------------------------------
-drop view if exists bonjur_dm.profit_monthly;
+DROP VIEW IF EXISTS bonjur_dm.profit_monthly;
 
-create view bonjur_dm.profit_monthly as
-select
-  sm.month as month,
+CREATE VIEW bonjur_dm.profit_monthly AS
+WITH revenue AS (
+    SELECT month, biz_revenue_amt, bank_revenue_amt FROM bonjur_dm.revenue_monthly
+),
+expense AS (
+    SELECT 
+        month,
+        SUM(total_out_amt) AS total_expense_amt,
+        SUM(CASE WHEN lvl1 = '材料采购' THEN total_out_amt ELSE 0 END) AS material_purchase_amt
+    FROM bonjur_dm.expense_monthly
+    GROUP BY month
+),
+cashflow AS (
+    SELECT 
+        month,
+        SUM(COALESCE(in_amt, 0)) AS total_in_amt,
+        SUM(COALESCE(out_amt, 0)) AS total_out_amt
+    FROM bonjur_ods.bank_txn
+    WHERE txn_time IS NOT NULL
+    GROUP BY month
+)
+SELECT 
+    COALESCE(r.month, e.month) AS month,
+    COALESCE(r.bank_revenue_amt, 0) AS bank_revenue_amt,
+    COALESCE(e.total_expense_amt, 0) AS total_expense_amt,
+    COALESCE(r.bank_revenue_amt, 0) - COALESCE(e.total_expense_amt, 0) AS profit_amt,
+    COALESCE(r.biz_revenue_amt, 0) AS biz_revenue_amt,
+    COALESCE(r.bank_revenue_amt, 0) - COALESCE(r.biz_revenue_amt, 0) AS diff_amt,
+    COALESCE(cf.total_in_amt, 0) - COALESCE(cf.total_out_amt, 0) AS cashflow_amt,
+    COALESCE(e.material_purchase_amt, 0) AS material_purchase_amt,
+    CASE WHEN COALESCE(r.bank_revenue_amt, 0) > 0 
+         THEN ROUND(100.0 * (COALESCE(r.bank_revenue_amt, 0) - COALESCE(e.material_purchase_amt, 0)) / COALESCE(r.bank_revenue_amt, 0), 2)
+         ELSE 0 
+    END AS gross_margin_rate
+FROM revenue r
+FULL OUTER JOIN expense e ON r.month = e.month
+LEFT JOIN cashflow cf ON COALESCE(r.month, e.month) = cf.month
+ORDER BY COALESCE(r.month, e.month) DESC;
 
-  -- 银行口径（暂缺）
-  null::numeric as bank_revenue_amt,
-  null::numeric as total_expense_amt,
-  null::numeric as profit_amt,
+------------------------------------------------------------
+-- 验证
+------------------------------------------------------------
+SELECT 'DM Views Created' AS status;
 
-  -- 业务口径（来自营业数据）
-  coalesce(sum(sm.revenue_amt), 0) as biz_revenue_amt,
+-- 测试 revenue_monthly
+SELECT * FROM bonjur_dm.revenue_monthly LIMIT 5;
 
-  -- 差异（暂缺）
-  null::numeric as diff_amt
+-- 测试 expense_monthly
+SELECT * FROM bonjur_dm.expense_monthly LIMIT 5;
 
-from bonjur_ods.sales_monthly sm
-where sm.month is not null
-group by sm.month
-order by sm.month desc;
+-- 测试 profit_monthly
+SELECT * FROM bonjur_dm.profit_monthly LIMIT 5;
