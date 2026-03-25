@@ -66,6 +66,9 @@ export async function POST(request: Request) {
         `CREATE TABLE IF NOT EXISTS ${cfg}.bank_rule_map (LIKE yufeng_cfg.bank_rule_map INCLUDING ALL)`
       );
 
+      // Create dim_store (for dropdowns)
+      await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.dim_store (LIKE yufeng_cfg.dim_store INCLUDING ALL)`);
+
       // Install history trigger
       await client.query(`DROP TRIGGER IF EXISTS trg_bank_rule_map_history ON ${cfg}.bank_rule_map`);
       await client.query(

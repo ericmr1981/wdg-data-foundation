@@ -27,21 +27,35 @@ export default function UploadPage() {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const yyyyMM = `${year}-${month}`;
 
-  const brands = [
-    { code: 'yufeng', name: '榆枫与山' },
-    { code: 'bonjur', name: '本就' }
-  ];
+  const [brands, setBrands] = useState<Array<{ code: string; name: string }>>([]);
+  const [stores, setStores] = useState<Array<{ code: string; name: string }>>([]);
 
-  const stores = {
-    yufeng: [
-      { code: 'yf_gh', name: '榆枫国华' }
-    ],
-    bonjur: [
-      { code: 'wz_oh_wxc', name: '温州瓯海万象城店' },
-      { code: 'wz_ra_wy', name: '温州瑞安吾悦广场店' },
-      { code: 'hz_in77', name: '杭州in77' }
-    ]
-  };
+  useEffect(() => {
+    fetch('/api/brands')
+      .then(r => r.json())
+      .then(d => {
+        if (d?.success) {
+          setBrands((d.data || []).map((x: any) => ({ code: x.brand_code, name: x.brand_name })));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!brand) return;
+    fetch(`/api/stores?brand=${brand}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d?.success) {
+          const nextStores = (d.data || []).map((x: any) => ({ code: x.store_code, name: x.store_name }));
+          setStores(nextStores);
+          if (nextStores.length && !nextStores.find((s: any) => s.code === store)) {
+            setStore(nextStores[0].code);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [brand]);
 
   const sources = [
     { code: 'bank', name: '银行流水' },
@@ -128,9 +142,8 @@ export default function UploadPage() {
               <select
                 value={brand}
                 onChange={(e) => {
-                  const nextBrand = e.target.value as 'yufeng' | 'bonjur';
+                  const nextBrand = e.target.value as string;
                   setBrand(nextBrand);
-                  setStore(stores[nextBrand][0].code);
                 }}
                 className="mt-1 block w-full border rounded-md px-3 py-2"
               >
@@ -148,7 +161,7 @@ export default function UploadPage() {
                 onChange={(e) => setStore(e.target.value)}
                 className="mt-1 block w-full border rounded-md px-3 py-2"
               >
-                {stores[brand as keyof typeof stores].map(s => (
+                {stores.map(s => (
                   <option key={s.code} value={s.code}>{s.name}</option>
                 ))}
               </select>

@@ -1,38 +1,41 @@
-export const BRAND_CODES = ['yufeng', 'bonjur'] as const;
-export type BrandCode = (typeof BRAND_CODES)[number];
+// Dynamic brand mapping (C2)
+// Legacy brands keep existing schema names: yufeng_* / bonjur_*
+// New brands use prefix: brand_<code>_*
+
+export type BrandCode = string;
 
 export function normalizeBrand(input: string | null | undefined): BrandCode | null {
   if (!input) return null;
-  return (BRAND_CODES as readonly string[]).includes(input) ? (input as BrandCode) : null;
+  const v = String(input).trim();
+  if (!/^[a-z][a-z0-9_]{1,31}$/.test(v)) return null;
+  return v;
+}
+
+export function getSchemaPrefix(brand: BrandCode): string {
+  if (brand === 'yufeng' || brand === 'bonjur') return brand;
+  return `brand_${brand}`;
 }
 
 export function getDmSchema(brand: BrandCode): string {
-  if (brand === 'yufeng') return 'yufeng_dm';
-  if (brand === 'bonjur') return 'bonjur_dm';
-  // exhaustive
-  throw new Error(`Unsupported brand: ${brand}`);
+  return `${getSchemaPrefix(brand)}_dm`;
 }
 
 export function getCfgSchema(brand: BrandCode): string {
-  if (brand === 'yufeng') return 'yufeng_cfg';
-  if (brand === 'bonjur') return 'bonjur_cfg';
-  throw new Error(`Unsupported brand: ${brand}`);
+  return `${getSchemaPrefix(brand)}_cfg`;
 }
 
 export function getOpsSchema(brand: BrandCode): string {
-  if (brand === 'yufeng') return 'yufeng_ops';
-  if (brand === 'bonjur') return 'bonjur_ops';
-  throw new Error(`Unsupported brand: ${brand}`);
+  return `${getSchemaPrefix(brand)}_ops`;
+}
+
+export function getOdsSchema(brand: BrandCode): string {
+  return `${getSchemaPrefix(brand)}_ods`;
 }
 
 export function getCfgRuleTable(brand: BrandCode): string {
-  if (brand === 'yufeng') return 'yufeng_cfg.bank_rule_map';
-  if (brand === 'bonjur') return 'bonjur_cfg.bank_rule_map';
-  throw new Error(`Unsupported brand: ${brand}`);
+  return `${getCfgSchema(brand)}.bank_rule_map`;
 }
 
 export function getOdsBankTxnTable(brand: BrandCode): string {
-  if (brand === 'yufeng') return 'yufeng_ods.bank_txn';
-  if (brand === 'bonjur') return 'bonjur_ods.bank_txn';
-  throw new Error(`Unsupported brand: ${brand}`);
+  return `${getOdsSchema(brand)}.bank_txn`;
 }

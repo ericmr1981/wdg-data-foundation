@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, ReactNode } from 'react';
 
-type Brand = 'yufeng' | 'bonjur';
+type Brand = string;
 
 interface BrandContextType {
   brand: Brand;
