@@ -1,12 +1,122 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { DndContext, closestCenter } from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 type Lvl1Option = { lvl1_code: string; lvl1_name: string; direction: 'in'|'out'|'any' };
 type Lvl2Option = { lvl2_code: string; lvl2_name: string };
 
 import { useBrand } from '@/lib/brand-context';
 import type { BankRule } from '@/lib/types';
+
+function SortableRuleRow({
+  rule,
+  reorderMode,
+  duplicate,
+  lvl1Name,
+  lvl2Name,
+  onEdit,
+  onDelete,
+  onToggle,
+}: {
+  rule: any;
+  reorderMode: boolean;
+  duplicate: boolean;
+  lvl1Name: string;
+  lvl2Name: string | null;
+  onEdit: () => void;
+  onDelete: () => void;
+  onToggle: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: rule.rule_id,
+    disabled: !reorderMode,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  };
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className={
+        `${!rule.enabled ? 'bg-gray-50' : ''} ` +
+        `${duplicate ? 'bg-orange-50' : ''}`
+      }
+    >
+      {reorderMode && (
+        <td className="px-3 py-3 text-sm text-gray-400">
+          <span
+            className="cursor-grab select-none"
+            title="拖拽排序"
+            {...attributes}
+            {...listeners}
+          >
+            ⋮⋮
+          </span>
+        </td>
+      )}
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+        <div className="flex items-center space-x-2">
+          <span>{rule.rule_id}</span>
+          {duplicate && (
+            <span className="px-1.5 py-0.5 text-xs bg-orange-100 text-orange-700 rounded">重复</span>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{rule.priority}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+        {rule.direction === 'in' ? '收入' : rule.direction === 'out' ? '支出' : '任意'}
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+        {rule.match_field === 'counterparty_name' ? '对方单位' :
+         rule.match_field === 'summary' ? '摘要' :
+         rule.match_field === 'memo' ? '附言' :
+         rule.match_field === 'purpose' ? '用途' : rule.match_field}
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+        {rule.match_type === 'contains' ? '模糊匹配' :
+         rule.match_type === 'exact' ? '精确匹配' :
+         rule.match_type === 'regex' ? '正则匹配' : rule.match_type}
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{rule.match_value}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+        {rule.match_field === 'counterparty_name'
+          ? rule.match_value
+          : rule.match_field2 === 'counterparty_name'
+            ? (rule.match_value2 || '-')
+            : '-'}
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+        <div className="text-sm text-gray-900">
+          {lvl1Name}
+          {rule.lvl2_code ? (
+            <span className="text-gray-500">{' '}· {lvl2Name || rule.lvl2_code}</span>
+          ) : null}
+        </div>
+        <div className="text-xs text-gray-400">{rule.lvl1_code}{rule.lvl2_code ? `/${rule.lvl2_code}` : ''}</div>
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap text-center">
+        <button
+          onClick={onToggle}
+          className={`w-10 h-5 rounded-full transition-colors ${rule.enabled ? 'bg-green-500' : 'bg-gray-300'}`}
+        >
+          <span className={`block w-4 h-4 bg-white rounded-full transform transition-transform ${rule.enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+        </button>
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap text-right text-sm space-x-2">
+        <button onClick={onEdit} className="text-blue-600 hover:text-blue-800">编辑</button>
+        <button onClick={onDelete} className="text-red-600 hover:text-red-800">删除</button>
+      </td>
+    </tr>
+  );
+}
 
 export default function RulesPage() {
   const { brand } = useBrand();
@@ -58,6 +168,9 @@ export default function RulesPage() {
     return lvl1Options.filter(o => o.direction === dir || o.direction === 'any');
   }, [lvl1Options, formData.direction]);
   const [rerunLoading, setRerunLoading] = useState(false);
+  const [reorderMode, setReorderMode] = useState(false);
+  const [reorderIds, setReorderIds] = useState<number[]>([]);
+  const [reorderSaving, setReorderSaving] = useState(false);
 
   useEffect(() => {
     fetchCategories();
@@ -196,6 +309,47 @@ export default function RulesPage() {
     return duplicates;
   }, [filteredRules]);
 
+  // reorder list: use reorderIds order when enabled
+  const reorderedRules = useMemo(() => {
+    if (!reorderMode) return filteredRules;
+    const map = new Map<number, BankRule>();
+    filteredRules.forEach(r => map.set(r.rule_id, r));
+    const ordered = reorderIds.map(id => map.get(id)).filter(Boolean) as BankRule[];
+    // append any new ones not in list (e.g. after create)
+    const rest = filteredRules.filter(r => !reorderIds.includes(r.rule_id));
+    return [...ordered, ...rest];
+  }, [reorderMode, filteredRules, reorderIds]);
+
+  useEffect(() => {
+    if (!reorderMode) return;
+    setReorderIds(filteredRules.map(r => r.rule_id));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reorderMode]);
+
+  async function saveReorder() {
+    try {
+      setReorderSaving(true);
+      const res = await fetch('/api/rules/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand, ordered_rule_ids: reorderIds, base_priority: 1000, step: 10 }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        alert(`保存失败: ${data.error}`);
+        return;
+      }
+      await fetchRules();
+      setReorderMode(false);
+      alert('优先级顺序已保存');
+    } catch (e: any) {
+      alert(`保存失败: ${e.message}`);
+    } finally {
+      setReorderSaving(false);
+    }
+  }
+
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     try {
@@ -313,13 +467,51 @@ export default function RulesPage() {
           <span className="text-sm text-gray-500">
             当前品牌: {brand === 'yufeng' ? '榆枫与山' : brand === 'bonjur' ? '本就' : brand}
           </span>
+          {reorderMode && (
+            <span className="text-xs text-orange-600">拖拽排序模式：拖动行 → 保存将批量重写 priority</span>
+          )}
         </div>
-        <button
-          onClick={() => { resetForm(); setEditingRule(null); setShowModal(true); }}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          + 新增规则
-        </button>
+        <div className="flex items-center gap-2">
+          {!reorderMode ? (
+            <button
+              onClick={() => {
+                if (searchKeyword || searchLvl1 || searchDirection) {
+                  alert('请先清除筛选后再排序（避免只排序子集造成误解）');
+                  return;
+                }
+                setReorderMode(true);
+                setReorderIds(filteredRules.map(r => r.rule_id));
+              }}
+              className="px-3 py-2 border rounded-lg bg-white hover:bg-gray-50"
+            >
+              拖拽排序
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={saveReorder}
+                disabled={reorderSaving}
+                className="px-3 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+              >
+                {reorderSaving ? '保存中...' : '保存顺序'}
+              </button>
+              <button
+                onClick={() => setReorderMode(false)}
+                disabled={reorderSaving}
+                className="px-3 py-2 border rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50"
+              >
+                取消
+              </button>
+            </>
+          )}
+
+          <button
+            onClick={() => { resetForm(); setEditingRule(null); setShowModal(true); }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            + 新增规则
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -421,6 +613,9 @@ export default function RulesPage() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
+              {reorderMode && (
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">拖拽</th>
+              )}
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">优先级</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">方向</th>
@@ -434,71 +629,50 @@ export default function RulesPage() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {filteredRules.map((rule) => (
-              <tr key={rule.rule_id} className={`
-                ${!rule.enabled ? 'bg-gray-50' : ''}
-                ${duplicateRuleIds.has(rule.rule_id) ? 'bg-orange-50' : ''}
-              `}>
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                  <div className="flex items-center space-x-2">
-                    <span>{rule.rule_id}</span>
-                    {duplicateRuleIds.has(rule.rule_id) && (
-                      <span className="px-1.5 py-0.5 text-xs bg-orange-100 text-orange-700 rounded">重复</span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{rule.priority}</td>
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                  {rule.direction === 'in' ? '收入' : rule.direction === 'out' ? '支出' : '任意'}
-                </td>
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                  {rule.match_field === 'counterparty_name' ? '对方单位' :
-                   rule.match_field === 'summary' ? '摘要' :
-                   rule.match_field === 'memo' ? '附言' :
-                   rule.match_field === 'purpose' ? '用途' : rule.match_field}
-                </td>
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                  {rule.match_type === 'contains' ? '模糊匹配' :
-                   rule.match_type === 'exact' ? '精确匹配' :
-                   rule.match_type === 'regex' ? '正则匹配' : rule.match_type}
-                </td>
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{rule.match_value}</td>
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                  {rule.match_field === 'counterparty_name'
-                    ? rule.match_value
-                    : rule.match_field2 === 'counterparty_name'
-                      ? (rule.match_value2 || '-')
-                      : '-'}
-                </td>
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                  <div className="text-sm text-gray-900">
-                    {lvl1NameByCode.get(rule.lvl1_code) || rule.lvl1_code}
-                    {rule.lvl2_code ? (
-                      <span className="text-gray-500">
-                        {' '}· {lvl2NameByCode.get(`${rule.lvl1_code}:${rule.lvl2_code}`) || rule.lvl2_code}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="text-xs text-gray-400">{rule.lvl1_code}{rule.lvl2_code ? `/${rule.lvl2_code}` : ''}</div>
-                </td>
-                <td className="px-4 py-3 whitespace-nowrap text-center">
-                  <button
-                    onClick={() => handleToggleEnabled(rule)}
-                    className={`w-10 h-5 rounded-full transition-colors ${
-                      rule.enabled ? 'bg-green-500' : 'bg-gray-300'
-                    }`}
-                  >
-                    <span className={`block w-4 h-4 bg-white rounded-full transform transition-transform ${
-                      rule.enabled ? 'translate-x-5' : 'translate-x-0.5'
-                    }`} />
-                  </button>
-                </td>
-                <td className="px-4 py-3 whitespace-nowrap text-right text-sm space-x-2">
-                  <button onClick={() => openEditModal(rule)} className="text-blue-600 hover:text-blue-800">编辑</button>
-                  <button onClick={() => setDeleteRuleId(rule.rule_id)} className="text-red-600 hover:text-red-800">删除</button>
-                </td>
-              </tr>
-            ))}
+            {reorderMode ? (
+              <DndContext
+                collisionDetection={closestCenter}
+                onDragEnd={(event) => {
+                  const { active, over } = event;
+                  if (!over) return;
+                  if (active.id === over.id) return;
+                  const oldIndex = reorderIds.indexOf(Number(active.id));
+                  const newIndex = reorderIds.indexOf(Number(over.id));
+                  if (oldIndex === -1 || newIndex === -1) return;
+                  setReorderIds((items) => arrayMove(items, oldIndex, newIndex));
+                }}
+              >
+                <SortableContext items={reorderIds} strategy={verticalListSortingStrategy}>
+                  {reorderedRules.map((rule) => (
+                    <SortableRuleRow
+                      key={rule.rule_id}
+                      rule={rule}
+                      reorderMode
+                      duplicate={duplicateRuleIds.has(rule.rule_id)}
+                      lvl1Name={lvl1NameByCode.get(rule.lvl1_code) || rule.lvl1_code}
+                      lvl2Name={rule.lvl2_code ? (lvl2NameByCode.get(`${rule.lvl1_code}:${rule.lvl2_code}`) || rule.lvl2_code) : null}
+                      onEdit={() => openEditModal(rule)}
+                      onDelete={() => setDeleteRuleId(rule.rule_id)}
+                      onToggle={() => handleToggleEnabled(rule)}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            ) : (
+              reorderedRules.map((rule) => (
+                <SortableRuleRow
+                  key={rule.rule_id}
+                  rule={rule}
+                  reorderMode={false}
+                  duplicate={duplicateRuleIds.has(rule.rule_id)}
+                  lvl1Name={lvl1NameByCode.get(rule.lvl1_code) || rule.lvl1_code}
+                  lvl2Name={rule.lvl2_code ? (lvl2NameByCode.get(`${rule.lvl1_code}:${rule.lvl2_code}`) || rule.lvl2_code) : null}
+                  onEdit={() => openEditModal(rule)}
+                  onDelete={() => setDeleteRuleId(rule.rule_id)}
+                  onToggle={() => handleToggleEnabled(rule)}
+                />
+              ))
+            )}
           </tbody>
         </table>
         {rules.length === 0 && (
