@@ -166,7 +166,8 @@ BEGIN
     
     -- ==================== Step 5: 未分类兜底 ====================
     v_rule_id := NULL;
-    v_lvl1_code := 'UNCLASSIFIED';
+    -- 未命中时：不再依赖 UNCLASSIFIED 字典项，返回 NULL code + classified_source='unclassified'
+    v_lvl1_code := NULL;
     v_lvl2_code := NULL;
     v_classified_source := 'unclassified';
     RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, v_classified_source);
