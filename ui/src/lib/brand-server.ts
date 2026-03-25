@@ -13,6 +13,18 @@ export function getDmSchema(brand: BrandCode): string {
   throw new Error(`Unsupported brand: ${brand}`);
 }
 
+export function getCfgSchema(brand: BrandCode): string {
+  if (brand === 'yufeng') return 'yufeng_cfg';
+  if (brand === 'bonjur') return 'bonjur_cfg';
+  throw new Error(`Unsupported brand: ${brand}`);
+}
+
+export function getOpsSchema(brand: BrandCode): string {
+  if (brand === 'yufeng') return 'yufeng_ops';
+  if (brand === 'bonjur') return 'bonjur_ops';
+  throw new Error(`Unsupported brand: ${brand}`);
+}
+
 export function getCfgRuleTable(brand: BrandCode): string {
   if (brand === 'yufeng') return 'yufeng_cfg.bank_rule_map';
   if (brand === 'bonjur') return 'bonjur_cfg.bank_rule_map';

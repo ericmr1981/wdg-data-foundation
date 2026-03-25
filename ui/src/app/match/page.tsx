@@ -4,30 +4,65 @@ import { useEffect, useRef, useState } from 'react';
 import type { UnclassifiedTxn } from '@/lib/types';
 import { useBrand } from '@/lib/brand-context';
 
-// 一级分类选项
+// 一级/二级分类选项（必须与数据库字典表 dim_category_lvl1/lvl2 的 *name* 完全一致）
+// 否则后端会报：Invalid lvl2 name
 const LVL1_OPTIONS = [
-  '营业收入', '运费', '租金', '人力成本', '管理费用', '财务费用',
-  '物料采购', '销售费用', '营建费用','其他收入', '其他支出'
+  '营业收入',
+  '其他收入',
+  '租金物业',
+  '人力',
+  '运费',
+  '管理费用',
+  '材料采购',
+  '营建费用',
+  '营销费用',
+  '其他费用'
 ];
 
-// 二级分类选项
-const LVL2_OPTIONS: Record<string, string[]> = {
-  '营业收入': ['美团', '饿了么', '抖音', '支付宝', '微信', '现金', '其他'],
-  '运费': ['顺丰', '中通', '圆通', '韵达', '其他'],
-  '租金': ['物业', '房东'],
-  '人力成本': ['工资', '社保', '奖金'],
-  '物料采购': ['食材', '包装', '耗材'],
-  '财务费用': ['税金支出','其他',],
-  '销售费用': ['推广','其他',],
+// 方向约束：用于限制分类下拉（收入只能选收入类，支出只能选支出类）
+const LVL1_DIRECTION: Record<string, 'in'|'out'> = {
+  '营业收入': 'in',
+  '其他收入': 'in',
 
-  // 其他收入
+  '租金物业': 'out',
+  '人力': 'out',
+  '运费': 'out',
+  '管理费用': 'out',
+  '材料采购': 'out',
+  '营建费用': 'out',
+  '营销费用': 'out',
+  '其他费用': 'out'
+};
+
+function txnDirection(txn: { in_amt: any; out_amt: any }): 'in'|'out'|'any' {
+  const inAmt = Number(txn?.in_amt || 0);
+  const outAmt = Number(txn?.out_amt || 0);
+  if (inAmt > 0) return 'in';
+  if (outAmt > 0) return 'out';
+  return 'any';
+}
+
+function allowedLvl1ByDirection(direction: 'in'|'out'|'any'): string[] {
+  if (direction === 'any') return LVL1_OPTIONS;
+  return LVL1_OPTIONS.filter(name => LVL1_DIRECTION[name] === direction);
+}
+
+const LVL2_OPTIONS: Record<string, string[]> = {
+  '营业收入': ['美团', '饿了么', '抖音', '京东', '微信/财付通', '支付宝', '其他渠道'],
   '其他收入': ['注资', '借款', '贷款', '利息', '退税', '退款'],
 
-  // 管理费用
-  '管理费用': ['报销', '准备金', '其他'],
+  '租金物业': ['租金', '物业费', '水电费'],
+  '人力': ['工资', '社保', '劳务派遣', '人力服务'],
+  '运费': ['货拉拉', '快递', '同城配送', '其他运费'],
 
-  // 兜底
-  '其他': []
+  '管理费用': ['系统使用费', '办公费用', '差旅费', '维修费', '其他管理', '银行手续费', '支付通道费'],
+  '材料采购': ['原材料', '辅料', '包装', '其他采购'],
+
+  '营建费用': ['工程款', '施工费', '装修费', '设备采购', '其他营建'],
+  '营销费用': ['广告费', '礼品费', '推广费', '营销费', '其他营销'],
+
+  // 其他费用（二级）
+  '其他费用': ['税金', '还款']
 };
 
 // 待发送队列项类型
@@ -37,6 +72,9 @@ interface PendingItem {
   lvl2?: string;
   keyword: string;
   counterparty_name?: string;
+  summary?: string;
+  memo?: string;
+  purpose?: string;
   txn_time?: string;
   in_amt?: number;
   out_amt?: number;
@@ -74,6 +112,8 @@ export default function MatchPage() {
   const [settleLvl1, setSettleLvl1] = useState('');
   const [settleLvl2, setSettleLvl2] = useState('');
   const [settleKeyword, setSettleKeyword] = useState('');
+  const [settleMatchField, setSettleMatchField] = useState<'summary'|'memo'|'purpose'|'counterparty_name'>('summary');
+  const [settleMatchType, setSettleMatchType] = useState<'contains'|'exact'>('contains');
   const [settleSaving, setSettleSaving] = useState(false);
   const [settleError, setSettleError] = useState<string | null>(null);
 
@@ -94,6 +134,63 @@ export default function MatchPage() {
     existing_rules: ConflictRule[];
   }>>([]);
   const [batchSettleError, setBatchSettleError] = useState<string | null>(null);
+
+  // 候选推荐相关状态
+  const [candidates, setCandidates] = useState<Array<{ candidate: string; score: number }>>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [previewData, setPreviewData] = useState<{
+    match_value: string;
+    hit_count: number;
+    total_amt: number;
+    primary_lvl1: string | null;
+    lvl1_distribution: Record<string, number>;
+  } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  // 获取候选项
+  async function fetchCandidates(txnId: number) {
+    setCandidatesLoading(true);
+    try {
+      const res = await fetch(`/api/match/candidates?brand=${brand}&bank_txn_id=${txnId}`);
+      const data = await res.json();
+      if (data.success) {
+        setCandidates(data.data.candidates || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch candidates:', err);
+    } finally {
+      setCandidatesLoading(false);
+    }
+  }
+
+  // 预览命中
+  async function fetchPreview(matchValue: string) {
+    if (!matchValue || matchValue.length < 3) {
+      setPreviewData(null);
+      return;
+    }
+    setPreviewLoading(true);
+    try {
+      const res = await fetch(`/api/match/preview?brand=${brand}&match_value=${encodeURIComponent(matchValue)}`);
+      const data = await res.json();
+      if (data.success) {
+        setPreviewData(data.data);
+      } else {
+        setPreviewData(null);
+      }
+    } catch (err) {
+      console.error('Failed to fetch preview:', err);
+      setPreviewData(null);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  // 选择候选时触发预览
+  function handleCandidateSelect(candidate: string) {
+    setSettleKeyword(candidate);
+    fetchPreview(candidate);
+  }
 
   useEffect(() => {
     fetchUnclassified();
@@ -148,8 +245,11 @@ export default function MatchPage() {
             bank_txn_id: id,
             lvl1: batchLvl1,
             lvl2: batchLvl2 || undefined,
-            keyword: txn?.summary || '',
+            keyword: txn?.summary || txn?.memo || txn?.purpose || txn?.counterparty_name || '',
             counterparty_name: txn?.counterparty_name ?? undefined,
+            summary: txn?.summary ?? undefined,
+            memo: txn?.memo ?? undefined,
+            purpose: txn?.purpose ?? undefined,
             txn_time: txn?.txn_time ?? undefined,
             in_amt: txn?.in_amt ?? undefined,
             out_amt: txn?.out_amt ?? undefined
@@ -194,8 +294,11 @@ export default function MatchPage() {
             bank_txn_id: txnId,
             lvl1,
             lvl2,
-            keyword: txn.summary || '',
+            keyword: txn.summary || txn.memo || txn.purpose || txn.counterparty_name || '',
             counterparty_name: txn.counterparty_name ?? undefined,
+            summary: txn.summary ?? undefined,
+            memo: txn.memo ?? undefined,
+            purpose: txn.purpose ?? undefined,
             txn_time: txn.txn_time ?? undefined,
             in_amt: txn.in_amt ?? undefined,
             out_amt: txn.out_amt ?? undefined
@@ -232,9 +335,37 @@ export default function MatchPage() {
     setPendingItems([]);
   }
 
+  // 从待发送队列打开“单条沉淀”弹窗（用户可选择匹配字段/模式/关键词）
+  function openSettleModalFromPending(item: PendingItem) {
+    const pseudoTxn: UnclassifiedTxn = {
+      month: '',
+      bank_txn_id: item.bank_txn_id,
+      txn_time: item.txn_time || '',
+      counterparty_name: item.counterparty_name || null,
+      summary: item.summary || null,
+      memo: item.memo || null,
+      purpose: item.purpose || null,
+      in_amt: item.in_amt ?? null,
+      out_amt: item.out_amt ?? null,
+      balance_amt: null,
+      source_file_id: null,
+      combined_text: [item.summary, item.memo, item.purpose, item.counterparty_name].filter(Boolean).join(' ')
+    };
+
+    openSettleModal(pseudoTxn);
+    setSettleLvl1(item.lvl1);
+    setSettleLvl2(item.lvl2 || '');
+  }
+
   // 发送/沉淀为规则
   async function handleBatchSettle() {
     if (pendingItems.length === 0) return;
+
+    // 当前先优先把单条场景走“可解释的沉淀弹窗”
+    if (pendingItems.length === 1) {
+      openSettleModalFromPending(pendingItems[0]);
+      return;
+    }
 
     setBatchSettleLoading(true);
     setBatchSettleError(null);
@@ -322,15 +453,38 @@ export default function MatchPage() {
   // 打开规则沉淀弹窗
   function openSettleModal(txn: UnclassifiedTxn) {
     setSettleTxn(txn);
-    // 默认使用摘要作为关键词
-    const defaultKeyword = txn.summary || '';
+    
+    // 智能推荐匹配字段：summary 优先，其次 memo/purpose，最后 counterparty_name
+    let recommendedField: 'summary'|'memo'|'purpose'|'counterparty_name' = 'summary';
+    let defaultKeyword = txn.summary || '';
+    let recommendedType: 'contains'|'exact' = 'contains';
+    
+    if (!defaultKeyword && txn.memo) {
+      recommendedField = 'memo';
+      defaultKeyword = txn.memo;
+    } else if (!defaultKeyword && txn.purpose) {
+      recommendedField = 'purpose';
+      defaultKeyword = txn.purpose;
+    } else if (!defaultKeyword && txn.counterparty_name) {
+      recommendedField = 'counterparty_name';
+      defaultKeyword = txn.counterparty_name;
+      recommendedType = 'exact';
+    }
+    
+    setSettleMatchField(recommendedField);
+    setSettleMatchType(recommendedType);
     setSettleKeyword(defaultKeyword);
+    
     // 获取当前分类（如果有）
     setSettleLvl1('');
     setSettleLvl2('');
     setSettleError(null);
     setUseDualMatch(false);
+    setPreviewData(null);
     setShowSettleModal(true);
+
+    // 自动获取候选片段
+    fetchCandidates(txn.bank_txn_id);
   }
 
   // 提交规则沉淀
@@ -356,11 +510,11 @@ export default function MatchPage() {
           bank_txn_id: settleTxn.bank_txn_id,
           lvl1: settleLvl1,
           lvl2: settleLvl2 || null,
-          match_field: 'summary',
+          match_field: settleMatchField,
           match_value: settleKeyword,
           match_field2: matchField2,
           match_value2: matchValue2,
-          note: 'UI 人工沉淀'
+          note: `UI 人工沉淀（${settleMatchField === 'summary' ? '摘要' : settleMatchField === 'memo' ? '附言' : settleMatchField === 'purpose' ? '用途' : '对方单位'}）`
         })
       });
 
@@ -370,6 +524,8 @@ export default function MatchPage() {
         // 沉淀成功
         setShowSettleModal(false);
         setShowConflictModal(false);
+        // 如果是从待发送队列打开的单条沉淀，成功后清掉队列中对应项
+        setPendingItems(prev => prev.filter(item => item.bank_txn_id !== settleTxn.bank_txn_id));
         alert('规则沉淀成功！');
         fetchUnclassified();
       } else if (data.code === 'CONFLICT_DETECTED') {
@@ -473,14 +629,14 @@ export default function MatchPage() {
                 disabled={batchSettleLoading}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm"
               >
-                {batchSettleLoading ? '处理中...' : `发送/沉淀为规则（${pendingItems.length}条）`}
+                {batchSettleLoading ? '处理中...' : `批量沉淀（${pendingItems.length}条）`}
               </button>
             </div>
           </div>
 
           {/* 展开详情 */}
           {showPendingExpanded && (
-            <div className="mt-3 max-h-48 overflow-y-auto">
+            <div className="mt-3 max-h-64 overflow-y-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-yellow-100 sticky top-0">
                   <tr>
@@ -488,6 +644,7 @@ export default function MatchPage() {
                     <th className="px-2 py-1 text-left">分类</th>
                     <th className="px-2 py-1 text-left">关键词</th>
                     <th className="px-2 py-1 text-left">对方单位</th>
+                    <th className="px-2 py-1 text-center">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -497,6 +654,14 @@ export default function MatchPage() {
                       <td className="px-2 py-1">{item.lvl1}{item.lvl2 ? `-${item.lvl2}` : ''}</td>
                       <td className="px-2 py-1 max-w-xs truncate">{item.keyword || '-'}</td>
                       <td className="px-2 py-1 max-w-xs truncate">{item.counterparty_name || '-'}</td>
+                      <td className="px-2 py-1 text-center">
+                        <button
+                          onClick={() => openSettleModalFromPending(item)}
+                          className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
+                        >
+                          确认沉淀
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -601,6 +766,7 @@ export default function MatchPage() {
                   <td className="px-4 py-3 text-center">
                     <QuickMatchButton
                       txnId={txn.bank_txn_id}
+                      direction={txnDirection(txn as any)}
                       onMatch={handleSingleOverride}
                     />
                     <button
@@ -655,7 +821,16 @@ export default function MatchPage() {
                   className="mt-1 block w-full border rounded-md px-3 py-2"
                 >
                   <option value="">选择分类</option>
-                  {LVL1_OPTIONS.map(opt => (
+                  {allowedLvl1ByDirection(
+                    (() => {
+                      const dirs = selectedIds
+                        .map(id => txns.find(t => t.bank_txn_id === id))
+                        .filter(Boolean)
+                        .map(t => txnDirection(t as any));
+                      const uniq = Array.from(new Set(dirs.filter(d => d !== 'any')));
+                      return uniq.length === 1 ? (uniq[0] as any) : 'any';
+                    })()
+                  ).map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
                 </select>
@@ -718,7 +893,7 @@ export default function MatchPage() {
                   className="mt-1 block w-full border rounded-md px-3 py-2"
                 >
                   <option value="">选择分类</option>
-                  {LVL1_OPTIONS.map(opt => (
+                  {allowedLvl1ByDirection(txnDirection(settleTxn as any)).map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
                 </select>
@@ -739,18 +914,161 @@ export default function MatchPage() {
                 </div>
               )}
 
+              {/* 匹配字段选择 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700">匹配字段 *</label>
+                <select
+                  value={settleMatchField}
+                  onChange={(e) => {
+                    const v = e.target.value as 'summary'|'memo'|'purpose'|'counterparty_name';
+                    const mt: 'contains'|'exact' = v === 'counterparty_name' ? 'exact' : 'contains';
+                    setSettleMatchField(v);
+                    setSettleMatchType(mt);
+                    // 自动填充该字段的当前值
+                    const fieldVal = v === 'summary' ? settleTxn.summary :
+                                     v === 'memo' ? settleTxn.memo :
+                                     v === 'purpose' ? settleTxn.purpose :
+                                     settleTxn.counterparty_name || '';
+                    setSettleKeyword(fieldVal || '');
+                    fetchPreview(fieldVal || '');
+                  }}
+                  className="mt-1 block w-full border rounded-md px-3 py-2"
+                >
+                  <option value="summary">摘要（{settleTxn.summary || '空'}）</option>
+                  <option value="memo" disabled={!settleTxn.memo}>附言（{settleTxn.memo || '空'}）</option>
+                  <option value="purpose" disabled={!settleTxn.purpose}>用途（{settleTxn.purpose || '空'}）</option>
+                  <option value="counterparty_name">对方单位（{settleTxn.counterparty_name || '空'}）</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  系统推荐：{!settleTxn.summary ? '摘要为空，建议使用附言/用途' : '摘要优先'}
+                </p>
+              </div>
+
+              {/* 匹配模式 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700">匹配模式</label>
+                <div className="mt-1 flex items-center space-x-3">
+                  <label className="flex items-center text-sm">
+                    <input
+                      type="radio"
+                      checked={settleMatchType === 'contains'}
+                      onChange={() => setSettleMatchType('contains')}
+                      className="mr-2"
+                      disabled={settleMatchField === 'counterparty_name'}
+                    />
+                    模糊匹配（contains）
+                  </label>
+                  <label className="flex items-center text-sm">
+                    <input
+                      type="radio"
+                      checked={settleMatchType === 'exact'}
+                      onChange={() => setSettleMatchType('exact')}
+                      className="mr-2"
+                    />
+                    精确匹配（exact）
+                  </label>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {settleMatchField === 'counterparty_name' ? '对方单位默认精确匹配' : '摘要/附言/用途默认模糊匹配'}
+                </p>
+              </div>
+
               {/* 关键词输入 */}
               <div>
                 <label className="block text-sm font-medium text-gray-700">关键词 *</label>
                 <input
                   type="text"
                   value={settleKeyword}
-                  onChange={(e) => setSettleKeyword(e.target.value)}
+                  onChange={(e) => {
+                    setSettleKeyword(e.target.value);
+                    // 关键词变化时重新获取预览
+                    if (e.target.value.length >= 3) {
+                      fetchPreview(e.target.value);
+                    } else {
+                      setPreviewData(null);
+                    }
+                  }}
                   placeholder="输入匹配关键词"
                   className="mt-1 block w-full border rounded-md px-3 py-2"
                 />
-                <p className="text-xs text-gray-500 mt-1">默认使用摘要，可编辑</p>
+                <p className="text-xs text-gray-500 mt-1">可编辑，建议使用推荐候选（输入3字以上自动预览）</p>
               </div>
+
+              {/* 候选推荐 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">推荐候选</label>
+                {candidatesLoading ? (
+                  <div className="text-xs text-gray-500">加载中...</div>
+                ) : candidates.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {candidates.slice(0, 8).map((c, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setSettleKeyword(c.candidate);
+                          fetchPreview(c.candidate);
+                        }}
+                        className={`text-xs px-2 py-1 rounded border ${
+                          settleKeyword === c.candidate
+                            ? 'bg-blue-100 border-blue-500 text-blue-700'
+                            : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                        }`}
+                        title={`点击使用该候选 (score: ${c.score})`}
+                      >
+                        {c.candidate}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-gray-400">无可用候选</div>
+                )}
+              </div>
+
+              {/* 命中预览 */}
+              {settleKeyword.length >= 3 && (
+                <div className="bg-slate-50 rounded p-3 text-sm">
+                  <div className="font-medium text-gray-700 mb-2">命中预览</div>
+                  {previewLoading ? (
+                    <div className="text-xs text-gray-500">加载中...</div>
+                  ) : previewData ? (
+                    <div className="space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">历史命中：</span>
+                        <span className="font-medium">{previewData.hit_count} 条</span>
+                      </div>
+                      {previewData.hit_count > 0 && (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">总金额：</span>
+                            <span className="font-medium">¥{previewData.total_amt?.toLocaleString() || 0}</span>
+                          </div>
+                          {previewData.primary_lvl1 && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">主分类：</span>
+                              <span className="font-medium text-blue-600">{previewData.primary_lvl1}</span>
+                            </div>
+                          )}
+                          {Object.keys(previewData.lvl1_distribution).length > 0 && (
+                            <div className="mt-2 text-xs text-gray-500">
+                              分类分布：
+                              {Object.entries(previewData.lvl1_distribution)
+                                .sort(([, a], [, b]) => b - a)
+                                .slice(0, 5)
+                                .map(([lvl1, cnt]) => (
+                                  <span key={lvl1} className="mr-2">
+                                    {lvl1}: {cnt}
+                                  </span>
+                                ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-400">无历史命中</div>
+                  )}
+                </div>
+              )}
 
               {/* 双重匹配选项 */}
               {settleTxn.counterparty_name && (
@@ -945,16 +1263,19 @@ export default function MatchPage() {
 // 这里改为 fixed 定位 + 单层面板（左一级/右二级），彻底避免二级菜单显示不全。
 function QuickMatchButton({
   txnId,
+  direction,
   onMatch,
 }: {
   txnId: number;
+  direction: 'in'|'out'|'any';
   onMatch: (id: number, lvl1: string, lvl2?: string) => void;
 }) {
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const [showMenu, setShowMenu] = useState(false);
-  const [activeLvl1, setActiveLvl1] = useState<string>(LVL1_OPTIONS[0]);
+  const initialLvl1 = allowedLvl1ByDirection(direction)[0] || LVL1_OPTIONS[0];
+  const [activeLvl1, setActiveLvl1] = useState<string>(initialLvl1);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
   function openMenu() {
@@ -1028,7 +1349,7 @@ function QuickMatchButton({
           <div className="flex">
             {/* 左侧：一级分类 */}
             <div className="w-44 border-r max-h-80 overflow-y-auto">
-              {LVL1_OPTIONS.map((lvl1) => (
+              {allowedLvl1ByDirection(direction).map((lvl1) => (
                 <button
                   key={lvl1}
                   onMouseEnter={() => setActiveLvl1(lvl1)}

@@ -125,7 +125,7 @@ def upsert_card(
     params = [
         {
             "id": PARAM_MONTH_DATE,
-            "type": "date/=",
+            "type": "date/single",  # Metabase v0.5x+: date/= 已废弃
             "name": "Month",
             "slug": "month_date",
             "target": ["variable", ["template-tag", "month_date"]],
@@ -224,50 +224,71 @@ def main():
   [[ AND date_trunc('month', t.txn_time)::date = {{month_date}} ]]
   [[ AND t.store_code = {{store_code}} ]]
 ),
+profit_agg AS (
+  SELECT
+    COALESCE(SUM(p.bank_revenue_amt), 0) AS in_biz,
+    COALESCE(SUM(p.total_expense_amt), 0) AS total_out,
+    COALESCE(SUM(p.profit_amt), 0) AS profit_amt,
+    COALESCE(SUM(p.material_purchase_amt), 0) AS material_purchase_amt,
+    (COALESCE(SUM(p.bank_revenue_amt), 0) - COALESCE(SUM(p.material_purchase_amt), 0)) / NULLIF(COALESCE(SUM(p.bank_revenue_amt), 0), 0) AS gross_margin_rate
+  FROM yufeng_dm.profit_monthly p
+  WHERE 1=1
+  [[ AND p.month = {{month_date}} ]]
+  [[ AND p.store_code = {{store_code}} ]]
+),
 agg AS (
   SELECT
-    SUM(in_amt)  FILTER (WHERE in_amt  > 0) AS total_in,
-    SUM(out_amt) FILTER (WHERE out_amt > 0) AS total_out,
+    COALESCE(SUM(in_amt)  FILTER (WHERE in_amt  > 0), 0) AS total_in,
 
-    SUM(in_amt)  FILTER (WHERE in_amt  > 0 AND lvl1='营业收入') AS in_biz,
-    SUM(in_amt)  FILTER (WHERE in_amt  > 0 AND lvl1='其他收入') AS in_other,
+    -- 来自 profit_monthly（单行），这里用 MAX() 避免与 base 的聚合冲突
+    MAX(profit_agg.total_out)  AS total_out,
 
-    SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='人力成本') AS out_hr,
-    SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='租金物业') AS out_rent,
-    SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='运营费')   AS out_ops,
-    SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='餐饮费用') AS out_food,
-    SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='财务费用') AS out_fin,
-    SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='税金支出') AS out_tax
-  FROM base
+    -- 这里“营业收入”以 yufeng_dm.profit_monthly 口径为准（REV_BIZ）
+    MAX(profit_agg.in_biz) AS in_biz,
+
+    COALESCE(SUM(in_amt)  FILTER (WHERE in_amt  > 0 AND lvl1='其他收入'), 0) AS in_other,
+
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='人力'), 0) AS out_hr,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='租金物业'), 0) AS out_rent,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='运费'), 0) AS out_ship,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='管理费用'), 0) AS out_admin,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='材料采购'), 0) AS out_material,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='营建费用'), 0) AS out_build,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='营销费用'), 0) AS out_mkt,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='其他费用'), 0) AS out_otherexp,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='未分类'), 0) AS out_unclassified,
+
+    MAX(profit_agg.profit_amt) AS profit_amt,
+    MAX(profit_agg.gross_margin_rate) AS gross_margin_rate
+  FROM base, profit_agg
 ),
 rows AS (
   -- 收入总计：不展示占比
   SELECT 10 AS ord, '收入' AS section, '银行总收入' AS item, total_in AS amt, NULL::numeric AS ratio, NULL::text AS expense_lvl1, NULL::text AS income_lvl1 FROM agg
-  UNION ALL SELECT 11,'收入','营业收入', COALESCE(in_biz,0),   COALESCE(COALESCE(in_biz,0)/NULLIF(total_in,0), 0), NULL, '营业收入' FROM agg
-  UNION ALL SELECT 12,'收入','其他收入', COALESCE(in_other,0), COALESCE(COALESCE(in_other,0)/NULLIF(total_in,0), 0), NULL, '其他收入' FROM agg
+  UNION ALL SELECT 11,'收入','营业收入', in_biz,   COALESCE(in_biz/NULLIF(total_in,0), 0), NULL, '营业收入' FROM agg
+  UNION ALL SELECT 12,'收入','其他收入', in_other, COALESCE(in_other/NULLIF(total_in,0), 0), NULL, '其他收入' FROM agg
 
   -- 支出总计：不展示占比
   UNION ALL SELECT 20,'支出','支出总金额', total_out, NULL::numeric, NULL::text, NULL::text FROM agg
-  UNION ALL SELECT 21,'支出','人力成本', COALESCE(out_hr,0),   COALESCE(COALESCE(out_hr,0)/NULLIF(total_out,0), 0), '人力成本', NULL FROM agg
-  UNION ALL SELECT 22,'支出','租金物业', COALESCE(out_rent,0), COALESCE(COALESCE(out_rent,0)/NULLIF(total_out,0), 0), '租金物业', NULL FROM agg
-  UNION ALL SELECT 23,'支出','运营费',   COALESCE(out_ops,0),  COALESCE(COALESCE(out_ops,0)/NULLIF(total_out,0), 0), '运营费', NULL FROM agg
-  UNION ALL SELECT 24,'支出','餐饮费用', COALESCE(out_food,0), COALESCE(COALESCE(out_food,0)/NULLIF(total_out,0), 0), '餐饮费用', NULL FROM agg
-  UNION ALL SELECT 25,'支出','财务费用', COALESCE(out_fin,0),  COALESCE(COALESCE(out_fin,0)/NULLIF(total_out,0), 0), '财务费用', NULL FROM agg
-  UNION ALL SELECT 26,'支出','税金支出', COALESCE(out_tax,0),  COALESCE(COALESCE(out_tax,0)/NULLIF(total_out,0), 0), '税金支出', NULL FROM agg
+  UNION ALL SELECT 21,'支出','人力',     out_hr,          COALESCE(out_hr/NULLIF(total_out,0), 0), '人力', NULL FROM agg
+  UNION ALL SELECT 22,'支出','租金物业', out_rent,        COALESCE(out_rent/NULLIF(total_out,0), 0), '租金物业', NULL FROM agg
+  UNION ALL SELECT 23,'支出','运费',     out_ship,        COALESCE(out_ship/NULLIF(total_out,0), 0), '运费', NULL FROM agg
+  UNION ALL SELECT 24,'支出','管理费用', out_admin,       COALESCE(out_admin/NULLIF(total_out,0), 0), '管理费用', NULL FROM agg
+  UNION ALL SELECT 25,'支出','材料采购', out_material,    COALESCE(out_material/NULLIF(total_out,0), 0), '材料采购', NULL FROM agg
+  UNION ALL SELECT 26,'支出','营建费用', out_build,       COALESCE(out_build/NULLIF(total_out,0), 0), '营建费用', NULL FROM agg
+  UNION ALL SELECT 27,'支出','营销费用', out_mkt,         COALESCE(out_mkt/NULLIF(total_out,0), 0), '营销费用', NULL FROM agg
+  UNION ALL SELECT 28,'支出','其他费用', out_otherexp,    COALESCE(out_otherexp/NULLIF(total_out,0), 0), '其他费用', NULL FROM agg
+  UNION ALL SELECT 29,'支出','未分类',   out_unclassified,COALESCE(out_unclassified/NULLIF(total_out,0), 0), '未分类', NULL FROM agg
 
-  UNION ALL
-  SELECT 30,'结果','利润', (total_in - total_out), NULL, NULL, NULL FROM agg
-  UNION ALL
-  SELECT 31,'结果','利润率', (total_in - total_out)/NULLIF(total_in,0), NULL, NULL, NULL FROM agg
+  UNION ALL SELECT 30,'结果','利润', profit_amt, NULL, NULL, NULL FROM agg
+  UNION ALL SELECT 31,'结果','利润率', profit_amt/NULLIF(in_biz,0), NULL, NULL, NULL FROM agg
+  UNION ALL SELECT 32,'结果','毛利率', gross_margin_rate, NULL, NULL, NULL FROM agg
 )
 SELECT
   section,
   item,
-  amt AS "金额(元)",
-  CASE
-    WHEN ratio IS NULL THEN NULL
-    ELSE (to_char(ROUND(ratio * 100.0, 2), 'FM999990D00') || '%')
-  END AS "占比(%)",
+  ROUND(amt, 2) AS "金额(元)",
+  CASE WHEN ratio IS NULL THEN NULL ELSE (to_char(ROUND(ratio * 100.0, 2), 'FM999990D00') || '%') END AS "占比(%)",
   expense_lvl1,
   income_lvl1
 FROM rows

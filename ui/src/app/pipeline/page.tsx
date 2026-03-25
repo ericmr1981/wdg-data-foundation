@@ -1,8 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import { useBrand } from '@/lib/brand-context';
 import type { PipelineRun, CoverageByFile, UnclassifiedByFile } from '@/lib/types';
+
+interface PipelineKpi {
+  unclassified_count: number;
+  unclassified_amt: number;
+  total_amt: number;
+  unclassified_pct: number;
+  top_keywords: Array<{
+    counterparty_name: string;
+    summary: string;
+    txn_count: number;
+    total_amt: number;
+  }>;
+}
 
 export default function PipelinePage() {
   const { brand } = useBrand();
@@ -10,6 +23,7 @@ export default function PipelinePage() {
   const [coverageByFile, setCoverageByFile] = useState<CoverageByFile[]>([]);
   const [expandedFile, setExpandedFile] = useState<number | null>(null);
   const [unclassifiedByFile, setUnclassifiedByFile] = useState<Record<number, UnclassifiedByFile[]>>({});
+  const [kpiData, setKpiData] = useState<PipelineKpi | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,9 +31,10 @@ export default function PipelinePage() {
     async function fetchData() {
       try {
         setLoading(true);
-        const [pipelineRes, coverageRes] = await Promise.all([
+        const [pipelineRes, coverageRes, kpiRes] = await Promise.all([
           fetch('/api/pipeline'),
-          fetch(`/api/coverage/by-file?brand=${brand}`)
+          fetch(`/api/coverage/by-file?brand=${brand}`),
+          fetch(`/api/pipeline/kpi?brand=${brand}`)
         ]);
 
         if (!pipelineRes.ok || !coverageRes.ok) {
@@ -28,9 +43,23 @@ export default function PipelinePage() {
 
         const pipelineData = await pipelineRes.json();
         const coverageData = await coverageRes.json();
+        const kpiData = await kpiRes.json();
 
         setRuns(pipelineData.data || []);
-        setCoverageByFile(coverageData.data || []);
+
+        // 归一化：pg bigint/decimal 可能被序列化成 string
+        const normalizedCoverage = (coverageData.data || []).map((c: any) => ({
+          ...c,
+          source_file_id: Number(c.source_file_id),
+          total_rows: Number(c.total_rows),
+          covered_rows: Number(c.covered_rows),
+          unclassified_rows: Number(c.unclassified_rows),
+          coverage_rate_rows: Number(c.coverage_rate_rows),
+        }));
+        setCoverageByFile(normalizedCoverage);
+        if (kpiData.success) {
+          setKpiData(kpiData.data);
+        }
       } catch (err: any) {
         setError(err.message);
       } finally {
@@ -85,9 +114,67 @@ export default function PipelinePage() {
     );
   }
 
+  // 从 KPI 数据提取 Top 关键词和对方单位
+  const topKeywords = kpiData?.top_keywords?.slice(0, 5).map(k => k.summary).filter(Boolean) || [];
+  const topCounterparties = kpiData?.top_keywords?.slice(0, 5).map(k => k.counterparty_name).filter(Boolean) || [];
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900">Pipeline 监控</h1>
+
+      {/* 软阀门 KPI 固定展示 */}
+      {kpiData && (
+        <div className="bg-gradient-to-r from-orange-50 to-yellow-50 border border-orange-200 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold text-orange-800">软阀门监控（未分类数据）</h2>
+            <span className="text-xs text-orange-600">不阻断 DM 输出，仅供监控</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* 未分类笔数 */}
+            <div className="bg-white rounded-lg p-3 shadow-sm">
+              <div className="text-xs text-gray-500">未分类笔数</div>
+              <div className="text-2xl font-bold text-orange-600">{kpiData.unclassified_count?.toLocaleString() || 0}</div>
+              <div className="text-xs text-gray-400">占比 {kpiData.unclassified_pct || 0}%</div>
+            </div>
+            {/* 未分类金额 */}
+            <div className="bg-white rounded-lg p-3 shadow-sm">
+              <div className="text-xs text-gray-500">未分类金额</div>
+              <div className="text-2xl font-bold text-red-600">¥{((kpiData.unclassified_amt || 0) / 10000).toFixed(1)}万</div>
+              <div className="text-xs text-gray-400">占比 {kpiData.unclassified_pct || 0}%</div>
+            </div>
+            {/* Top 关键词 */}
+            <div className="bg-white rounded-lg p-3 shadow-sm">
+              <div className="text-xs text-gray-500">高频未分类摘要</div>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {topKeywords.length > 0 ? (
+                  topKeywords.slice(0, 3).map((kw, idx) => (
+                    <span key={idx} className="text-xs px-1.5 py-0.5 bg-gray-100 rounded truncate max-w-full" title={kw}>
+                      {kw.length > 8 ? kw.slice(0, 8) + '...' : kw}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-gray-400">暂无</span>
+                )}
+              </div>
+            </div>
+            {/* Top 对方单位 */}
+            <div className="bg-white rounded-lg p-3 shadow-sm">
+              <div className="text-xs text-gray-500">高频未分类对方单位</div>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {topCounterparties.length > 0 ? (
+                  topCounterparties.slice(0, 3).map((cp, idx) => (
+                    <span key={idx} className="text-xs px-1.5 py-0.5 bg-gray-100 rounded truncate max-w-full" title={cp}>
+                      {cp.length > 8 ? cp.slice(0, 8) + '...' : cp}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-gray-400">暂无</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 按文件维度覆盖率面板 T8.5 */}
       <div className="bg-white shadow rounded-lg p-6">
@@ -110,8 +197,8 @@ export default function PipelinePage() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {coverageByFile.map((c) => (
-                  <>
-                    <tr key={c.source_file_id}>
+                  <Fragment key={c.source_file_id}>
+                    <tr>
                       <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{c.file_name}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{c.store_code}</td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500">{c.file_month}</td>
@@ -164,7 +251,7 @@ export default function PipelinePage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

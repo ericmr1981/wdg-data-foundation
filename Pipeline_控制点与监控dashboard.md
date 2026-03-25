@@ -1,4 +1,4 @@
-# WDG Data Foundation｜Pipeline 控制点（Gates）与监控 Dashboard（一期 v0）
+# WDG｜Pipeline 控制点（Gates）与监控 Dashboard（一期 v0）
 
 目标：在整条数据链路预埋可观测“控制点”，用 **一张 Dashboard** 监控各点状态，为后续增加 AI agent 自动巡检/补规则/自愈做底座。
 

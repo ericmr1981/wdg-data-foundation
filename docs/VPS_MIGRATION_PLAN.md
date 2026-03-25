@@ -1,4 +1,4 @@
-# WDG Data Foundation｜VPS 迁移计划（Route 1：VPS 通过 GitHub 拉取部署）
+# WDG｜VPS 迁移计划（Route 1：VPS 通过 GitHub 拉取部署）
 
 > 目标：把本机已跑通的「PG + ETL + UI + Dashboard(Metabase)」迁移到 VPS，部署过程以 GitHub 作为中转与版本源。
 > 约束：**任何敏感信息（IP/域名/账号/密码/密钥）不写入仓库**。

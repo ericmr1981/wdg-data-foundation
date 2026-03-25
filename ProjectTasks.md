@@ -1,14 +1,36 @@
-# 任务进度卡｜WDG Data Foundation
+# 任务进度卡｜WDG
 
 ## 0) 基本信息
-- **ID**: WDG Data Foundation
+- **ID**: WDG
 - **变更记录**:
+  - 2026-03-25：口径对齐：Dashboard 利润/利润率改为使用 DB 视图 `yufeng_dm.profit_monthly`（不在 Metabase 卡片内单独计算），并在「收支总揽（表）」追加“毛利率”一行。
+  - 2026-03-25：`yufeng_dm.profit_monthly` 增强：增加 `store_code` 维度（支持按门店筛选），新增毛利相关字段：`material_purchase_amt / gross_profit_amt / gross_margin_rate`（毛利率口径：`(营业收入-材料采购)/营业收入`）。
+  - 2026-03-24：Metabase 修复：更新 `scripts/metabase_seed_dashboard.py` 的参数类型兼容（`date/=`→`date/single`），并使用 `Account.md` 中的 `METABASE_API_KEY` 重新 seed/更新榆枫与山 Dashboard 相关 Cards（card=44/45/46/47），修复“Invalid query parameters / server issues”。同时为兼容旧 SQL，`yufeng_dm.v_bank_txn_classified` 追加 `lvl1/lvl2` 名称列（从字典表 join；unclassified 显示“未分类”）。
+  - 2026-03-24：Metabase 对齐新字典：更新 card=44（收支总揽表）按新一级分类（人力/租金物业/运费/管理费用/材料采购/营建费用/营销费用/其他费用/未分类）汇总，移除旧分类名导致的“显示为 0”。
+  - 2026-03-24：UI 调整：规则管理页移除“文件列表展示”，避免文件过多导致页面混乱；重跑匹配收敛为“按当前品牌全部文件重跑”（调用 `/api/pipeline/rerun-match-by-file` with `all_files=true`）。
+  - 2026-03-24：UI Bugfix：Pipeline 监控页“覆盖率(按文件)”展开不稳定问题修复——为文件行使用稳定 key（React Fragment key=source_file_id）并对 coverage API 返回值做数值归一化，避免列表重排/展开失效。
+  - 2026-03-24：UI/操作增强：规则管理页“重跑匹配”后端能力支持两种模式：① 该品牌全部文件（all_files=true）；② 选择单个/多个文件（source_file_ids）。当前 UI 默认走 all_files。
+  - 2026-03-24：Yufeng 分类字典“彻底删除”执行：从 `yufeng_cfg.dim_category_lvl1` 物理删除 `UNCLASSIFIED(未分类)` 与 `OTHER_OUT(其他支出)`；同步清理引用数据（删除 `yufeng_cfg.bank_rule_map` 中 5 条 `UNCLASSIFIED` 规则、删除 `yufeng_dm.bank_txn_override` 中 6 条 `UNCLASSIFIED` override）；并更新 `yufeng_dm.fn_classify_bank_txn` 兜底策略：未命中时返回 `classified_source='unclassified'` 且 `lvl1_code/lvl2_code=NULL`（不再依赖字典项）。E2E 已验证：match 列表正常、规则沉淀正常、规则创建禁止使用已删除分类。
+  - 2026-03-24：重整 `ProjectTasks.md` 的当前工作板：新增 `4.0 当前工作板（Doing / Next / Later）`，将当前真实优先级显式化。当前聚焦三件事：① 人工匹配主流程闭环验收；② 114 条规则拆分补齐；③ Bonjur DM 主表与 Pipeline 控制点埋点验收。历史详细任务保留在 `4.1` 作为可追溯清单。
+  - 2026-03-24：修正 `scripts/drift_check.py` 默认端口检查策略：移除模板遗留的 `3460` 默认监控（改为 `DEFAULT_TARGET_PORTS = []`）。原因：3460 并非 WDG 已确认的项目端口，继续保留只会造成误报；后续如需端口守护，应按 WDG 实际服务与期望状态单独设计。
+  - 2026-03-24：按 `project-harness-guards` 整理项目记录体系：新增并填充 `Map.md`、`Invariants.md`、`Harness_DoD.md`、`Runbook.md`、`Doc_Gardening.md`；执行 `bash scripts/run_change_guard.sh` 结果 `risk=0`，仅有告警：本机 `127.0.0.1:3460` 被 Python 进程占用，待按实际运行场景判断是否接受。
+  - 2026-03-23：定稿 Yufeng 分类标准枚举 v1.1（去掉：手续费/往来/借款 一级；保留：其他收入二级；新增：营建费用、营销费用；广告费/礼品费归入营销费用）。下一步：落库字典表并对规则表/override 表加 FK 约束。
+  - 2026-03-23：Metabase（dashboard=4 榆枫与山）修复并更新「收支总揽」卡（card=44）：新增常规毛利率、利润口径调整为“营业收入-支出总金额”、并修复 UNION 列数错误；同时补齐收入分解项与严格匹配 DB 一级分类命名。
   - 2026-03-23：Bonjur 新增门店 `hz_in77`（杭州in77）；补齐 Bonjur DM 三张视图骨架（revenue/expense/profit）并接入 init 脚本；已推送 GitHub：<https://github.com/ericmr1981/wdg-data-foundation>
   - 2026-03-23：Bonjur 补齐“银行流水分类/覆盖率/未分类/人工匹配/规则沉淀”全链路（DB+UI），并已合入主分支（main）。
   - 2026-03-23：修复 yufeng 规则表重复膨胀：seed 改为幂等 + 库内去重；并将 yufeng/bonjur 的 dashboard 相关视图 month 字段统一为 `date(YYYY-MM-01)` 以支持 Metabase 月份筛选。
   - 2026-03-23：Metabase：修复 dashboard(3/4) 卡片的分类遗漏，并将 dashboard=4（月筛选）改为 date（月选择器）；并将 Store 筛选升级为下拉（来源于门店维表 dim_store，显示门店名）。
   - 2026-03-23：新增门店维表：`yufeng_cfg.dim_store` / `bonjur_cfg.dim_store`（初始化脚本已接入），用于 dashboard 下拉显示“门店名”。
   - 2026-03-23：Metabase：榆枫与山（dashboard=4）新增“最近12个月收支趋势”对比图（柱状图，收入/支出同图），并同步在本就（dashboard=9）增加同款趋势图。
+  - 2026-03-24：分类策略决策更新（Yufeng 优先落地）：人工匹配不再写 override 参与分类；改为“人工匹配即刻沉淀为规则（rule_map）并对未来文件立刻生效”。规则匹配字段策略：summary/memo/purpose 优先做模糊 contains；三者都为空才使用 counterparty_name 兜底且精确匹配（exact）。禁止 match_field=any；新增匹配模式（contains/exact，落在现有列 match_type 中）。未分类采用软阀门（可生成DM但持续提示）。
+  - 2026-03-24：M1-M3 开发与上线执行完成（Yufeng）：禁用 89 条 any 规则；创建新函数 `yufeng_dm.fn_classify_bank_txn_v2` 与视图 `yufeng_dm.v_bank_txn_classified_v2`；创建审计表 `yufeng_ops.unclassified_resolution_log`；UI：/match 候选推荐+命中预览、/pipeline 未分类 KPI 固定展示；迁移后当前覆盖率 15.57%（因保守禁用 any 规则，待人工沉淀规则提升）。
+  - 2026-03-24：一键启动脚本增强：`scripts/dev.sh` 新增 `prune-data --yes`（仅清理 ODS/RAW/OPS 原始数据，保留规则/配置），并补齐使用文档 `docs/DEV_SH_USAGE.md`。
+  - 2026-03-24：项目目录重命名：`WDG Data Foundation` → `WDG`（已更新 TASKS.md 与项目内 docs/ProjectTasks 引用）。
+  - 2026-03-24：UI 缺陷修复与增强：规则管理页增加搜索/筛选功能（关键词/分类/方向）、匹配字段中文显示、新增匹配模式列、删除确认改为站内 Modal（避免被浏览器禁用）；修复 /api/pipeline/rerun-match-by-file 的 uuid 类型错误；修复 /api/rules 的 lvl1_code/lvl2_code 映射兼容。
+  - 2026-03-24：人工匹配页增强完成 - 用户现在可选择匹配字段（摘要/附言/用途/对方单位）、匹配模式（contains/exact），系统智能推荐（按字段优先级自动填充），并显示命中预览。
+  - 2026-03-24：人工匹配流程定版（v1 最小可行）：先“仅归类当前流水”（写 override，使其从未分类列表消失），再进入“待沉淀队列”；用户点击“确认沉淀为规则”后，逐条确认匹配字段/匹配模式/关键词/命中预览，再写入 rule_map 与审计日志。批量场景先允许批量归类，但规则沉淀仍逐条确认。
+  - 2026-03-24：当前开发进展补记：规则管理页增强已落地（搜索/筛选、匹配字段中文显示、匹配模式列、删除确认 Modal）；相关 API 修复已完成（`/api/rules`、`/api/rules/settle`、`/api/rules/settle-batch`、`/api/pipeline/rerun-match-by-file`）。人工匹配主流程仍在收口中：页面与后端已部分就绪，但“待沉淀队列 -> 确认沉淀 modal -> 用户确认匹配条件 -> 写规则”的完整链路尚未完成端到端验收，因此当前状态仍为 in_progress，不可视为最终交付。
+  - 2026-03-24（待办）：规则补齐 - 将现有 114 条 summary 规则拆分为 summary/memo/purpose 三条（优先级错开：原 priority / +100 / +200），提升覆盖率。
 - **优先级**: P1
 - **负责人(Agent)**: polo_engineer
 - **提出人**: Eric
@@ -50,7 +72,9 @@
 - **数据流**：Excel → RAW归档 → Python ETL 导入 → PostgreSQL（ODS/DM）→ dbt 建模/测试 → Metabase 查询展示
 - **处理模式**：T+1 批处理（Cron 调度）
 - **部署策略**：Docker Compose（本机开发与 VPS 生产一致）
-- **数据治理补充（新增需求）**：当自动分类覆盖率 <100% 时，需提供 **UI 人工匹配** 与 **规则管理 UI**（查看/编辑/启停/优先级调整），并将人工结果写回数据库（override 优先于规则）。
+- **数据治理补充（新增需求）**：当自动分类覆盖率 <100% 时，需提供 **UI 人工匹配** 与 **规则管理 UI**（查看/编辑/启停/优先级调整）。
+  - **决策（2026-03-24）**：人工匹配结果**直接沉淀为 rule_map**（对未来文件立刻生效）；override 仅作为处理日志/审计（不参与分类优先级）。
+  - 未分类治理采用**软阀门**：允许生成 DM，但需持续展示未分类数量/覆盖率，督促清零。
 
 ## 1.3 技术栈定稿（一期）
 - 数据库/数仓：PostgreSQL 16
@@ -84,6 +108,78 @@
 - **费用口径**：全部以银行流水 `out_amt` 为准；若源流水无K分类列，则通过 `cfg.bank_rule_map`（关键词规则）生成 lvl1/lvl2 后汇总生成各费用表
 - **隔离规则（方案B）**：所有口径、规则、DM 输出均在各自品牌 schema 内闭环（Bonjur 与 Yufeng 不交叉）
 
+## 1.6 Yufeng｜分类标准枚举 v1.1（定稿）
+> 用途：作为“字典表 + FK 约束”的唯一真源；UI/规则表/人工覆盖表只能选择该枚举。
+>
+> 关键决策：
+> - 不再保留一级分类：**手续费 / 往来 / 借款**（手续费二级并入“管理费用”；往来/借款类不再做一级，按方向并入“其他收入/其他支出”）。
+> - 新增一级分类：**营建费用 / 营销费用**；其中 **广告费、礼品费**归入营销费用。
+
+### 1.6.1 lvl1（一级分类）
+| lvl1_code | lvl1_name | direction |
+|---|---|---|
+| REV_BIZ | 营业收入 | in |
+| REV_OTHER | 其他收入 | in |
+| RENT_UTIL | 租金物业 | out |
+| HR | 人力 | out |
+| SHIP | 运费 | out |
+| ADMIN | 管理费用 | out |
+| MATERIAL | 材料采购 | out |
+| BUILD | 营建费用 | out |
+| MKT | 营销费用 | out |
+| EXP_OTHER | 其他费用 | out |
+| OTHER_OUT | 其他支出 | out |
+| UNCLASSIFIED | 未分类 | any |
+
+### 1.6.2 lvl2（二级分类）
+| lvl1_code | lvl1_name | lvl2_code | lvl2_name |
+|---|---|---|---|
+| REV_BIZ | 营业收入 | MEITUAN | 美团 |
+| REV_BIZ | 营业收入 | ELEME | 饿了么 |
+| REV_BIZ | 营业收入 | DOUYIN | 抖音 |
+| REV_BIZ | 营业收入 | JD | 京东 |
+| REV_BIZ | 营业收入 | WECHAT | 微信/财付通 |
+| REV_BIZ | 营业收入 | ALIPAY | 支付宝 |
+| REV_BIZ | 营业收入 | OTHER_CH | 其他渠道 |
+| REV_OTHER | 其他收入 | INVEST_IN | 注资 |
+| REV_OTHER | 其他收入 | BORROW_IN | 借款 |
+| REV_OTHER | 其他收入 | LOAN_IN | 贷款 |
+| REV_OTHER | 其他收入 | INTEREST_IN | 利息 |
+| REV_OTHER | 其他收入 | TAX_REFUND | 退税 |
+| REV_OTHER | 其他收入 | REFUND_IN | 退款 |
+| RENT_UTIL | 租金物业 | RENT | 租金 |
+| RENT_UTIL | 租金物业 | PROP | 物业费 |
+| RENT_UTIL | 租金物业 | WATER_ELEC | 水电费 |
+| HR | 人力 | SALARY | 工资 |
+| HR | 人力 | SS | 社保 |
+| HR | 人力 | LABOR | 劳务派遣 |
+| HR | 人力 | HR_SVC | 人力服务 |
+| SHIP | 运费 | HLALA | 货拉拉 |
+| SHIP | 运费 | EXPRESS | 快递 |
+| SHIP | 运费 | CITY | 同城配送 |
+| SHIP | 运费 | SHIP_OTHER | 其他运费 |
+| ADMIN | 管理费用 | SAAS | 系统使用费 |
+| ADMIN | 管理费用 | OFFICE | 办公费用 |
+| ADMIN | 管理费用 | TRAVEL | 差旅费 |
+| ADMIN | 管理费用 | REPAIR | 维修费 |
+| ADMIN | 管理费用 | ADMIN_OTHER | 其他管理 |
+| ADMIN | 管理费用 | BANK_FEE | 银行手续费 |
+| ADMIN | 管理费用 | CHANNEL_FEE | 支付通道费 |
+| MATERIAL | 材料采购 | RAW | 原材料 |
+| MATERIAL | 材料采购 | AUX | 辅料 |
+| MATERIAL | 材料采购 | PACK | 包装 |
+| MATERIAL | 材料采购 | BUY_OTHER | 其他采购 |
+| BUILD | 营建费用 | ENG_FEE | 工程款 |
+| BUILD | 营建费用 | CONST_FEE | 施工费 |
+| BUILD | 营建费用 | DECOR_FEE | 装修费 |
+| BUILD | 营建费用 | EQUIP_BUY | 设备采购 |
+| BUILD | 营建费用 | BUILD_OTHER | 其他营建 |
+| MKT | 营销费用 | ADS | 广告费 |
+| MKT | 营销费用 | GIFT | 礼品费 |
+| MKT | 营销费用 | PROMO | 推广费 |
+| MKT | 营销费用 | MKT_FEE | 营销费 |
+| MKT | 营销费用 | MKT_OTHER | 其他营销 |
+
 ## 2) 验收标准（Definition of Done）
 - [ ] 明确数据域范围、核心指标口径、数据字典（文档可查）
 - [x] 至少1条端到端链路跑通：采集→清洗→建模→服务/报表（可复现）
@@ -103,7 +199,111 @@
 ## 4) 任务拆解与进度（Checklist）
 > 规则：每个任务都要有「产出」或「可验证结果」。
 
-### 4.1 To Do
+### 4.0 当前工作板（Doing / Next / Later）
+
+#### Doing（正在收口）
+- [x] 人工匹配主流程闭环验收（Yufeng） ✅ 已验收 2026-03-24
+  - 范围：`待沉淀队列 -> 确认沉淀 modal -> 用户确认匹配条件 -> 写规则`
+  - 修复内容：
+    - `/api/rules/settle`: 修正列名 (lvl1_code/lvl2_code → lvl1/lvl2)、补写 override、补写审计日志、智能推断 match_type
+    - `/api/rules/settle-batch`: 同上修正 + 事务保障
+  - 验证：TypeScript 编译通过
+  - 链路确认：前端发送 lvl1/lvl2（中文名）→ 后端映射为 code → 写入 bank_rule_map（列名 lvl1/lvl2，值用 code）+ 写 override（流水消失）+ 写审计日志
+
+#### Next（下一步优先）
+- [ ] 规则补齐：将现有 114 条 summary 规则拆分为 `summary / memo / purpose` 三条
+  - 优先级策略：原 priority / +100 / +200
+  - 目标：提升覆盖率，减少仅依赖 summary 的漏匹配
+- [ ] T5.2 Bonjur DM 主表
+  - 前提：确认营业数据导入链路与表命名（`sales_daily` / `sales_monthly`）收口
+  - 目标：补齐 Bonjur 的 revenue / expense / profit 主报表输出
+- [ ] T8.3 Pipeline 控制点埋点验收
+  - 目标：确认 import / pipeline 各脚本都稳定写入 ops 运行状态，并能用 SQL 验证
+
+#### Later（后续收尾）
+- [ ] T7 VPS 迁移演练
+- [ ] 验收标准补齐：数据域范围 / 核心指标口径 / 数据字典文档化
+- [ ] 最终输出物清单补齐：需求说明、口径文档、Demo/报表链接或截图
+- [ ] 里程碑回填：M1 / M2 / M3
+
+### 4.1 详细任务清单（历史明细 + 可追溯 Checklist）
+- [x] T2.10 分类字典表落库 + 强约束（方案A）（完成时间：2026-03-24｜init 全绿通过）
+  - 目标：固化 Yufeng 分类标准枚举 v1.1，并对 `yufeng_cfg.bank_rule_map`、`yufeng_dm.bank_txn_override` 加 FK 约束，只允许字典表中的分类（禁止任意文本 lvl1/lvl2）。
+
+  - 详细任务步骤（可按顺序执行）：
+    - [x] T2.10.1 设计字典表结构（code/name + enabled + direction）
+      - 表：`yufeng_cfg.dim_category_lvl1`（PK=lvl1_code）
+      - 表：`yufeng_cfg.dim_category_lvl2`（PK=(lvl1_code,lvl2_code)，FK->lvl1）
+      - 约定：
+        - code 永不变（用于引用稳定）；name 可改（展示文案）
+        - lvl2 必须隶属某个 lvl1
+
+    - [x] T2.10.2 写入标准枚举 seed（来源：ProjectTasks.md 1.6 v1.1）
+      - 产出：`sql/yufeng_category_dictionary_v1_1.sql`（DDL+seed）
+      - 验证：
+        - `select count(*) from yufeng_cfg.dim_category_lvl1;`
+        - `select count(*) from yufeng_cfg.dim_category_lvl2;`
+
+    - [x] T2.10.3 规则表改造：引入 code 字段并加 FK
+      - 表：`yufeng_cfg.bank_rule_map`
+      - 变更：新增 `lvl1_code`, `lvl2_code`（lvl2 可空）
+      - 约束：
+        - `lvl1_code` FK -> `dim_category_lvl1(lvl1_code)`
+        - `(lvl1_code,lvl2_code)` FK -> `dim_category_lvl2(lvl1_code,lvl2_code)`（仅在 lvl2_code 非空时）
+      - 数据迁移：从旧 `lvl1/lvl2` 文本映射到新 code（不在枚举内的先落 `UNCLASSIFIED` 或 `EXP_OTHER/OTHER_OUT`，按方向再讨论）
+
+    - [x] T2.10.4 人工覆盖表改造：引入 code 字段并加 FK
+      - 表：`yufeng_dm.bank_txn_override`
+      - 变更：新增 `lvl1_code`, `lvl2_code`
+      - 约束同规则表
+      - 数据迁移：从旧 `lvl1/lvl2` 文本映射到新 code
+
+    - [x] T2.10.5 分类函数/视图兼容：统一以 code 计算，再 join 字典输出 name
+      - 更新：`yufeng_dm.fn_classify_bank_txn` 输出 `lvl1_code/lvl2_code`
+      - 更新：`yufeng_dm.v_bank_txn_classified` 增加 `lvl1_name/lvl2_name`（join 字典表）
+      - 兼容：Metabase/UI 仍可使用 name 展示；写入必须用 code
+
+    - [x] T2.10.6 UI 改造：下拉数据源改为字典表（禁止写死枚举）
+      - /match：lvl1/lvl2 options 来自 API（读字典表）
+      - /rules：新建/编辑规则时只允许选择字典项（保存写入 code）
+
+    - [x] T2.10.7 验收（必须过）（init 全绿通过）
+      - 约束验证：尝试插入非法 lvl1_code/lvl2_code → 被 FK 拒绝
+      - 回归验证：`yufeng_dm.v_bank_txn_classified` 行数=bank_txn 行数；override/rule/unclassified 分布合理
+      - 看板验证：dashboard=4 关键卡片可正常展示（尤其 card=44）
+
+  - 产出：
+    - `yufeng_cfg.dim_category_lvl1` / `yufeng_cfg.dim_category_lvl2` DDL + seed（v1.1）
+    - `sql/yufeng_category_dictionary_v1_1.sql`
+    - 规则表/override 表新增 `lvl1_code/lvl2_code` 并加 FK
+    - 兼容层：`v_bank_txn_classified` / UI / Metabase 按 code→name 展示
+
+  - 验证：尝试插入非法分类被数据库拒绝；UI 下拉只显示字典项。
+
+- [x] T2.11 分类匹配策略重构（Yufeng）：禁用 any + 匹配模式（contains/exact，使用 match_type 列）+ override 脱离分类（产出：SQL 迁移 + 分类函数更新 + 回归验证）（完成时间：2026-03-24）
+  - 背景：当前 `fn_classify_bank_txn` 采用 override>rule>unclassified 且规则支持 match_field=any（跨字段 contains）。新决策要求：不存 any；优先 summary/memo/purpose contains；三者为空才 counterparty_name exact；override 仅日志。
+  - 变更点（DB/SQL）：
+    - 规则表：`yufeng_cfg.bank_rule_map`
+      - 新增：`match_mode`（contains/exact）
+      - 约束：禁止 `match_field='any'`（数据清理+约束）
+    - 分类函数：`yufeng_dm.fn_classify_bank_txn`
+      - 移除 override 查询（不再读取 `yufeng_dm.bank_txn_override`）
+      - 按字段策略匹配：summary→memo→purpose（contains）；三者都空才 counterparty_name（exact）
+      - 保留优先级：同字段内仍按 priority asc 取第一条
+    - 视图：`yufeng_dm.v_bank_txn_classified` / `yufeng_dm.*_monthly`
+      - 确保 classified_source 不再出现 override（仅 rule/unclassified）
+  - 迁移与兼容：
+    - 现存规则的 any 处理：迁移为 3 条规则（summary/memo/purpose）或按人工确认迁移（避免误伤）
+    - counterparty_name 规则统一改为 exact（如需 contains 需显式选择，不作为默认）
+  - 验收/回归：
+    - 覆盖率视图正常；`v_rule_conflict_*` 正常
+    - 抽样比对：同一批数据在新旧策略下分类差异清单可解释
+
+- [x] T2.12 人工匹配日志表（Yufeng）（产出：unclassified 处理审计，不参与分类）（完成时间：2026-03-24）
+  - 新增：`yufeng_ops.unclassified_resolution_log`（或等价命名）
+  - 记录：bank_txn_id、选择的 lvl1/lvl2、生成的 rule_id、resolved_by、resolved_at、命中预览统计（可选）
+  - 验收：可追溯“某条未分类是谁在何时用什么规则解决的”。
+
 - [x] T1 数据源字段盘点（营业报表CSV/银行流水Excel）（产出：字段映射表+缺失字段清单）
   - Bonjur：字段映射与清洗规则 ✅ `brand-docs/Bonjur_T1_字段映射与清洗规则.md`（已确认：month=YYYY-MM-01；空值=NULL；月粒度）
   - Yufeng：字段映射与清洗规则 ✅ `brand-docs/Yufeng_T1_字段映射与清洗规则.md`（银行流水：去逗号、空串→NULL、时间解析；store_code 默认 yf_gh）
@@ -347,6 +547,19 @@
     - 启动命令: `cd ui && npm run dev`
     - 验收步骤: 访问 /pipeline 页面，查看覆盖率统计和 Pipeline 运行记录
 
+  - [x] T4.7 UI：人工匹配→直接写入规则（Yufeng）（产出：/match 提交即刻沉淀 rule_map；override 仅日志）（完成时间：2026-03-24）
+    - 目标：匹配完成后立即生成/更新 `yufeng_cfg.bank_rule_map`，对未来文件立刻生效；不再依赖 `bank_txn_override` 参与分类。
+    - UI 提交必填字段（最小集）：direction(in/out)、lvl1_code、lvl2_code(可空)、match_field(summary/memo/purpose/counterparty_name)、match_value、priority、enabled。
+    - 验收：保存后该条流水在未分类列表中消失；新增规则在 /rules 可见；再次导入相似流水可直接命中规则。
+
+  - [x] T4.8 UI：匹配值提取（候选片段 + 命中预览）（Yufeng）（产出：match_value 推荐与风险可视化）（完成时间：2026-03-24）
+    - 目标：解决 summary/memo/purpose 全量取值导致匹配率低的问题。
+    - 逻辑：从 summary/memo/purpose 生成 3~8 个候选关键片段（去日期/长数字/金额等噪声），用户点选；实时预览历史命中数与分类分布（避免误伤）。
+    - 验收：候选可用；命中预览可用；用户可编辑后提交。
+
+  - [x] T4.9 软阀门落地：未分类 KPI 固定展示（Yufeng）（产出：pipeline 页面/Metabase 卡片的 unclassified/coverage 指标）（完成时间：2026-03-24）
+    - 验收：任何时刻可看到未分类条数、金额占比、Top 关键词/对方单位；不阻断 DM 输出。
+
 - [x] T5 dbt/SQL 模型与口径落地（产出：DM 表清单 + 字段口径 + SQL/dbt 模型）
   - 一期每品牌核心 DM（3张主表）：`<brand>_dm.revenue_monthly` / `<brand>_dm.expense_monthly` / `<brand>_dm.profit_monthly`
   - 为支持”覆盖率<100%人工匹配/UI”，Yufeng 增补（表或 view）：`yufeng_dm.bank_txn_classified`（override>rule>unclassified） + `yufeng_dm.coverage_monthly`
@@ -398,7 +611,7 @@
       - `docs/CONFIG_CONVENTION.md`
     - ✅ 使用方式：
       ```bash
-      cd 项目/WDG Data Foundation
+      cd 项目/WDG
       cp .env.example .env
       set -a && source .env && set +a
       ```
@@ -408,7 +621,7 @@
     - 运行示例：
       ```bash
       # 进入项目目录
-      cd /path/to/WDG Data Foundation
+      cd /path/to/WDG
 
       # 方式1：仅初始化数据库（不含样例数据）
       ./scripts/init_local_env.sh
@@ -485,16 +698,41 @@
       select * from yufeng_dm.v_unclassified_top_by_file where source_file_id = :file_id limit 20;
       ```
 
-### 4.2 Doing
-- [ ] （待开始）
-
-### 4.3 Done
+### 4.2 已完成基础项（项目启动阶段）
 - [x] T0 创建项目骨架（产出：项目目录+进度卡/总结/说明｜完成时间：2026-03-21 22:54）
 - [x] T0.1 第一版架构/技术栈/数据库结构方案记录（产出：ProjectTasks.md 更新｜完成时间：2026-03-21 23:21）
+
+### 4.3 说明
+- 当前执行优先级以 `4.0 当前工作板` 为准
+- `4.1 详细任务清单` 保留历史拆解、验收口径与证据路径，避免丢失上下文
 
 ---
 
 ## 5) P0 任务完成记录（2026-03-22）
+
+## 6) P1 任务完成记录（2026-03-24）
+
+### T2.10 分类字典表落库 + 强约束（yufeng｜严格 B2｜方法B 字典动态下拉）✅
+
+**交付内容**：
+- 字典表落库 + seed（v1.1：12 个 lvl1 + 45 个 lvl2）
+- 规则表/override 表迁移为 `lvl1_code/lvl2_code` 引用 + FK 强约束 + 删除旧文本列（B2）
+- 分类函数/视图全量 code 化（fn_classify_bank_txn、v_bank_txn_classified、v_coverage_*、v_unclassified_*、v_rule_regression_*、v_rule_conflict_*）
+- DM 模型 code 化（revenue_monthly、expense_monthly、profit_monthly）
+- UI 下拉从 DB 字典动态读取（`/api/categories`），写入只用 code，展示用 name
+
+**验证方式**：
+- 初始化：执行 `scripts/init_local_env.sh`（全绿无 ERROR）
+- UI：/rules 新增/编辑规则；/match 人工匹配；确认写入成功且不再依赖文本字段
+- DB：尝试插入非法 `lvl1_code` 被 FK 拒绝
+
+**变更文件清单**：
+- SQL：`yufeng_category_dictionary_v1_1.sql`、`yufeng_category_migration_v1_1.sql`、`yufeng_apply_classification.sql`、`yufeng_dm_models.sql`、`yufeng_rule_regression.sql`、`Yufeng_CFG_DDL.sql`、`Yufeng_DM_DDL_override_and_classified.sql`、`yufeng_coverage_and_unclassified.sql`
+- Init：`scripts/init_local_env.sh`
+- API：`ui/src/app/api/categories/route.ts`、`ui/src/app/api/rules/route.ts`、`ui/src/app/api/match/route.ts`
+- UI：`ui/src/app/rules/page.tsx`、`ui/src/app/match/page.tsx`
+- Types：`ui/src/lib/types.ts`
+
 
 ### T8.5 Pipeline 覆盖率按文件维度 + UI 品牌隔离
 
@@ -548,3 +786,9 @@ select * from yufeng_dm.v_unclassified_top_by_file where source_file_id = :file_
 ---
 
 **TASK_COMPLETE**
+
+## Change Log
+
+| Date | Change | Verification |
+|------|--------|--------------|
+| 2026-03-24 18:46 CST | Standardize project to harness-guards (install/refresh scripts + docs) | Planned: run_change_guard.sh |

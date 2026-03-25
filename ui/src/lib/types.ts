@@ -87,11 +87,21 @@ export interface BankRule {
   priority: number;
   direction: string;
   match_field: string;
+  match_type: string; // contains | exact | regex
   match_value: string;
-  lvl1: string;
-  lvl2: string | null;
+
+  // 可选：双重匹配（目前用于 counterparty_name 约束）
+  match_field2?: string | null;
+  match_value2?: string | null;
+
+  lvl1_code: string;
+  lvl2_code: string | null;
   enabled: boolean;
   created_at: string;
+
+  // API 可能带出字典名（便于显示）
+  lvl1_name?: string | null;
+  lvl2_name?: string | null;
 }
 
 // Unclassified transaction types
@@ -102,6 +112,7 @@ export interface UnclassifiedTxn {
   counterparty_name: string | null;
   summary: string | null;
   memo: string | null;
+  purpose: string | null;  // 新增：用途字段
   in_amt: number | null;
   out_amt: number | null;
   balance_amt: number | null;

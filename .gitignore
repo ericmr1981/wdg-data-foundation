@@ -2,8 +2,19 @@
 .env
 .env.*
 
+# local private notes
+Account.private.md
+
 # secrets docs
 /docs/VPS_MIGRATION_SECRETS.md
+/docs/VPS_MIGRATION_PLAN_PRIVATE.md
+
+# local data (never commit real bank files)
+inputs/**
+!inputs/README.md
+
+# harness backups
+.harness-backup-*/
 
 # python
 __pycache__/
@@ -13,6 +24,7 @@ __pycache__/
 # node
 node_modules/
 .next/
+*.tsbuildinfo
 
 # mac
 .DS_Store

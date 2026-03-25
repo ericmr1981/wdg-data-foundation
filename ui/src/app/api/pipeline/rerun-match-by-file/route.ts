@@ -5,21 +5,49 @@ import pool from '@/lib/db';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { brand, source_file_ids } = body;
+    const { brand, source_file_ids, all_files } = body as {
+      brand?: string;
+      source_file_ids?: number[];
+      all_files?: boolean;
+    };
 
-    if (!brand || !source_file_ids || !Array.isArray(source_file_ids) || source_file_ids.length === 0) {
+    if (!brand) {
+      return NextResponse.json({ success: false, error: 'Missing brand' }, { status: 400 });
+    }
+
+    const rerunAll = Boolean(all_files);
+
+    if (!rerunAll && (!source_file_ids || !Array.isArray(source_file_ids) || source_file_ids.length === 0)) {
       return NextResponse.json(
-        { success: false, error: 'Missing brand or source_file_ids' },
+        { success: false, error: 'Missing source_file_ids (or set all_files=true)' },
         { status: 400 }
       );
     }
 
+    // 目标文件列表：全部 or 指定
+    const targetIds: number[] = rerunAll
+      ? []
+      : (source_file_ids || []).map((x) => Number(x));
+
     // 1. 查询文件信息
-    const filesResult = await pool.query(`
-      SELECT id, file_name, store_code, status
-      FROM raw.ingest_file
-      WHERE brand_code = $1 AND id = ANY($2)
-    `, [brand, source_file_ids]);
+    const filesResult = rerunAll
+      ? await pool.query(
+          `
+          SELECT id, file_name, store_code, status
+          FROM raw.ingest_file
+          WHERE brand_code = $1 AND source_type='bank' AND status='success'
+          ORDER BY created_at DESC
+          `,
+          [brand]
+        )
+      : await pool.query(
+          `
+          SELECT id, file_name, store_code, status
+          FROM raw.ingest_file
+          WHERE brand_code = $1 AND id = ANY($2)
+          `,
+          [brand, targetIds]
+        );
 
     const files = filesResult.rows;
     if (files.length === 0) {
@@ -33,7 +61,9 @@ export async function POST(request: Request) {
     // 清除该文件的现有 override，重新通过规则匹配
     const results: { source_file_id: number; status: string; message: string }[] = [];
 
-    for (const fileId of source_file_ids) {
+    const idsToProcess = rerunAll ? files.map((f: any) => Number(f.id)) : targetIds;
+
+    for (const fileId of idsToProcess) {
       try {
         // 2.1 清除该文件的现有 override（可选，保留以便 rule 重新匹配）
         // await pool.query(`
@@ -66,30 +96,41 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3. 写入 pipeline_run 记录
-    const runId = `rerun_${Date.now()}`;
+    // 3. 写入 pipeline_run 记录（run_id 为 uuid，使用默认 gen_random_uuid()）
     const noteJson = JSON.stringify({
       run_type: 'rerun_match',
-      source_file_ids,
+      all_files: rerunAll,
+      source_file_ids: idsToProcess,
       file_names: files.map((f: any) => f.file_name)
     });
 
-    await pool.query(`
-      INSERT INTO ops.pipeline_run (run_id, brand_code, store_code, started_at, finished_at, status, triggered_by, note)
-      VALUES ($1, $2, $3, NOW(), NOW(), 'success', 'ui', $4)
-    `, [runId, brand, files[0]?.store_code || null, noteJson]);
+    const runInsert = await pool.query(
+      `
+      INSERT INTO ops.pipeline_run (brand_code, store_code, started_at, finished_at, status, triggered_by, note)
+      VALUES ($1, $2, NOW(), NOW(), 'success', 'ui', $3)
+      RETURNING run_id
+      `,
+      [brand, files[0]?.store_code || null, noteJson]
+    );
+
+    const runId = runInsert.rows[0].run_id;
 
     // 4. 写入 pipeline_step_run 记录
-    await pool.query(`
+    await pool.query(
+      `
       INSERT INTO ops.pipeline_step_run (run_id, step_name, step_order, status, started_at, finished_at, rows_out)
       VALUES ($1, $2, $3, $4, NOW(), NOW(), $5)
-    `, [runId, 'rerun_match_by_file', 1, 'success', source_file_ids.length]);
+      `,
+      [runId, rerunAll ? 'rerun_match_all_files' : 'rerun_match_by_file', 1, 'success', idsToProcess.length]
+    );
 
     return NextResponse.json({
       success: true,
       data: {
         run_id: runId,
-        results
+        results,
+        processed: idsToProcess.length,
+        all_files: rerunAll
       }
     });
   } catch (error: any) {

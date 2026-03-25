@@ -1,6 +1,10 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+
+type Lvl1Option = { lvl1_code: string; lvl1_name: string; direction: 'in'|'out'|'any' };
+type Lvl2Option = { lvl2_code: string; lvl2_name: string };
+
 import { useBrand } from '@/lib/brand-context';
 import type { BankRule } from '@/lib/types';
 
@@ -11,25 +15,67 @@ export default function RulesPage() {
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editingRule, setEditingRule] = useState<BankRule | null>(null);
+
+  // 删除确认 Modal（避免被浏览器禁用 confirm 弹窗）
+  const [deleteRuleId, setDeleteRuleId] = useState<number | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // 分类字典（来自 DB）
+  const [lvl1Options, setLvl1Options] = useState<Lvl1Option[]>([]);
+  const [lvl2ByLvl1, setLvl2ByLvl1] = useState<Record<string, Lvl2Option[]>>({});
+
+  // 搜索/筛选
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchLvl1, setSearchLvl1] = useState('');
+  const [searchDirection, setSearchDirection] = useState('');
+
   const [formData, setFormData] = useState({
-    priority: 1,
+    priority: 1000,
     direction: 'in',
-    match_field: 'counterparty_name',
+    match_field: 'summary',
+    match_type: 'contains',
     match_value: '',
-    lvl1: '',
-    lvl2: '',
+    match_field2: '' as string | '',
+    match_value2: '' as string | '',
+    lvl1_code: '',
+    lvl2_code: '',
     enabled: true
   });
 
-  // 文件重跑相关状态
-  const [files, setFiles] = useState<{ id: number; file_name: string; store_code: string; month: string; status: string }[]>([]);
-  const [selectedFileIds, setSelectedFileIds] = useState<number[]>([]);
+  // 命中预览（与 match 页一致）
+  const [previewData, setPreviewData] = useState<{
+    match_value: string;
+    hit_count: number;
+    total_amt: number;
+    primary_lvl1: string | null;
+    lvl1_distribution: Record<string, number>;
+  } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const allowedLvl1Options = useMemo(() => {
+    const dir = formData.direction as 'in'|'out'|'any';
+    if (!dir || dir === 'any') return lvl1Options;
+    return lvl1Options.filter(o => o.direction === dir || o.direction === 'any');
+  }, [lvl1Options, formData.direction]);
   const [rerunLoading, setRerunLoading] = useState(false);
 
   useEffect(() => {
+    fetchCategories();
     fetchRules();
-    fetchFiles();
   }, [brand]);
+
+  async function fetchCategories() {
+    try {
+      const res = await fetch(`/api/categories?brand=${brand}`);
+      const data = await res.json();
+      if (data.success) {
+        setLvl1Options(data.data.lvl1 || []);
+        setLvl2ByLvl1(data.data.lvl2ByLvl1 || {});
+      }
+    } catch (err) {
+      console.error('Failed to fetch categories:', err);
+    }
+  }
 
   async function fetchRules() {
     try {
@@ -37,7 +83,14 @@ export default function RulesPage() {
       const res = await fetch(`/api/rules?brand=${brand}`);
       const data = await res.json();
       if (data.success) {
-        setRules(data.data);
+        // pg bigint 可能会被序列化成 string，这里做一次归一化，避免按钮事件里类型异常
+        const normalized = (data.data || []).map((r: any) => ({
+          ...r,
+          rule_id: Number(r.rule_id),
+          priority: Number(r.priority),
+          enabled: Boolean(r.enabled)
+        }));
+        setRules(normalized);
       } else {
         setError(data.error);
       }
@@ -48,34 +101,41 @@ export default function RulesPage() {
     }
   }
 
-  async function fetchFiles() {
+  async function fetchPreview(matchValue: string) {
+    if (!matchValue || matchValue.length < 3) {
+      setPreviewData(null);
+      return;
+    }
+    setPreviewLoading(true);
     try {
-      const res = await fetch(`/api/rules/files?brand=${brand}&limit=20`);
+      const res = await fetch(`/api/match/preview?brand=${brand}&match_value=${encodeURIComponent(matchValue)}`);
       const data = await res.json();
       if (data.success) {
-        setFiles(data.data || []);
+        setPreviewData(data.data);
+      } else {
+        setPreviewData(null);
       }
-    } catch (err: any) {
-      console.error('Failed to fetch files:', err);
+    } catch (err) {
+      console.error('Failed to fetch preview:', err);
+      setPreviewData(null);
+    } finally {
+      setPreviewLoading(false);
     }
   }
 
+
   async function handleRerunMatch() {
-    if (selectedFileIds.length === 0) {
-      alert('请先选择要重跑的文件');
-      return;
-    }
     try {
       setRerunLoading(true);
       const res = await fetch('/api/pipeline/rerun-match-by-file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand, source_file_ids: selectedFileIds })
+        body: JSON.stringify({ brand, all_files: true })
       });
       const data = await res.json();
       if (data.success) {
-        alert(`重跑成功！已处理 ${selectedFileIds.length} 个文件`);
-        setSelectedFileIds([]);
+        const processed = data?.data?.processed ?? '全部';
+        alert(`重跑成功！已处理 ${processed} 个文件`);
       } else {
         alert(`重跑失败: ${data.error}`);
       }
@@ -86,19 +146,45 @@ export default function RulesPage() {
     }
   }
 
-  function toggleFileSelection(fileId: number) {
-    setSelectedFileIds(prev =>
-      prev.includes(fileId)
-        ? prev.filter(id => id !== fileId)
-        : [...prev, fileId]
-    );
-  }
+
+  // 搜索筛选逻辑
+  const filteredRules = useMemo(() => {
+    return rules.filter(rule => {
+      // 关键词筛选（match_value）
+      if (searchKeyword && !rule.match_value.toLowerCase().includes(searchKeyword.toLowerCase())) {
+        return false;
+      }
+      // 分类筛选（lvl1_code）
+      if (searchLvl1 && rule.lvl1_code !== searchLvl1) {
+        return false;
+      }
+      // 方向筛选
+      if (searchDirection && rule.direction !== searchDirection) {
+        return false;
+      }
+      return true;
+    });
+  }, [rules, searchKeyword, searchLvl1, searchDirection]);
+
+  const lvl1NameByCode = useMemo(() => {
+    const m = new Map<string, string>();
+    lvl1Options.forEach(o => m.set(o.lvl1_code, o.lvl1_name));
+    return m;
+  }, [lvl1Options]);
+
+  const lvl2NameByCode = useMemo(() => {
+    const m = new Map<string, string>();
+    Object.entries(lvl2ByLvl1).forEach(([lvl1, arr]) => {
+      (arr || []).forEach(o => m.set(`${lvl1}:${o.lvl2_code}`, o.lvl2_name));
+    });
+    return m;
+  }, [lvl2ByLvl1]);
 
   // Find duplicate rules (same match_field + match_value)
   const duplicateRuleIds = useMemo(() => {
     const seen = new Map<string, number>();
     const duplicates = new Set<number>();
-    rules.forEach(rule => {
+    filteredRules.forEach(rule => {
       const key = `${rule.match_field}:${rule.match_value}`;
       if (seen.has(key)) {
         duplicates.add(rule.rule_id);
@@ -108,7 +194,7 @@ export default function RulesPage() {
       }
     });
     return duplicates;
-  }, [rules]);
+  }, [filteredRules]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -155,31 +241,39 @@ export default function RulesPage() {
     }
   }
 
-  async function handleDelete(rule_id: number) {
-    if (!confirm('确定要删除这条规则吗？')) return;
+  async function handleDeleteConfirm() {
+    if (!deleteRuleId) return;
     try {
-      const res = await fetch(`/api/rules?id=${rule_id}&brand=${brand}`, { method: 'DELETE' });
+      setDeleteLoading(true);
+      const res = await fetch(`/api/rules?id=${deleteRuleId}&brand=${brand}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
+        setDeleteRuleId(null);
         fetchRules();
       } else {
         setError(data.error || '删除失败');
       }
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
   function resetForm() {
     setFormData({
-      priority: 1,
+      priority: 1000,
       direction: 'in',
-      match_field: 'counterparty_name',
+      match_field: 'summary',
+      match_type: 'contains',
       match_value: '',
-      lvl1: '',
-      lvl2: '',
+      match_field2: '',
+      match_value2: '',
+      lvl1_code: '',
+      lvl2_code: '',
       enabled: true
     });
+    setPreviewData(null);
   }
 
   function openEditModal(rule: BankRule) {
@@ -188,11 +282,22 @@ export default function RulesPage() {
       priority: rule.priority,
       direction: rule.direction,
       match_field: rule.match_field,
+      match_type: rule.match_type || 'contains',
       match_value: rule.match_value,
-      lvl1: rule.lvl1,
-      lvl2: rule.lvl2 || '',
+      match_field2: (rule.match_field2 as any) || '',
+      match_value2: (rule.match_value2 as any) || '',
+      lvl1_code: rule.lvl1_code,
+      lvl2_code: rule.lvl2_code || '',
       enabled: rule.enabled
     });
+
+    // 打开时同步拉一次命中预览（与 match 页体验一致）
+    if (rule.match_value && String(rule.match_value).length >= 3) {
+      fetchPreview(rule.match_value);
+    } else {
+      setPreviewData(null);
+    }
+
     setShowModal(true);
   }
 
@@ -223,50 +328,23 @@ export default function RulesPage() {
         </div>
       )}
 
-      {/* 按文件重跑匹配模块 */}
+      {/* 重跑匹配模块 */}
       <div className="bg-white shadow rounded-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">按文件重跑匹配（同步）</h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-semibold text-gray-900">重跑匹配（该品牌全部文件）</h2>
           <button
             onClick={handleRerunMatch}
-            disabled={rerunLoading || selectedFileIds.length === 0}
+            disabled={rerunLoading}
             className={`px-4 py-2 rounded-lg text-white ${
-              rerunLoading || selectedFileIds.length === 0
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-orange-600 hover:bg-orange-700'
+              rerunLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-700'
             }`}
           >
-            {rerunLoading ? '处理中...' : `重跑匹配 (${selectedFileIds.length})`}
+            {rerunLoading ? '处理中...' : '重跑匹配'}
           </button>
         </div>
-        <p className="text-sm text-gray-500 mb-4">
-          选择需要重新执行分类匹配的文件（规则和 override 会重新生效）
+        <p className="text-sm text-gray-500">
+          不再展示文件列表（文件多会很乱）。点击按钮将对当前品牌的所有成功银行文件记录一次“重跑事件”。
         </p>
-        {files.length === 0 ? (
-          <p className="text-gray-500">暂无已完成的银行流水文件</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
-            {files.map((file) => (
-              <label
-                key={file.id}
-                className={`flex items-center p-2 border rounded cursor-pointer ${
-                  selectedFileIds.includes(file.id) ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedFileIds.includes(file.id)}
-                  onChange={() => toggleFileSelection(file.id)}
-                  className="mr-2"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 truncate">{file.file_name}</div>
-                  <div className="text-xs text-gray-500">{file.store_code} · {file.month}</div>
-                </div>
-              </label>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* 重复规则提示 */}
@@ -282,6 +360,63 @@ export default function RulesPage() {
         </div>
       )}
 
+      {/* 搜索/筛选 */}
+      <div className="bg-white shadow rounded-lg p-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">关键词</label>
+            <input
+              type="text"
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
+              placeholder="匹配关键词"
+              className="w-full border rounded-md px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">一级分类</label>
+            <select
+              value={searchLvl1}
+              onChange={(e) => setSearchLvl1(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm"
+            >
+              <option value="">全部</option>
+              {lvl1Options.map(opt => (
+                <option key={opt.lvl1_code} value={opt.lvl1_code}>
+                  {opt.lvl1_name}（{opt.lvl1_code}）
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">方向</label>
+            <select
+              value={searchDirection}
+              onChange={(e) => setSearchDirection(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm"
+            >
+              <option value="">全部</option>
+              <option value="in">收入</option>
+              <option value="out">支出</option>
+              <option value="any">任意</option>
+            </select>
+          </div>
+        </div>
+        {(searchKeyword || searchLvl1 || searchDirection) && (
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-sm text-gray-500">
+              筛选结果：{filteredRules.length} / {rules.length} 条
+            </span>
+            <button
+              onClick={() => { setSearchKeyword(''); setSearchLvl1(''); setSearchDirection(''); }}
+              className="text-sm text-blue-600 hover:text-blue-800"
+            >
+              清除筛选
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="bg-white shadow rounded-lg overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
@@ -290,14 +425,16 @@ export default function RulesPage() {
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">优先级</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">方向</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">匹配字段</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">匹配模式</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">关键词</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">对方单位</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">分类</th>
               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">启用</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">操作</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {rules.map((rule) => (
+            {filteredRules.map((rule) => (
               <tr key={rule.rule_id} className={`
                 ${!rule.enabled ? 'bg-gray-50' : ''}
                 ${duplicateRuleIds.has(rule.rule_id) ? 'bg-orange-50' : ''}
@@ -320,9 +457,29 @@ export default function RulesPage() {
                    rule.match_field === 'memo' ? '附言' :
                    rule.match_field === 'purpose' ? '用途' : rule.match_field}
                 </td>
+                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                  {rule.match_type === 'contains' ? '模糊匹配' :
+                   rule.match_type === 'exact' ? '精确匹配' :
+                   rule.match_type === 'regex' ? '正则匹配' : rule.match_type}
+                </td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{rule.match_value}</td>
                 <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                  {rule.lvl1}{rule.lvl2 ? `-${rule.lvl2}` : ''}
+                  {rule.match_field === 'counterparty_name'
+                    ? rule.match_value
+                    : rule.match_field2 === 'counterparty_name'
+                      ? (rule.match_value2 || '-')
+                      : '-'}
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                  <div className="text-sm text-gray-900">
+                    {lvl1NameByCode.get(rule.lvl1_code) || rule.lvl1_code}
+                    {rule.lvl2_code ? (
+                      <span className="text-gray-500">
+                        {' '}· {lvl2NameByCode.get(`${rule.lvl1_code}:${rule.lvl2_code}`) || rule.lvl2_code}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="text-xs text-gray-400">{rule.lvl1_code}{rule.lvl2_code ? `/${rule.lvl2_code}` : ''}</div>
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap text-center">
                   <button
@@ -338,7 +495,7 @@ export default function RulesPage() {
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap text-right text-sm space-x-2">
                   <button onClick={() => openEditModal(rule)} className="text-blue-600 hover:text-blue-800">编辑</button>
-                  <button onClick={() => handleDelete(rule.rule_id)} className="text-red-600 hover:text-red-800">删除</button>
+                  <button onClick={() => setDeleteRuleId(rule.rule_id)} className="text-red-600 hover:text-red-800">删除</button>
                 </td>
               </tr>
             ))}
@@ -349,7 +506,35 @@ export default function RulesPage() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* 删除确认 Modal */}
+      {deleteRuleId !== null && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-lg font-semibold mb-2">确认删除规则？</h2>
+            <p className="text-sm text-gray-600 mb-4">rule_id: {deleteRuleId}</p>
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => setDeleteRuleId(null)}
+                disabled={deleteLoading}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteConfirm}
+                disabled={deleteLoading}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteLoading ? '删除中...' : '确认删除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 编辑/新增 Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
@@ -369,7 +554,21 @@ export default function RulesPage() {
                 <label className="block text-sm font-medium text-gray-700">方向</label>
                 <select
                   value={formData.direction}
-                  onChange={(e) => setFormData({...formData, direction: e.target.value})}
+                  onChange={(e) => {
+                    const direction = e.target.value;
+                    setFormData(prev => {
+                      // 若切换方向后当前 lvl1 不合法，则清空 lvl1/lvl2
+                      const allowed = direction === 'any'
+                        ? true
+                        : lvl1Options.some(o => (o.direction === direction || o.direction === 'any') && o.lvl1_code === prev.lvl1_code);
+                      return {
+                        ...prev,
+                        direction,
+                        lvl1_code: allowed ? prev.lvl1_code : '',
+                        lvl2_code: allowed ? prev.lvl2_code : ''
+                      };
+                    });
+                  }}
                   className="mt-1 block w-full border rounded-md px-3 py-2"
                 >
                   <option value="in">收入</option>
@@ -377,51 +576,190 @@ export default function RulesPage() {
                   <option value="any">任意</option>
                 </select>
               </div>
+
+              {/* 分类选择（对齐 match 页沉淀窗口） */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700">一级分类 *</label>
+                <select
+                  value={formData.lvl1_code}
+                  onChange={(e) => {
+                    const lvl1_code = e.target.value;
+                    setFormData({ ...formData, lvl1_code, lvl2_code: '' });
+                  }}
+                  className="mt-1 block w-full border rounded-md px-3 py-2"
+                  required
+                >
+                  <option value="">选择分类</option>
+                  {allowedLvl1Options.map(opt => (
+                    <option key={opt.lvl1_code} value={opt.lvl1_code}>{opt.lvl1_name}</option>
+                  ))}
+                </select>
+              </div>
+              {formData.lvl1_code && (lvl2ByLvl1[formData.lvl1_code] || []).length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">二级分类</label>
+                  <select
+                    value={formData.lvl2_code}
+                    onChange={(e) => setFormData({ ...formData, lvl2_code: e.target.value })}
+                    className="mt-1 block w-full border rounded-md px-3 py-2"
+                  >
+                    <option value="">选择分类</option>
+                    {(lvl2ByLvl1[formData.lvl1_code] || []).map(opt => (
+                      <option key={opt.lvl2_code} value={opt.lvl2_code}>{opt.lvl2_name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700">匹配字段</label>
                 <select
                   value={formData.match_field}
-                  onChange={(e) => setFormData({...formData, match_field: e.target.value})}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    // match_type 规则：摘要/附言/用途固定 contains；对方单位默认 exact（可在后续迭代开放 contains）
+                    const mt = v === 'counterparty_name' ? 'exact' : 'contains';
+                    setFormData({ ...formData, match_field: v, match_type: mt });
+                  }}
                   className="mt-1 block w-full border rounded-md px-3 py-2"
                 >
-                  <option value="counterparty_name">对方单位</option>
                   <option value="summary">摘要</option>
                   <option value="memo">附言</option>
                   <option value="purpose">用途</option>
-                  <option value="any">任意字段</option>
+                  <option value="counterparty_name">对方单位（兜底）</option>
                 </select>
               </div>
+
+              {/* 匹配模式（与 match 页一致） */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700">匹配模式</label>
+                <div className="mt-1 flex items-center space-x-3">
+                  <label className="flex items-center text-sm">
+                    <input
+                      type="radio"
+                      checked={formData.match_type === 'contains'}
+                      onChange={() => setFormData({ ...formData, match_type: 'contains' })}
+                      className="mr-2"
+                      disabled={formData.match_field === 'counterparty_name'}
+                    />
+                    模糊匹配（contains）
+                  </label>
+                  <label className="flex items-center text-sm">
+                    <input
+                      type="radio"
+                      checked={formData.match_type === 'exact'}
+                      onChange={() => setFormData({ ...formData, match_type: 'exact' })}
+                      className="mr-2"
+                      disabled={formData.match_field !== 'counterparty_name'}
+                    />
+                    精确匹配（exact）
+                  </label>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {formData.match_field === 'counterparty_name'
+                    ? '对方单位目前仅支持精确匹配'
+                    : '摘要/附言/用途目前仅支持 contains（与分类函数一致）'}
+                </p>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700">关键词</label>
                 <input
                   type="text"
                   value={formData.match_value}
-                  onChange={(e) => setFormData({...formData, match_value: e.target.value})}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData({ ...formData, match_value: v });
+                    if (v.length >= 3) fetchPreview(v);
+                    else setPreviewData(null);
+                  }}
                   className="mt-1 block w-full border rounded-md px-3 py-2"
                   required
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">一级分类</label>
-                <input
-                  type="text"
-                  value={formData.lvl1}
-                  onChange={(e) => setFormData({...formData, lvl1: e.target.value})}
-                  className="mt-1 block w-full border rounded-md px-3 py-2"
-                  placeholder="如：营业收入、运费、人力成本"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">二级分类（可选）</label>
-                <input
-                  type="text"
-                  value={formData.lvl2}
-                  onChange={(e) => setFormData({...formData, lvl2: e.target.value})}
-                  className="mt-1 block w-full border rounded-md px-3 py-2"
-                  placeholder="如：美团、顺丰"
-                />
-              </div>
+
+              {/* 双重匹配：对方单位（counterparty_name） */}
+              {formData.match_field !== 'counterparty_name' && (
+                <div className="space-y-2">
+                  <label className="flex items-center space-x-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={formData.match_field2 === 'counterparty_name'}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setFormData(prev => ({
+                          ...prev,
+                          match_field2: checked ? 'counterparty_name' : '',
+                          match_value2: checked ? (prev.match_value2 || '') : ''
+                        }));
+                      }}
+                      className="rounded"
+                    />
+                    <span>同时匹配对方单位（双重匹配）</span>
+                  </label>
+
+                  {formData.match_field2 === 'counterparty_name' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">对方单位</label>
+                      <input
+                        type="text"
+                        value={formData.match_value2}
+                        onChange={(e) => setFormData({ ...formData, match_value2: e.target.value })}
+                        className="mt-1 block w-full border rounded-md px-3 py-2"
+                        placeholder="输入完整对方单位名（exact）"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">用于解决“同一关键词不同分类”的冲突：摘要命中且对方单位命中才生效</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 命中预览（与 match 页一致） */}
+              {formData.match_value.length >= 3 && (
+                <div className="bg-slate-50 rounded p-3 text-sm">
+                  <div className="font-medium text-gray-700 mb-2">命中预览</div>
+                  {previewLoading ? (
+                    <div className="text-xs text-gray-500">加载中...</div>
+                  ) : previewData ? (
+                    <div className="space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">历史命中：</span>
+                        <span className="font-medium">{previewData.hit_count} 条</span>
+                      </div>
+                      {previewData.hit_count > 0 && (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">总金额：</span>
+                            <span className="font-medium">¥{previewData.total_amt?.toLocaleString() || 0}</span>
+                          </div>
+                          {previewData.primary_lvl1 && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">主分类：</span>
+                              <span className="font-medium text-blue-600">{previewData.primary_lvl1}</span>
+                            </div>
+                          )}
+                          {Object.keys(previewData.lvl1_distribution || {}).length > 0 && (
+                            <div className="mt-2 text-xs text-gray-500">
+                              分类分布：
+                              {Object.entries(previewData.lvl1_distribution)
+                                .sort(([, a], [, b]) => b - a)
+                                .slice(0, 5)
+                                .map(([lvl1, cnt]) => (
+                                  <span key={lvl1} className="mr-2">
+                                    {lvl1}: {cnt}
+                                  </span>
+                                ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-400">无历史命中</div>
+                  )}
+                </div>
+              )}
+
               <div className="flex items-center">
                 <input
                   type="checkbox"

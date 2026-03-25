@@ -1,12 +1,35 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
-import { getCfgRuleTable, getOdsBankTxnTable, normalizeBrand } from '@/lib/brand-server';
+import { getCfgRuleTable, getCfgSchema, getDmSchema, getOpsSchema, getOdsBankTxnTable, normalizeBrand } from '@/lib/brand-server';
 
 // POST /api/rules/settle - 规则沉淀：人工匹配后沉淀为规则
-// 功能：
-// 1. 检查冲突：若同一关键词已分配给不同分类，返回冲突记录
-// 2. 无冲突：直接创建规则
-// 3. 有冲突：返回冲突列表，用户可选择双重匹配（添加对方单位条件）
+// 前端传 lvl1/lvl2（中文名），后端映射到 code 后写入 bank_rule_map（列名 lvl1/lvl2）
+// 同时写 override 让流水立即从待分类列表消失，并写审计日志
+
+async function mapNameToCode(cfgSchema: string, lvl1Name: string, lvl2Name?: string | null) {
+  const lvl1Res = await pool.query(
+    `SELECT lvl1_code FROM ${cfgSchema}.dim_category_lvl1 WHERE lvl1_name = $1 LIMIT 1`,
+    [lvl1Name]
+  );
+  if (lvl1Res.rows.length === 0) {
+    throw Object.assign(new Error(`Invalid lvl1 name: ${lvl1Name}`), { status: 400 });
+  }
+  const lvl1_code: string = lvl1Res.rows[0].lvl1_code;
+
+  let lvl2_code: string | null = null;
+  if (lvl2Name) {
+    const lvl2Res = await pool.query(
+      `SELECT lvl2_code FROM ${cfgSchema}.dim_category_lvl2 WHERE lvl1_code=$1 AND lvl2_name=$2 LIMIT 1`,
+      [lvl1_code, lvl2Name]
+    );
+    if (lvl2Res.rows.length === 0) {
+      throw Object.assign(new Error(`Invalid lvl2 name: ${lvl2Name} (lvl1=${lvl1Name})`), { status: 400 });
+    }
+    lvl2_code = lvl2Res.rows[0].lvl2_code;
+  }
+
+  return { lvl1_code, lvl2_code };
+}
 
 export async function POST(request: Request) {
   try {
@@ -14,15 +37,15 @@ export async function POST(request: Request) {
     const {
       brand: brandParam = 'yufeng',
       bank_txn_id, // 可选：关联的流水 ID
-      lvl1, // 一级分类
-      lvl2, // 二级分类
-      match_field = 'summary', // 匹配字段（默认摘要）
-      match_value, // 匹配关键词
-      match_field2, // 第二匹配字段（可选）
-      match_value2, // 第二匹配值（可选）
-      direction = 'any', // 收/支方向
-      priority, // 可选：指定优先级
-      note // 备注
+      lvl1, // 一级分类（中文名）
+      lvl2, // 二级分类（中文名，可空）
+      match_field = 'summary',
+      match_value,
+      match_field2,
+      match_value2,
+      direction = 'any',
+      priority,
+      note
     } = body;
 
     const brand = normalizeBrand(brandParam);
@@ -31,9 +54,9 @@ export async function POST(request: Request) {
     }
 
     const ruleTable = getCfgRuleTable(brand);
+    const cfgSchema = getCfgSchema(brand);
     const bankTxnTable = getOdsBankTxnTable(brand);
 
-    // 验证必填字段
     if (!lvl1 || !match_value) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields: lvl1, match_value' },
@@ -41,55 +64,48 @@ export async function POST(request: Request) {
       );
     }
 
-    // 确定 direction：如果是收入 (in)，则检查 in_amt；否则检查 out_amt
+    const { lvl1_code, lvl2_code } = await mapNameToCode(cfgSchema, lvl1, lvl2 || null);
+
+    // 确定 direction
     let actualDirection = direction;
     if (bank_txn_id) {
-      const txnResult = await pool.query(`SELECT in_amt, out_amt FROM ${bankTxnTable} WHERE id = $1`, [
-        bank_txn_id
-      ]);
+      const txnResult = await pool.query(
+        `SELECT in_amt, out_amt FROM ${bankTxnTable} WHERE id = $1`,
+        [bank_txn_id]
+      );
       if (txnResult.rows.length > 0) {
         const txn = txnResult.rows[0];
-        if (txn.in_amt > 0 && txn.in_amt !== null) {
+        if (txn.in_amt !== null && txn.in_amt > 0) {
           actualDirection = 'in';
-        } else if (txn.out_amt > 0 && txn.out_amt !== null) {
+        } else if (txn.out_amt !== null && txn.out_amt > 0) {
           actualDirection = 'out';
         }
       }
     }
 
-    // Step 1: 检查冲突（仅检查主条件）
+    // 冲突检查（主条件）- 使用 lvl1/lvl2 列名
     const conflictResult = await pool.query(
       `
-      SELECT rule_id, priority, match_field, match_value, lvl1, lvl2, note
+      SELECT rule_id, priority, match_field, match_value, lvl1_code, lvl2_code, note
       FROM ${ruleTable}
       WHERE enabled = true
         AND match_field = $1
         AND match_value = $2
-        AND NOT (lvl1 = $3 AND COALESCE(lvl2, '') = COALESCE($4, ''))
+        AND NOT (lvl1_code = $3 AND COALESCE(lvl2_code, '') = COALESCE($4, ''))
       `,
-      [match_field, match_value, lvl1, lvl2 || null]
+      [match_field, match_value, lvl1_code, lvl2_code]
     );
 
-    // 如果存在冲突
     if (conflictResult.rows.length > 0) {
       return NextResponse.json({
         success: false,
         code: 'CONFLICT_DETECTED',
         message: '检测到冲突：同一关键词已分配给其他分类',
-        conflicts: conflictResult.rows.map((r: any) => ({
-          rule_id: r.rule_id,
-          priority: r.priority,
-          match_field: r.match_field,
-          match_value: r.match_value,
-          lvl1: r.lvl1,
-          lvl2: r.lvl2,
-          note: r.note
-        }))
+        conflicts: conflictResult.rows
       });
     }
 
-    // Step 2: 无冲突，插入新规则
-    // 如果未指定 priority，使用最大 priority + 10
+    // priority
     let newPriority = priority;
     if (!newPriority) {
       const maxPriorityResult = await pool.query(
@@ -98,40 +114,123 @@ export async function POST(request: Request) {
       newPriority = maxPriorityResult.rows[0].new_priority;
     }
 
-    // 确定 match_field 和 match_field2
-    const actualMatchField = match_field || 'summary';
     const actualMatchField2 = match_field2 && match_value2 ? match_field2 : null;
     const actualMatchValue2 = match_field2 && match_value2 ? match_value2 : null;
 
-    const insertResult = await pool.query(
-      `
-      INSERT INTO ${ruleTable}
-      (enabled, priority, match_field, match_type, match_value, match_field2, match_value2, direction, lvl1, lvl2, note)
-      VALUES (true, $1, $2, 'contains', $3, $4, $5, $6, $7, $8, $9)
-      RETURNING rule_id, priority, match_field, match_value, match_field2, match_value2, direction, lvl1, lvl2, note, created_at
-      `,
-      [
-        newPriority,
-        actualMatchField,
-        match_value,
-        actualMatchField2,
-        actualMatchValue2,
-        actualDirection,
-        lvl1,
-        lvl2 || null,
-        note || `人工沉淀：${bank_txn_id ? '关联流水 ' + bank_txn_id : '直接创建'}`
-      ]
-    );
+    // 智能推断 match_type: counterparty_name = exact, others = contains
+    const matchType = match_field === 'counterparty_name' ? 'exact' : 'contains';
 
-    return NextResponse.json({
-      success: true,
-      code: 'RULE_CREATED',
-      message: '规则创建成功',
-      data: insertResult.rows[0]
-    });
+    const dmSchema = getDmSchema(brand);
+    const opsSchema = getOpsSchema(brand);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. 写入 bank_rule_map（使用 lvl1/lvl2 列名，但写入 code 值）
+      const insertResult = await client.query(
+        `
+        INSERT INTO ${ruleTable}
+        (enabled, priority, match_field, match_type, match_value, match_field2, match_value2, direction, lvl1_code, lvl2_code, note)
+        VALUES (true, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING rule_id, priority, match_field, match_value, match_field2, match_value2, direction, lvl1_code, lvl2_code, note, created_at
+        `,
+        [
+          newPriority,
+          match_field,
+          matchType,
+          match_value,
+          actualMatchField2,
+          actualMatchValue2,
+          actualDirection,
+          lvl1_code,
+          lvl2_code,
+          note || `人工沉淀：${bank_txn_id ? '关联流水 ' + bank_txn_id : '直接创建'}`
+        ]
+      );
+
+      const createdRule = insertResult.rows[0];
+
+      // 2. 如果有 bank_txn_id，写入 override 让流水从待分类列表消失
+      if (bank_txn_id) {
+        await client.query(
+          `
+          INSERT INTO ${dmSchema}.bank_txn_override (bank_txn_id, lvl1_code, lvl2_code, note, created_by)
+          VALUES ($1, $2, $3, $4, 'ui')
+          ON CONFLICT (bank_txn_id) DO UPDATE SET
+            lvl1_code = EXCLUDED.lvl1_code,
+            lvl2_code = EXCLUDED.lvl2_code,
+            note = EXCLUDED.note,
+            updated_at = now()
+          `,
+          [bank_txn_id, lvl1_code, lvl2_code, `规则沉淀: ${match_field} ${matchType} ${match_value}`]
+        );
+      }
+
+      // 3. 写入审计日志
+      if (bank_txn_id) {
+        // 获取原始流水信息
+        const txnResult = await client.query(
+          `SELECT date_trunc('month', txn_time)::date as month, summary, memo, purpose, counterparty_name, in_amt, out_amt
+           FROM ${bankTxnTable} WHERE id = $1`,
+          [bank_txn_id]
+        );
+        const txn = txnResult.rows.length > 0 ? txnResult.rows[0] : null;
+
+        await client.query(
+          `
+          INSERT INTO ${opsSchema}.unclassified_resolution_log (
+            bank_txn_id, month, direction, lvl1_code, lvl2_code,
+            match_field, match_value, priority, enabled,
+            action_type, resolution_mode,
+            original_summary, original_memo, original_purpose, original_counterparty,
+            original_in_amt, original_out_amt, created_by
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'ui')
+          `,
+          [
+            bank_txn_id,
+            txn?.month || null,
+            actualDirection,
+            lvl1_code,
+            lvl2_code || null,
+            match_field,
+            match_value,
+            newPriority,
+            true,
+            'manual_resolve',
+            'rule_deposit',
+            txn?.summary || null,
+            txn?.memo || null,
+            txn?.purpose || null,
+            txn?.counterparty_name || null,
+            txn?.in_amt || null,
+            txn?.out_amt || null
+          ]
+        );
+      }
+
+      await client.query('COMMIT');
+
+      return NextResponse.json({
+        success: true,
+        code: 'RULE_CREATED',
+        message: '规则创建成功',
+        data: createdRule
+      });
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (error: any) {
+    const status = error?.status || 500;
+    if (status === 400) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+    }
+
     console.error('Error in rule settle:', error);
-    // 将 pg 的关键信息回传给前端，便于定位（仅本地环境使用）
     return NextResponse.json(
       {
         success: false,

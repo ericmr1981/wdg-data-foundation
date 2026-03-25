@@ -1,4 +1,4 @@
-# WDG Data Foundation｜VPS 迁移 Secrets（模板，不提交真实值）
+# WDG｜VPS 迁移 Secrets（模板，不提交真实值）
 
 > 把真实值写入 `docs/VPS_MIGRATION_SECRETS.md`（并确保被 .gitignore 忽略）。
 
