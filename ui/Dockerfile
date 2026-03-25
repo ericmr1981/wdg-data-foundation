@@ -20,9 +20,13 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Python runtime for import scripts triggered by /api/upload
+# Prefer Debian packages over pip to reduce external download failures.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 python3-pip \
-  && pip3 install --no-cache-dir pandas openpyxl psycopg2-binary \
+  && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pandas \
+    python3-openpyxl \
+    python3-psycopg2 \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
