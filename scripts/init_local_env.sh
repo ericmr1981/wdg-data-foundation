@@ -246,6 +246,7 @@ main() {
   log_info "===== 执行 SQL 文件 ====="
 
   execute_sql_file "$PROJECT_DIR/ops/OPS_DDL.sql" "创建 ops 表"
+  execute_sql_file "$PROJECT_DIR/ops/BRANDS_DDL.sql" "创建 brands/stores registry"
   execute_sql_file "$PROJECT_DIR/sql/raw_ingest_file.sql" "创建 raw.ingest_file 表"
 
   execute_sql_file "$PROJECT_DIR/brand-docs/Yufeng_ODS_DDL.sql" "创建 yufeng_ods 表"

@@ -33,3 +33,5 @@ export const BRAND_OPTIONS = [
   { code: 'yufeng', name: '榆枫与山' },
   { code: 'bonjur', name: '本就' }
 ] as const;
+
+// NOTE: dynamic brand list (C2) is loaded via /api/brands at runtime.

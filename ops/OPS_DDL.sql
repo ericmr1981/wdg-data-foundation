@@ -9,6 +9,7 @@ create extension if not exists pgcrypto;
 
 -- ============================================================
 -- 0. Auth (B1): users + sessions
+-- Note: Brands/Stores registry lives in ops/BRANDS_DDL.sql
 -- ============================================================
 create table if not exists ops.users (
     user_id       uuid primary key default gen_random_uuid(),

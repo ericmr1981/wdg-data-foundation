@@ -3,17 +3,28 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BrandProvider, BRAND_OPTIONS, useBrand } from '@/lib/brand-context';
+import { fetchBrands } from '@/lib/brands-client';
 
 function BrandSelector() {
   const { brand, setBrand } = useBrand();
+  const [opts, setOpts] = useState<Array<{ code: string; name: string }>>(Array.from(BRAND_OPTIONS));
+
+  useEffect(() => {
+    fetchBrands()
+      .then((rows) => {
+        if (!rows.length) return;
+        setOpts(rows.map((r) => ({ code: r.brand_code, name: r.brand_name })));
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <select
       value={brand}
-      onChange={(e) => setBrand(e.target.value as 'yufeng' | 'bonjur')}
+      onChange={(e) => setBrand(e.target.value as any)}
       className="ml-4 text-sm border border-gray-300 rounded px-2 py-1 bg-white"
     >
-      {BRAND_OPTIONS.map((b) => (
+      {opts.map((b) => (
         <option key={b.code} value={b.code}>
           {b.name}
         </option>
