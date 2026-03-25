@@ -18,6 +18,13 @@
 - 宣称“完成”前，至少要有一条可复现验证路径（命令、页面、SQL 或文档证据）。
 - 直接编辑项目文档/脚本/SQL 后，优先运行 `bash scripts/run_change_guard.sh`。
 - 若 guard 报风险，要么修复，要么在 `ProjectTasks.md` 明确记下风险接受范围与后续动作。
+- **本机↔VPS 一致性**：默认不重启容器，走“保守同步”（clone→rsync→apply SQL→seed Metabase）。任何偏离（例如重建镜像/重启服务）必须单独记录影响面与回滚。
+
+## 指标口径硬约束（Finance）
+- **总收入/总支出/利润等 headline 总指标**：必须直接从原始表 `yufeng_ods.bank_txn` 的 `in_amt/out_amt` 聚合得到；分类视图只用于切片/分组（避免 NULL 分类/字典改名导致总数错误）。
+
+## 安全与密钥
+- 不在仓库/聊天中明文放置密钥；VPS 密钥统一放 `/root/.secrets/*`，并确保 600 权限。
 
 ## 文档约束
 - 新文件优先放在本项目目录内，并在 `ProjectTasks.md` 中挂路径。

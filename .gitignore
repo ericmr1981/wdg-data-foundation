@@ -5,6 +5,7 @@
 
 # local private notes
 Account.private.md
+mb_key_*.md
 
 # secrets docs
 /docs/VPS_MIGRATION_SECRETS.md

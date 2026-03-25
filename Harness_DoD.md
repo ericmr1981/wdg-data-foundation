@@ -17,3 +17,7 @@
 - 涉及分类规则、override、匹配模式、覆盖率阀门的改动，必须写明影响品牌（Bonjur / Yufeng）与影响范围。
 - 涉及 dashboard / Metabase / UI 的改动，必须给出入口路径或页面说明。
 - 涉及数据清理、重跑、迁移的动作，必须给出回滚或重建方式。
+- 涉及 **本机↔VPS 对齐/上线**：
+  - 默认采用“保守同步”（clone→rsync→apply SQL→seed Metabase），不重启容器
+  - 必须附：同步命令/脚本、同步的目录范围、以及 smoke 结果（UI/Metabase/DB 任一即可）
+- 涉及 Metabase：必须保证 seed 脚本可重复执行（idempotent by name），避免手工 UI 改到漂移。

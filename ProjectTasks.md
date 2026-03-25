@@ -3,9 +3,15 @@
 ## 0) 基本信息
 - **ID**: WDG
 - **变更记录**:
-  - 2026-03-25：口径对齐：Dashboard 利润/利润率改为使用 DB 视图 `yufeng_dm.profit_monthly`（不在 Metabase 卡片内单独计算），并在「收支总揽（表）」追加“毛利率”一行。
+  - 2026-03-25：VPS 对外 Metabase 入口加 Nginx 代理（去除 CSP/XFO header），解决“前端一直等待中但后端已返回”问题；Metabase 对外仍为 `:8082`。
+  - 2026-03-25：Yufeng 利润口径更新：`profit_amt = 营业收入 - 支出总金额 + 营建费用`；新增 `cashflow_amt = 收入总金额 - 支出总金额`（DB 视图 `yufeng_dm.profit_monthly`）。
+  - 2026-03-25：榆枫与山 Metabase 看板统一为 `dashboard=3（榆枫与山｜经营看板）`，卡片固定为 `40/41/42/43/45`，统一筛选：月/门店/一级/二级；card40 增加“当月现金流”。
+  - 2026-03-25：新增趋势图：`Yufeng｜营业收入 vs 支出（不含营建）`（card=45）。
+  - 2026-03-25：升级 `scripts/metabase_seed_dashboard.py`：适配 Metabase v0.59+（dataset_query=stages），并让 Metabase 资产可重复 seed（本机↔VPS 一致性）。
+  - 2026-03-25：保守同步（不重启容器）：VPS 上采用 clone→rsync 同步仓库的 scripts/sql/ui，再 apply SQL + seed Metabase，保持展示与功能一致。
+  - 2026-03-25：口径对齐：Dashboard 利润/利润率改为使用 DB 视图 `yufeng_dm.profit_monthly`（不在 Metabase 卡片内单独计算）。
   - 2026-03-25：`yufeng_dm.profit_monthly` 增强：增加 `store_code` 维度（支持按门店筛选），新增毛利相关字段：`material_purchase_amt / gross_profit_amt / gross_margin_rate`（毛利率口径：`(营业收入-材料采购)/营业收入`）。
-  - 2026-03-24：Metabase 修复：更新 `scripts/metabase_seed_dashboard.py` 的参数类型兼容（`date/=`→`date/single`），并使用 `Account.md` 中的 `METABASE_API_KEY` 重新 seed/更新榆枫与山 Dashboard 相关 Cards（card=44/45/46/47），修复“Invalid query parameters / server issues”。同时为兼容旧 SQL，`yufeng_dm.v_bank_txn_classified` 追加 `lvl1/lvl2` 名称列（从字典表 join；unclassified 显示“未分类”）。
+  - 2026-03-24：Metabase 修复：更新 `scripts/metabase_seed_dashboard.py` 的参数类型兼容（`date/=`→`date/single`），并使用 `Account.md` 中的 `METABASE_API_KEY` 重新 seed/更新榆枫与山 Dashboard 相关 Cards，修复“Invalid query parameters / server issues”。同时为兼容旧 SQL，`yufeng_dm.v_bank_txn_classified` 追加 `lvl1/lvl2` 名称列（从字典表 join；unclassified 显示“未分类”）。
   - 2026-03-24：Metabase 对齐新字典：更新 card=44（收支总揽表）按新一级分类（人力/租金物业/运费/管理费用/材料采购/营建费用/营销费用/其他费用/未分类）汇总，移除旧分类名导致的“显示为 0”。
   - 2026-03-24：UI 调整：规则管理页移除“文件列表展示”，避免文件过多导致页面混乱；重跑匹配收敛为“按当前品牌全部文件重跑”（调用 `/api/pipeline/rerun-match-by-file` with `all_files=true`）。
   - 2026-03-24：UI Bugfix：Pipeline 监控页“覆盖率(按文件)”展开不稳定问题修复——为文件行使用稳定 key（React Fragment key=source_file_id）并对 coverage API 返回值做数值归一化，避免列表重排/展开失效。
@@ -128,8 +134,8 @@
 | BUILD | 营建费用 | out |
 | MKT | 营销费用 | out |
 | EXP_OTHER | 其他费用 | out |
-| OTHER_OUT | 其他支出 | out |
-| UNCLASSIFIED | 未分类 | any |
+
+> 说明：**未分类**不再作为字典项存在（避免污染口径）；当 `classified_source='unclassified'` 时，`lvl1_code/lvl2_code` 允许为 `NULL`，用于覆盖率与治理提示。
 
 ### 1.6.2 lvl2（二级分类）
 | lvl1_code | lvl1_name | lvl2_code | lvl2_name |
@@ -200,6 +206,14 @@
 > 规则：每个任务都要有「产出」或「可验证结果」。
 
 ### 4.0 当前工作板（Doing / Next / Later）
+
+> **迭代记录模板（dev-project-harness-loop）**：每完成一轮“开发/修复/上线”，在本节或【Change Log】追加一条：
+> - **Round goal**：本轮要解决什么
+> - **Changes**：改了哪些文件/SQL/卡片（列路径）
+> - **Verification**：怎么验证（命令/页面/SQL）
+> - **Result**：通过/告警/风险接受
+> - **Decision**：keep / rework / revert
+> - **Next**：下一步/阻塞点
 
 #### Doing（正在收口）
 - [x] 人工匹配主流程闭环验收（Yufeng） ✅ 已验收 2026-03-24

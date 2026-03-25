@@ -23,6 +23,23 @@
 - UI：`ui/`
 - 运维资料：`ops/`
 
+## Deploy surfaces（本机 / VPS）
+
+### VPS（生产/对外）
+- **VPS**: `112.124.18.246`
+- **项目路径**: `/opt/wdg-data-foundation`
+- **UI**: `http://112.124.18.246:3002`（容器 `dataplatform-ui`）
+- **Metabase**: `http://112.124.18.246:8082`（对外入口为 `dataplatform-metabase-proxy` → `dataplatform-metabase:3000`）
+- **Postgres**: `127.0.0.1:5432`（容器 `dataplatform-pg-dashboard`，仅本机回环）
+- **Metabase API Key（VPS）**: `/root/.secrets/metabase_api_key`（600 权限）
+
+### 保守同步（不重启容器）
+用于“保持本地与 VPS 内容一致”的默认手段：
+1) `git clone` 到临时目录（VPS 上 `/opt/_sync/...`）
+2) `rsync` 覆盖 **scripts/sql/ui + docker-compose*.yml** 到 `/opt/wdg-data-foundation/`
+3) 执行安全 SQL（view/函数）
+4) 运行 Metabase seed：`scripts/metabase_seed_dashboard.py`
+
 ## Main workstreams
 1. 数据接入：Excel/CSV → RAW/ODS
 2. 分类治理：rule_map / override / 未分类治理 / 人工匹配

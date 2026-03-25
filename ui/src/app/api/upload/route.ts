@@ -44,7 +44,12 @@ export async function POST(request: Request) {
     // 触发导入脚本
     if (triggerImport) {
       try {
-        const scriptDir = path.join(process.cwd(), '..', 'scripts');
+        // Resolve scripts directory with Docker-friendly defaults
+        const defaultScriptsDir = path.join(process.cwd(), '..', 'scripts');
+        const scriptsDir =
+          process.env.SCRIPTS_DIR ||
+          (existsSync(defaultScriptsDir) ? defaultScriptsDir : existsSync('/scripts') ? '/scripts' : defaultScriptsDir);
+
         let scriptName = '';
         let scriptArgs = [filePath];
 
@@ -56,16 +61,16 @@ export async function POST(request: Request) {
           return NextResponse.json({ success: false, error: 'Unknown source type' }, { status: 400 });
         }
 
-        const scriptPath = path.join(scriptDir, scriptName);
+        const scriptPath = path.join(scriptsDir, scriptName);
 
         // 运行导入脚本
         const importOutput = await new Promise<string>((resolve, reject) => {
-          // Prefer project venv python (so pandas/openpyxl exist); fallback to python3
+          // Robust python binary selection: env var > venv (if exists) > python3
           const projectRoot = path.join(process.cwd(), '..');
+          const venvPython = path.join(projectRoot, '.venv', 'bin', 'python');
           const pythonBin =
             process.env.PYTHON_BIN ||
-            path.join(projectRoot, '.venv', 'bin', 'python') ||
-            'python3';
+            (existsSync(venvPython) ? venvPython : 'python3');
 
           const childProcess = spawn(pythonBin, [scriptPath, ...scriptArgs], {
             cwd: projectRoot,
