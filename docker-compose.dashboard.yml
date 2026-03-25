@@ -28,18 +28,24 @@ services:
       - metabase_data:/metabase-data
     restart: unless-stopped
 
-  # Next.js UI MVP（由 Claude Code 任务落地后启用）
-  # ui:
-  #   build:
-  #     context: ./ui
-  #   container_name: dataplatform-ui
-  #   depends_on:
-  #     - postgres
-  #   environment:
-  #     DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-dataplatform}
-  #   ports:
-  #     - "${UI_PORT:-3000}:3000"
-  #   restart: unless-stopped
+  ui:
+    build:
+      context: ./ui
+    container_name: dataplatform-ui
+    depends_on:
+      - postgres
+    environment:
+      # 推荐：用 DB_*（与 UI 代码保持一致）
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-dataplatform}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      # 可选：也可用 DATABASE_URL
+      # DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-dataplatform}
+    ports:
+      - "${UI_PORT:-3002}:3000"
+    restart: unless-stopped
 
 volumes:
   dataplatform_pg_data:
