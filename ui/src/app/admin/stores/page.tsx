@@ -1,6 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { DndContext, closestCenter } from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { fetchBrands } from '@/lib/brands-client';
 
 type StoreRow = {
@@ -8,7 +11,25 @@ type StoreRow = {
   store_code: string;
   store_name: string;
   enabled: boolean;
+  sort_order?: number;
 };
+
+function SortableItem({ id, store }: { id: string; store: StoreRow }) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
+  const style: React.CSSProperties = { transform: CSS.Transform.toString(transform), transition };
+  return (
+    <div ref={setNodeRef} style={style} className="grid grid-cols-5 gap-2 py-2 border-b items-center">
+      <div className="flex items-center gap-2">
+        <span className="cursor-grab select-none text-gray-400" {...attributes} {...listeners}>⋮⋮</span>
+        <span>{store.store_code}</span>
+      </div>
+      <div>{store.store_name}</div>
+      <div>{store.brand_code}</div>
+      <div>{String(store.enabled)}</div>
+      <div className="text-xs text-gray-500">order: {store.sort_order ?? 9999}</div>
+    </div>
+  );
+}
 
 export default function AdminStoresPage() {
   const [brand, setBrand] = useState('yufeng');
@@ -18,6 +39,7 @@ export default function AdminStoresPage() {
   const [store_code, setCode] = useState('');
   const [store_name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchBrands().then((b) => {
@@ -40,7 +62,7 @@ export default function AdminStoresPage() {
       setError(data.error || 'Failed');
       return;
     }
-    setStores(data.data);
+    setStores(data.data || []);
   }
 
   async function create() {
@@ -58,6 +80,22 @@ export default function AdminStoresPage() {
     setCode('');
     setName('');
     await load();
+  }
+
+  const ids = useMemo(() => stores.map((s) => s.store_code), [stores]);
+
+  async function saveOrder(nextIds: string[]) {
+    setSaving(true);
+    try {
+      await fetch('/api/admin/stores/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brand, ordered_store_codes: nextIds }),
+      });
+      await load();
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -84,20 +122,33 @@ export default function AdminStoresPage() {
       </div>
 
       <div className="bg-white border rounded p-4">
-        <div className="font-medium mb-2">门店列表</div>
-        <div className="text-sm">
-          <div className="grid grid-cols-4 gap-2 font-semibold border-b pb-2">
-            <div>brand</div><div>store_code</div><div>store_name</div><div>enabled</div>
-          </div>
-          {stores.map((s) => (
-            <div key={s.store_code} className="grid grid-cols-4 gap-2 py-2 border-b">
-              <div>{s.brand_code}</div>
-              <div>{s.store_code}</div>
-              <div>{s.store_name}</div>
-              <div>{String(s.enabled)}</div>
-            </div>
-          ))}
+        <div className="font-medium mb-2">门店列表（拖拽排序）</div>
+        <div className="text-xs text-gray-500 mb-2">拖拽行来调整顺序，松开自动保存。</div>
+        <div className="grid grid-cols-5 gap-2 font-semibold border-b pb-2 text-sm">
+          <div>store_code</div><div>store_name</div><div>brand</div><div>enabled</div><div>sort_order</div>
         </div>
+        <DndContext
+          collisionDetection={closestCenter}
+          onDragEnd={(e) => {
+            const { active, over } = e;
+            if (!over) return;
+            if (active.id === over.id) return;
+            const oldIndex = ids.indexOf(String(active.id));
+            const newIndex = ids.indexOf(String(over.id));
+            const next = arrayMove(ids, oldIndex, newIndex);
+            setStores(next.map((code) => stores.find((s) => s.store_code === code)!));
+            saveOrder(next.map(String));
+          }}
+        >
+          <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+            <div>
+              {stores.map((s) => (
+                <SortableItem key={s.store_code} id={s.store_code} store={s} />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+        {saving && <div className="text-xs text-gray-500 mt-2">保存中...</div>}
       </div>
     </div>
   );
