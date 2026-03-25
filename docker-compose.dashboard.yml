@@ -41,8 +41,17 @@ services:
       DB_NAME: ${DB_NAME:-dataplatform}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
+
+      # 让 /api/upload 触发导入脚本时用系统 python3（不要走 /.venv/bin/python）
+      PYTHON_BIN: python3
+
       # 可选：也可用 DATABASE_URL
       # DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-dataplatform}
+    volumes:
+      # 让上传文件与导入脚本落在宿主机目录（并与脚本内的 /inputs /scripts 路径对齐）
+      - ./inputs:/inputs
+      - ./scripts:/scripts
+      - ./outputs:/outputs
     ports:
       - "${UI_PORT:-3002}:3000"
     restart: unless-stopped
