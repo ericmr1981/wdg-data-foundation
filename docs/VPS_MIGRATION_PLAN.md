@@ -65,6 +65,8 @@ ss -lntp | head -n 50
 ```
 产出：确认 VPS 具备 docker，compose 使用 `docker compose` 还是 `docker-compose`（二选一固定下来）。
 
+**实测备注（2026-03-25）**：目标 VPS 上 `docker-compose` 可用，但 `docker compose` 插件不可用，因此后续统一使用 `docker-compose`。
+
 ### 3.2 安装/补齐依赖（一次性）
 - 安装：Docker Engine + Compose（若缺）
 - 建议额外装：`git`, `curl`, `jq`
@@ -72,20 +74,35 @@ ss -lntp | head -n 50
 
 ### 3.3 首次部署（一次性）
 1) 创建目录（建议）：`/opt/wdg-data-foundation`
-2) 从 GitHub clone 仓库（只拉代码，不拉任何 secrets）
+2) 拉取代码（只拉代码，不拉任何 secrets）
+   - 首选：`git clone` / `git pull`
+   - 备选：如 VPS 上 git/TLS 不稳定，可用 GitHub tarball 方式下载（更稳）
+     ```bash
+     mkdir -p /opt/wdg-data-foundation && cd /opt/wdg-data-foundation
+     curl -L --retry 5 --retry-delay 2 --retry-all-errors \
+       https://codeload.github.com/ericmr1981/wdg-data-foundation/tar.gz/refs/heads/main \
+       -o /tmp/wdg-main.tgz
+     tar -xzf /tmp/wdg-main.tgz --strip-components=1
+     ```
 3) 在 VPS 写入 `.env`（从 `.env.example` 拷贝，填真实值）
 4) 启动服务：
    ```bash
    cd /opt/wdg-data-foundation
 
-   # 二选一：根据你的环境
-   docker compose up -d --build
-   # 或
-   docker-compose up -d --build
+   # 本 VPS 目前使用 docker-compose
+   docker-compose -f docker-compose.dashboard.yml up -d
    ```
+
+> 端口约定（当前默认）：Metabase `8081`；Postgres 仅绑定 `127.0.0.1:5432`（不暴露公网）。
 5) 初始化数据库（运行初始化脚本/或 init 容器任务）
    - 目标：schema/DDL/视图/规则都落库
    - 证据：关键视图可查询（例如 `yufeng_dm.profit_monthly`）
+
+**注意（容器内执行 SQL 文件）**：`docker exec <pg> psql -f /path/to/sql` 的路径是“容器内路径”，默认看不到宿主机 `/opt/...`。
+推荐用管道：
+```bash
+cat sql/raw_ingest_file.sql | docker exec -i dataplatform-pg-dashboard psql -U postgres -d dataplatform
+```
 
 > 注：UI 禁止使用 `next dev` 上 VPS；生产应走 `next build && next start`（建议写入 Dockerfile）。
 
