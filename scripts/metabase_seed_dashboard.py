@@ -1,24 +1,30 @@
 #!/usr/bin/env python3
-"""Seed Metabase Questions/Dashboards via API key (X-Api-Key).
+"""Seed Metabase Questions + Dashboard for 榆枫与山 via API key (X-Api-Key).
 
 Usage:
-  export METABASE_URL=http://localhost:3001
+  export METABASE_URL=http://127.0.0.1:8082
   export METABASE_API_KEY='...'
   python3 scripts/metabase_seed_dashboard.py
 
-Notes:
-- Idempotent by *name* for Cards (Questions): create-or-update.
+Design goals
+- Idempotent by *name* for Cards and Dashboard.
+- Keep LOCAL and VPS consistent by making Metabase artifacts reproducible.
+- Metabase v0.59+ compatible (dataset_query uses `stages` + `lib/type`).
+
+Notes
 - Do NOT hardcode secrets; use env vars.
+- Dashboards in this instance require `dashcards[].id` when PUT updating.
+  New dashcards can use negative temporary ids.
 """
 
 import os
 import sys
 import json
-from typing import Optional
+from typing import Optional, Any
 
 import requests
 
-MB_URL = os.environ.get("METABASE_URL", "http://localhost:3001").rstrip("/")
+MB_URL = os.environ.get("METABASE_URL", "http://localhost:3000").rstrip("/")
 MB_KEY = os.environ.get("METABASE_API_KEY")
 
 HEADERS = {
@@ -32,29 +38,29 @@ def die(msg: str) -> "NoReturn":  # type: ignore[name-defined]
     raise SystemExit(1)
 
 
-def mb_get(path: str, *, params: Optional[dict] = None):
-    r = requests.get(MB_URL + path, headers=HEADERS, params=params, timeout=20)
+def mb_get(path: str, *, params: Optional[dict] = None) -> Any:
+    r = requests.get(MB_URL + path, headers=HEADERS, params=params, timeout=30)
     if r.status_code >= 400:
-        raise RuntimeError(f"GET {path} -> {r.status_code}: {r.text[:500]}")
-    return r
+        raise RuntimeError(f"GET {path} -> {r.status_code}: {r.text[:800]}")
+    return r.json() if r.text else None
 
 
-def mb_post(path: str, payload: dict):
-    r = requests.post(MB_URL + path, headers=HEADERS, data=json.dumps(payload), timeout=30)
+def mb_post(path: str, payload: dict) -> Any:
+    r = requests.post(MB_URL + path, headers=HEADERS, data=json.dumps(payload), timeout=60)
     if r.status_code >= 400:
-        raise RuntimeError(f"POST {path} -> {r.status_code}: {r.text[:500]}")
-    return r
+        raise RuntimeError(f"POST {path} -> {r.status_code}: {r.text[:1200]}")
+    return r.json() if r.text else None
 
 
-def mb_put(path: str, payload: dict):
-    r = requests.put(MB_URL + path, headers=HEADERS, data=json.dumps(payload), timeout=30)
+def mb_put(path: str, payload: dict) -> Any:
+    r = requests.put(MB_URL + path, headers=HEADERS, data=json.dumps(payload), timeout=60)
     if r.status_code >= 400:
-        raise RuntimeError(f"PUT {path} -> {r.status_code}: {r.text[:500]}")
-    return r
+        raise RuntimeError(f"PUT {path} -> {r.status_code}: {r.text[:1200]}")
+    return r.json() if r.text else None
 
 
 def find_database_id(name_hint: str = "dataplatform") -> int:
-    dbs = mb_get("/api/database").json()
+    dbs = mb_get("/api/database")
     items = dbs.get("data") if isinstance(dbs, dict) else dbs
     if not items:
         die("No databases found in Metabase")
@@ -68,149 +74,157 @@ def find_database_id(name_hint: str = "dataplatform") -> int:
     return int(items[0]["id"])
 
 
-def search_card_by_name(name: str) -> Optional[dict]:
-    raw = mb_get("/api/search", params={"q": name, "models": "card"}).json()
-
-    # Metabase may return either a list or an object {data:[...]}
+def search_one(model: str, name: str) -> Optional[dict]:
+    raw = mb_get("/api/search", params={"q": name, "models": model})
     res = raw.get("data") if isinstance(raw, dict) else raw
     if not isinstance(res, list):
         return None
 
     for it in res:
-        if isinstance(it, dict) and it.get("model") == "card" and it.get("name") == name:
+        if isinstance(it, dict) and it.get("model") == model and it.get("name") == name:
             return it
 
     for it in res:
-        if isinstance(it, dict) and it.get("model") == "card" and (it.get("name") or "").lower() == name.lower():
+        if isinstance(it, dict) and it.get("model") == model and (it.get("name") or "").lower() == name.lower():
             return it
 
     return None
 
 
-# Stable parameter UUIDs (so dashboard mappings stay consistent)
-PARAM_MONTH_DATE = "00000000-0000-0000-0000-000000000001"
-PARAM_STORE = "00000000-0000-0000-0000-000000000002"
-PARAM_EXP_LVL1 = "00000000-0000-0000-0000-000000000003"
-PARAM_INC_LVL1 = "00000000-0000-0000-0000-000000000004"
+# Stable parameter UUIDs (dashboard + template tags)
+PID_MONTH = "00000000-0000-0000-0000-000000000001"
+PID_STORE = "00000000-0000-0000-0000-000000000002"
+PID_LVL1 = "00000000-0000-0000-0000-000000000003"  # dashboard 一级
+PID_LVL2 = "00000000-0000-0000-0000-000000000004"  # dashboard 二级
+
+# Card template-tag UUIDs (for reproducible mappings)
+TAG_EXP_LVL1 = "00000000-0000-0000-0000-00000000A001"
+TAG_INC_LVL1 = "00000000-0000-0000-0000-00000000A002"
+TAG_LVL2 = "00000000-0000-0000-0000-00000000B002"
 
 
-def upsert_card(
-    *,
-    name: str,
-    database_id: int,
-    sql: str,
-    description: str = "",
-    display: str = "table",
-    visualization_settings: Optional[dict] = None,
-    with_expense_lvl1: bool = False,
-    with_income_lvl1: bool = False,
-) -> int:
-    existing = search_card_by_name(name)
-
-    template_tags = {
-        "month_date": {
-            "id": PARAM_MONTH_DATE,
-            "name": "month_date",
-            "display-name": "Month",
-            "type": "date",
+def card_payload(*, name: str, database_id: int, sql: str, description: str, display: str, viz: dict, template_tags: dict, parameters: list[dict]) -> dict:
+    return {
+        "name": name,
+        "description": description,
+        "display": display,
+        "type": "question",
+        "visualization_settings": viz or {},
+        "dataset_query": {
+            "lib/type": "mbql/query",
+            "database": database_id,
+            "stages": [
+                {
+                    "lib/type": "mbql.stage/native",
+                    "native": sql,
+                    "template-tags": template_tags,
+                }
+            ],
         },
-        "store_code": {
-            "id": PARAM_STORE,
-            "name": "store_code",
-            "display-name": "Store Code",
-            "type": "text",
-        },
+        "parameters": parameters,
     }
 
-    params = [
-        {
-            "id": PARAM_MONTH_DATE,
-            "type": "date/single",  # Metabase v0.5x+: date/= 已废弃
-            "name": "Month",
-            "slug": "month_date",
-            "target": ["variable", ["template-tag", "month_date"]],
-        },
-        {
-            "id": PARAM_STORE,
-            "type": "string/=",
-            "name": "Store Code",
-            "slug": "store_code",
-            "target": ["variable", ["template-tag", "store_code"]],
-        },
-    ]
 
-    if with_expense_lvl1:
-        template_tags["expense_lvl1"] = {
-            "id": PARAM_EXP_LVL1,
-            "name": "expense_lvl1",
-            "display-name": "Expense Lvl1",
-            "type": "text",
-        }
-        params.append(
-            {
-                "id": PARAM_EXP_LVL1,
-                "type": "string/=",
-                "name": "Expense Lvl1",
-                "slug": "expense_lvl1",
-                "target": ["variable", ["template-tag", "expense_lvl1"]],
-            }
-        )
+def upsert_card(*, name: str, database_id: int, sql: str, description: str = "", display: str = "table", visualization_settings: Optional[dict] = None, template_tags: Optional[dict] = None, parameters: Optional[list[dict]] = None) -> int:
+    existing = search_one("card", name)
 
-    if with_income_lvl1:
-        template_tags["income_lvl1"] = {
-            "id": PARAM_INC_LVL1,
-            "name": "income_lvl1",
-            "display-name": "Income Lvl1",
-            "type": "text",
-        }
-        params.append(
-            {
-                "id": PARAM_INC_LVL1,
-                "type": "string/=",
-                "name": "Income Lvl1",
-                "slug": "income_lvl1",
-                "target": ["variable", ["template-tag", "income_lvl1"]],
-            }
-        )
+    payload = card_payload(
+        name=name,
+        database_id=database_id,
+        sql=sql,
+        description=description,
+        display=display,
+        viz=visualization_settings or {},
+        template_tags=template_tags or {},
+        parameters=parameters or [],
+    )
+
+    if existing and existing.get("id"):
+        cid = int(existing["id"])
+        mb_put(f"/api/card/{cid}", payload)
+        return cid
+
+    created = mb_post("/api/card", payload)
+    return int(created["id"])
+
+
+def upsert_dashboard(*, name: str, description: str, parameters: list[dict], dashcard_specs: list[dict]) -> int:
+    existing = search_one("dashboard", name)
+
+    if existing and existing.get("id"):
+        did = int(existing["id"])
+    else:
+        created = mb_post("/api/dashboard", {"name": name, "description": description})
+        did = int(created["id"])
+
+    # Need existing dashcard IDs to update.
+    current = mb_get(f"/api/dashboard/{did}")
+    current_dashcards = current.get("dashcards") or []
+    by_card_id = {int(dc.get("card_id")): dc for dc in current_dashcards if dc.get("card_id") is not None}
+
+    new_dashcards: list[dict] = []
+    for spec in dashcard_specs:
+        card_id = int(spec["card_id"])
+        if card_id in by_card_id:
+            dc = by_card_id[card_id]
+            dc_id = dc.get("id")
+            if dc_id is None:
+                # Extremely defensive; should not happen.
+                dc_id = -card_id
+            new_dashcards.append({
+                "id": dc_id,
+                "card_id": card_id,
+                "col": spec["col"],
+                "row": spec["row"],
+                "size_x": spec["size_x"],
+                "size_y": spec["size_y"],
+                "series": dc.get("series") or [],
+                "visualization_settings": dc.get("visualization_settings") or {},
+                "parameter_mappings": spec.get("parameter_mappings") or [],
+            })
+        else:
+            new_dashcards.append({
+                "id": spec.get("id") or (-1000 - card_id),
+                "card_id": card_id,
+                "col": spec["col"],
+                "row": spec["row"],
+                "size_x": spec["size_x"],
+                "size_y": spec["size_y"],
+                "series": [],
+                "visualization_settings": {},
+                "parameter_mappings": spec.get("parameter_mappings") or [],
+            })
 
     payload = {
         "name": name,
         "description": description,
-        "display": display,
-        "visualization_settings": visualization_settings or {},
-        "dataset_query": {
-            "database": database_id,
-            "type": "native",
-            "native": {
-                "query": sql,
-                "template-tags": template_tags,
-            },
-        },
-        "parameters": params,
+        "parameters": parameters,
+        "dashcards": new_dashcards,
     }
-
-    if existing and existing.get("id"):
-        card_id = int(existing["id"])
-        mb_put(f"/api/card/{card_id}", payload)
-        return card_id
-
-    created = mb_post("/api/card", payload).json()
-    return int(created["id"])
+    mb_put(f"/api/dashboard/{did}", payload)
+    return did
 
 
-def main():
+def mp(card_id: int, parameter_id: str, tag_name: str) -> dict:
+    return {"card_id": card_id, "parameter_id": parameter_id, "target": ["variable", ["template-tag", tag_name]]}
+
+
+def main() -> None:
     if not MB_KEY:
         die("METABASE_API_KEY is required")
 
-    # Sanity check
-    me = mb_get("/api/user/current").json()
+    me = mb_get("/api/user/current")
     if not me.get("is_superuser"):
         print("WARN: api key user is not superuser; may lack permissions")
 
     db_id = find_database_id("dataplatform")
 
-    # (1) 收支总揽（表）- 增加 expense_lvl1 字段用于 Dashboard 点击联动
-    sql_cashflow_overview = r"""WITH base AS (
+    # -----------------
+    # Cards (Questions)
+    # -----------------
+
+    # Card 40: 收支总揽（表） + 利润/利润率/毛利率 + 当月现金流
+    sql_card40 = r"""WITH base AS (
   SELECT
     to_char(t.txn_time, 'YYYY-MM') AS month,
     t.store_code,
@@ -221,19 +235,23 @@ def main():
   JOIN yufeng_dm.v_bank_txn_classified c
     ON c.bank_txn_id = t.id
   WHERE t.txn_time IS NOT NULL
-  [[ AND date_trunc('month', t.txn_time)::date = {{month_date}} ]]
+  [[ AND extract(year from t.txn_time) = extract(year from {{month_date}})
+     AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   [[ AND t.store_code = {{store_code}} ]]
 ),
 profit_agg AS (
   SELECT
     COALESCE(SUM(p.bank_revenue_amt), 0) AS in_biz,
+    COALESCE(SUM(p.total_in_amt), 0) AS total_in_amt,
     COALESCE(SUM(p.total_expense_amt), 0) AS total_out,
     COALESCE(SUM(p.profit_amt), 0) AS profit_amt,
+    COALESCE(SUM(p.cashflow_amt), 0) AS cashflow_amt,
     COALESCE(SUM(p.material_purchase_amt), 0) AS material_purchase_amt,
     (COALESCE(SUM(p.bank_revenue_amt), 0) - COALESCE(SUM(p.material_purchase_amt), 0)) / NULLIF(COALESCE(SUM(p.bank_revenue_amt), 0), 0) AS gross_margin_rate
   FROM yufeng_dm.profit_monthly p
   WHERE 1=1
-  [[ AND p.month = {{month_date}} ]]
+  [[ AND extract(year from p.month) = extract(year from {{month_date}})
+     AND extract(month from p.month) = extract(month from {{month_date}}) ]]
   [[ AND p.store_code = {{store_code}} ]]
 ),
 agg AS (
@@ -245,6 +263,9 @@ agg AS (
 
     -- 这里“营业收入”以 yufeng_dm.profit_monthly 口径为准（REV_BIZ）
     MAX(profit_agg.in_biz) AS in_biz,
+
+    -- 当月现金流（综合时为多月合计）
+    MAX(profit_agg.cashflow_amt) AS cashflow_amt,
 
     COALESCE(SUM(in_amt)  FILTER (WHERE in_amt  > 0 AND lvl1='其他收入'), 0) AS in_other,
 
@@ -281,6 +302,7 @@ rows AS (
   UNION ALL SELECT 29,'支出','未分类',   out_unclassified,COALESCE(out_unclassified/NULLIF(total_out,0), 0), '未分类', NULL FROM agg
 
   UNION ALL SELECT 30,'结果','利润', profit_amt, NULL, NULL, NULL FROM agg
+  UNION ALL SELECT 33,'结果','当月现金流', cashflow_amt, NULL, NULL, NULL FROM agg
   UNION ALL SELECT 31,'结果','利润率', profit_amt/NULLIF(in_biz,0), NULL, NULL, NULL FROM agg
   UNION ALL SELECT 32,'结果','毛利率', gross_margin_rate, NULL, NULL, NULL FROM agg
 )
@@ -294,100 +316,279 @@ SELECT
 FROM rows
 ORDER BY ord;"""
 
-    card_overview_name = "Yufeng｜收支总揽（表）"
-    card_overview_id = upsert_card(
-        name=card_overview_name,
+    card40_name = "Yufeng｜收支总揽（表）"
+    card40_id = upsert_card(
+        name=card40_name,
         database_id=db_id,
-        sql=sql_cashflow_overview,
-        description="收支总揽（按 month/store_code 可筛选）。含 expense_lvl1/income_lvl1 字段用于 Dashboard 联动。",
+        sql=sql_card40,
+        description="收支总揽（按 Month/Store 可筛选）。含利润/利润率/毛利率/当月现金流。",
         display="table",
-        with_expense_lvl1=True,
-        with_income_lvl1=True,
+        template_tags={
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date"},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
+            "expense_lvl1": {"id": TAG_EXP_LVL1, "name": "expense_lvl1", "display-name": "Expense Lvl1", "type": "text"},
+            "income_lvl1": {"id": TAG_INC_LVL1, "name": "income_lvl1", "display-name": "Income Lvl1", "type": "text"},
+        },
+        parameters=[
+            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": TAG_EXP_LVL1, "type": "string/=", "name": "Expense Lvl1", "slug": "expense_lvl1", "target": ["variable", ["template-tag", "expense_lvl1"]]},
+            {"id": TAG_INC_LVL1, "type": "string/=", "name": "Income Lvl1", "slug": "income_lvl1", "target": ["variable", ["template-tag", "income_lvl1"]]},
+        ],
     )
 
-    # (2) 支出一级分类（饼图）
-    sql_expense_lvl1 = r"""SELECT
+    # Card 41: 支出一级
+    sql_41 = r"""SELECT
   c.lvl1 AS "类别",
   SUM(COALESCE(t.out_amt,0)) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 JOIN yufeng_dm.v_bank_txn_classified c
   ON c.bank_txn_id = t.id
 WHERE t.txn_time IS NOT NULL
+  [[ AND extract(year from t.txn_time) = extract(year from {{month_date}})
+     AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   AND COALESCE(t.out_amt,0) > 0
-  [[ AND date_trunc('month', t.txn_time)::date = {{month_date}} ]]
   [[ AND t.store_code = {{store_code}} ]]
 GROUP BY c.lvl1
 ORDER BY "金额(元)" DESC;"""
 
-    card_pie1_name = "Yufeng｜支出一级分类（饼图）"
-    card_pie1_id = upsert_card(
-        name=card_pie1_name,
+    card41_id = upsert_card(
+        name="Yufeng｜支出一级分类（饼图）",
         database_id=db_id,
-        sql=sql_expense_lvl1,
+        sql=sql_41,
         description="支出一级分类饼图（类别+金额）。",
         display="pie",
         visualization_settings={"pie.show_values": True, "pie.value_formatting": "currency"},
-        with_expense_lvl1=False,
+        template_tags={
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date"},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
+        },
+        parameters=[
+            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "target": ["variable", ["template-tag", "store_code"]]},
+        ],
     )
 
-    # (3) 支出二级分类（饼图，可被 expense_lvl1 过滤；空时显示全部二级）
-    sql_expense_lvl2 = r"""SELECT
+    # Card 42: 支出二级（含 一级/二级 筛选）
+    sql_42 = r"""SELECT
   COALESCE(NULLIF(c.lvl2,''), '（未填）') AS "类别",
   SUM(COALESCE(t.out_amt,0)) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 JOIN yufeng_dm.v_bank_txn_classified c
   ON c.bank_txn_id = t.id
 WHERE t.txn_time IS NOT NULL
+  [[ AND extract(year from t.txn_time) = extract(year from {{month_date}})
+     AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   AND COALESCE(t.out_amt,0) > 0
-  [[ AND date_trunc('month', t.txn_time)::date = {{month_date}} ]]
   [[ AND t.store_code = {{store_code}} ]]
   [[ AND c.lvl1 = {{expense_lvl1}} ]]
+  [[ AND c.lvl2 = {{lvl2}} ]]
 GROUP BY COALESCE(NULLIF(c.lvl2,''), '（未填）')
 ORDER BY "金额(元)" DESC;"""
 
-    card_pie2_name = "Yufeng｜支出二级分类（饼图）"
-    card_pie2_id = upsert_card(
-        name=card_pie2_name,
+    card42_id = upsert_card(
+        name="Yufeng｜支出二级分类（饼图）",
         database_id=db_id,
-        sql=sql_expense_lvl2,
-        description="支出二级分类饼图（类别+金额）；可被 expense_lvl1 过滤，空时显示全部。",
+        sql=sql_42,
+        description="支出二级分类饼图（类别+金额）；支持一级/二级筛选。",
         display="pie",
         visualization_settings={"pie.show_values": True, "pie.value_formatting": "currency"},
-        with_expense_lvl1=True,
+        template_tags={
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date"},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
+            "expense_lvl1": {"id": TAG_EXP_LVL1, "name": "expense_lvl1", "display-name": "Expense Lvl1", "type": "text"},
+            "lvl2": {"id": TAG_LVL2, "name": "lvl2", "display-name": "Lvl2", "type": "text"},
+        },
+        parameters=[
+            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": TAG_EXP_LVL1, "type": "string/=", "name": "Expense Lvl1", "slug": "expense_lvl1", "target": ["variable", ["template-tag", "expense_lvl1"]]},
+            {"id": TAG_LVL2, "type": "string/=", "name": "Lvl2", "slug": "lvl2", "target": ["variable", ["template-tag", "lvl2"]]},
+        ],
     )
 
-    # (4) 收入二级分类（柱状图，可被 income_lvl1 过滤；空时显示全部二级）
-    sql_income_lvl2_bar = r"""SELECT
+    # Card 43: 收入二级（含 一级/二级 筛选）
+    sql_43 = r"""SELECT
   COALESCE(NULLIF(c.lvl2,''), '（未填）') AS "类别",
   SUM(COALESCE(t.in_amt,0)) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 JOIN yufeng_dm.v_bank_txn_classified c
   ON c.bank_txn_id = t.id
 WHERE t.txn_time IS NOT NULL
+  [[ AND extract(year from t.txn_time) = extract(year from {{month_date}})
+     AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   AND COALESCE(t.in_amt,0) > 0
-  [[ AND date_trunc('month', t.txn_time)::date = {{month_date}} ]]
   [[ AND t.store_code = {{store_code}} ]]
   [[ AND c.lvl1 = {{income_lvl1}} ]]
+  [[ AND c.lvl2 = {{lvl2}} ]]
 GROUP BY COALESCE(NULLIF(c.lvl2,''), '（未填）')
 ORDER BY "金额(元)" DESC;"""
 
-    card_bar_name = "Yufeng｜收入二级分类（柱状图）"
-    card_bar_id = upsert_card(
-        name=card_bar_name,
+    card43_id = upsert_card(
+        name="Yufeng｜收入二级分类（柱状图）",
         database_id=db_id,
-        sql=sql_income_lvl2_bar,
-        description="收入二级分类柱状图（类别+金额）；可被 income_lvl1 过滤（营业收入/其他收入），空时显示全部。",
+        sql=sql_43,
+        description="收入二级分类柱状图（类别+金额）；支持一级/二级筛选。",
         display="bar",
         visualization_settings={"graph.show_values": True, "graph.value_formatting": "currency"},
-        with_income_lvl1=True,
+        template_tags={
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date"},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
+            "income_lvl1": {"id": TAG_INC_LVL1, "name": "income_lvl1", "display-name": "Income Lvl1", "type": "text"},
+            "lvl2": {"id": TAG_LVL2, "name": "lvl2", "display-name": "Lvl2", "type": "text"},
+        },
+        parameters=[
+            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": TAG_INC_LVL1, "type": "string/=", "name": "Income Lvl1", "slug": "income_lvl1", "target": ["variable", ["template-tag", "income_lvl1"]]},
+            {"id": TAG_LVL2, "type": "string/=", "name": "Lvl2", "slug": "lvl2", "target": ["variable", ["template-tag", "lvl2"]]},
+        ],
     )
 
-    print("OK")
+    # Card 45: 营业收入 vs 支出（不含营建）
+    sql_45 = r"""WITH base AS (
+  SELECT
+    date_trunc('month', t.txn_time)::date AS month,
+    COALESCE(SUM(CASE WHEN c.lvl1_code = 'REV_BIZ' THEN COALESCE(t.in_amt,0) ELSE 0 END), 0) AS biz_revenue_amt,
+    COALESCE(SUM(
+      CASE
+        WHEN COALESCE(t.out_amt,0) > 0
+         AND (c.lvl1_code IS DISTINCT FROM 'BUILD')
+        THEN COALESCE(t.out_amt,0)
+        ELSE 0
+      END
+    ), 0) AS expense_ex_build_amt
+  FROM yufeng_ods.bank_txn t
+  LEFT JOIN yufeng_dm.v_bank_txn_classified c
+    ON c.bank_txn_id = t.id
+  WHERE t.txn_time IS NOT NULL
+    [[ AND extract(year from t.txn_time) = extract(year from {{month_date}})
+       AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
+    [[ AND t.store_code = {{store_code}} ]]
+  GROUP BY 1
+)
+SELECT
+  month AS "月份",
+  ROUND(biz_revenue_amt, 2) AS "营业收入(元)",
+  ROUND(expense_ex_build_amt, 2) AS "支出不含营建(元)"
+FROM base
+ORDER BY month;"""
+
+    card45_id = upsert_card(
+        name="Yufeng｜营业收入 vs 支出（不含营建）",
+        database_id=db_id,
+        sql=sql_45,
+        description="按月对比：营业收入 vs 支出（剔除营建费用 BUILD）。支持 Month/Store Code 筛选。",
+        display="bar",
+        visualization_settings={"graph.show_values": True, "graph.value_formatting": "currency"},
+        template_tags={
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date"},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
+        },
+        parameters=[
+            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "target": ["variable", ["template-tag", "store_code"]]},
+        ],
+    )
+
+    # -----------------
+    # Dashboard
+    # -----------------
+
+    dash_name = "榆枫与山｜经营看板"
+    dash_desc = "榆枫与山：收支总揽/支出一级/支出二级/收入二级 + 营业收入vs支出（不含营建）。统一筛选：月/门店/一级/二级。"
+
+    dash_params = [
+        {"id": PID_MONTH, "name": "Month", "slug": "month_date", "type": "date/single", "sectionId": "date", "required": False},
+        {"id": PID_STORE, "name": "门店", "slug": "store_code", "type": "string/=", "sectionId": "string", "required": False},
+        {"id": PID_LVL1, "name": "一级", "slug": "lvl1", "type": "string/=", "sectionId": "string", "required": False},
+        {"id": PID_LVL2, "name": "二级", "slug": "lvl2", "type": "string/=", "sectionId": "string", "required": False},
+    ]
+
+    dashcard_specs = [
+        {
+            "id": -101,
+            "card_id": card40_id,
+            "col": 0,
+            "row": 0,
+            "size_x": 24,
+            "size_y": 8,
+            "parameter_mappings": [
+                mp(card40_id, PID_MONTH, "month_date"),
+                mp(card40_id, PID_STORE, "store_code"),
+                mp(card40_id, PID_LVL1, "expense_lvl1"),
+                mp(card40_id, PID_LVL1, "income_lvl1"),
+            ],
+        },
+        {
+            "id": -102,
+            "card_id": card41_id,
+            "col": 0,
+            "row": 8,
+            "size_x": 12,
+            "size_y": 8,
+            "parameter_mappings": [
+                mp(card41_id, PID_MONTH, "month_date"),
+                mp(card41_id, PID_STORE, "store_code"),
+            ],
+        },
+        {
+            "id": -103,
+            "card_id": card42_id,
+            "col": 12,
+            "row": 8,
+            "size_x": 12,
+            "size_y": 8,
+            "parameter_mappings": [
+                mp(card42_id, PID_MONTH, "month_date"),
+                mp(card42_id, PID_STORE, "store_code"),
+                mp(card42_id, PID_LVL1, "expense_lvl1"),
+                mp(card42_id, PID_LVL2, "lvl2"),
+            ],
+        },
+        {
+            "id": -104,
+            "card_id": card43_id,
+            "col": 0,
+            "row": 16,
+            "size_x": 24,
+            "size_y": 8,
+            "parameter_mappings": [
+                mp(card43_id, PID_MONTH, "month_date"),
+                mp(card43_id, PID_STORE, "store_code"),
+                mp(card43_id, PID_LVL1, "income_lvl1"),
+                mp(card43_id, PID_LVL2, "lvl2"),
+            ],
+        },
+        {
+            "id": -105,
+            "card_id": card45_id,
+            "col": 0,
+            "row": 24,
+            "size_x": 24,
+            "size_y": 8,
+            "parameter_mappings": [
+                mp(card45_id, PID_MONTH, "month_date"),
+                mp(card45_id, PID_STORE, "store_code"),
+            ],
+        },
+    ]
+
+    dash_id = upsert_dashboard(
+        name=dash_name,
+        description=dash_desc,
+        parameters=dash_params,
+        dashcard_specs=dashcard_specs,
+    )
+
+    print("DONE")
+    print(f"Dashboard: {dash_name} (id={dash_id}) -> {MB_URL}/dashboard/{dash_id}")
     for name, cid in [
-        (card_overview_name, card_overview_id),
-        (card_pie1_name, card_pie1_id),
-        (card_pie2_name, card_pie2_id),
-        (card_bar_name, card_bar_id),
+        (card40_name, card40_id),
+        ("Yufeng｜支出一级分类（饼图）", card41_id),
+        ("Yufeng｜支出二级分类（饼图）", card42_id),
+        ("Yufeng｜收入二级分类（柱状图）", card43_id),
+        ("Yufeng｜营业收入 vs 支出（不含营建）", card45_id),
     ]:
         print(f"Card: {name} (id={cid}) -> {MB_URL}/question/{cid}")
 
