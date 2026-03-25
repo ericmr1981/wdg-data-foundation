@@ -1,26 +1,21 @@
 -- Bonjur｜分类规则应用 v2（对齐 Yufeng v2 策略）
--- 执行日期：2026-03-25
--- 变更：
---   1. 移除 override 参与分类（override 仅日志/审计）
---   2. 按字段策略匹配：summary→memo→purpose (contains)；三者空才 counterparty (contains/exact)
---   3. 共享 yufeng_cfg 字典（lvl1_code/lvl2_code）
+-- 执行顺序：在字典表 (yufeng_category_dictionary_v1_1.sql) 之后执行
 
 ------------------------------------------------------------
 -- DM Schema
 ------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS bonjur_dm;
+CREATE SCHEMA IF NOT EXISTS bonjur_ops;
 
 ------------------------------------------------------------
 -- 人工匹配覆盖表（仅日志，不参与分类）
 ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS bonjur_dm.bank_txn_override (
     id              BIGSERIAL PRIMARY KEY,
-    bank_txn_id     BIGINT NOT NULL UNIQUE,  -- FK -> bonjur_ods.bank_txn.id
-
+    bank_txn_id     BIGINT NOT NULL UNIQUE,
     lvl1_code       TEXT NOT NULL,
     lvl2_code       TEXT,
     note            TEXT,
-
     created_by      TEXT NOT NULL DEFAULT 'ui',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -30,9 +25,9 @@ CREATE INDEX IF NOT EXISTS idx_bonjur_override_bank_txn_id ON bonjur_dm.bank_txn
 CREATE INDEX IF NOT EXISTS idx_bonjur_override_lvl1_code ON bonjur_dm.bank_txn_override(lvl1_code);
 
 ------------------------------------------------------------
--- 审计日志表（记录人工匹配操作）
+-- 审计日志表
 ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS bonjur_dm.unclassified_resolution_log (
+CREATE TABLE IF NOT EXISTS bonjur_ops.unclassified_resolution_log (
     id                  BIGSERIAL PRIMARY KEY,
     bank_txn_id         BIGINT NOT NULL,
     selected_lvl1_code  TEXT NOT NULL,
@@ -42,46 +37,32 @@ CREATE TABLE IF NOT EXISTS bonjur_dm.unclassified_resolution_log (
     resolved_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_bonjur_resolve_log_bank_txn_id ON bonjur_dm.unclassified_resolution_log(bank_txn_id);
+CREATE INDEX IF NOT EXISTS idx_bonjur_resolve_log_bank_txn_id ON bonjur_ops.unclassified_resolution_log(bank_txn_id);
 
 ------------------------------------------------------------
--- 规则沉淀函数（UI 调用）
--- 将人工匹配结果写入 bank_rule_map（对未来文件立即生效）
+-- 规则沉淀函数（所有参数都有默认值，避免顺序问题）
 ------------------------------------------------------------
 CREATE OR REPLACE FUNCTION bonjur_cfg.settle_rule(
-    p_match_field TEXT,
-    p_match_value TEXT,
+    p_match_field TEXT DEFAULT NULL,
+    p_match_value TEXT DEFAULT NULL,
     p_match_type TEXT DEFAULT 'contains',
-    p_direction TEXT,
-    p_lvl1_code TEXT,
-    p_lvl2_code TEXT,
+    p_direction TEXT DEFAULT 'any',
+    p_lvl1_code TEXT DEFAULT NULL,
+    p_lvl2_code TEXT DEFAULT NULL,
     p_priority INT DEFAULT 100,
-    p_enabled BOOLEAN DEFAULT true
+    p_enabled BOOLEAN DEFAULT TRUE,
+    p_note TEXT DEFAULT NULL
 )
 RETURNS BIGINT AS $$
 DECLARE
     v_rule_id BIGINT;
 BEGIN
     INSERT INTO bonjur_cfg.bank_rule_map (
-        match_field,
-        match_value,
-        match_type,
-        direction,
-        lvl1_code,
-        lvl2_code,
-        priority,
-        enabled,
-        created_by
+        match_field, match_value, match_type, direction,
+        lvl1_code, lvl2_code, priority, enabled, note, created_by
     ) VALUES (
-        p_match_field,
-        p_match_value,
-        p_match_type,
-        p_direction,
-        p_lvl1_code,
-        p_lvl2_code,
-        p_priority,
-        p_enabled,
-        'ui'
+        p_match_field, p_match_value, p_match_type, p_direction,
+        p_lvl1_code, p_lvl2_code, p_priority, p_enabled, p_note, 'ui'
     )
     ON CONFLICT DO NOTHING
     RETURNING rule_id INTO v_rule_id;
@@ -91,59 +72,27 @@ END;
 $$ LANGUAGE plpgsql;
 
 ------------------------------------------------------------
--- 批量沉淀函数
-------------------------------------------------------------
-CREATE OR REPLACE FUNCTION bonjur_cfg.settle_rules_batch(
-    p_rules JSONB
-)
-RETURNS INT AS $$
-DECLARE
-    v_count INT := 0;
-    rec JSONB;
-BEGIN
-    FOR rec IN SELECT * FROM jsonb_array_elements(p_rules)
-    LOOP
-        PERFORM bonjur_cfg.settle_rule(
-            rec->>'match_field',
-            rec->>'match_value',
-            COALESCE(rec->>'match_type', 'contains'),
-            rec->>'direction',
-            rec->>'lvl1_code',
-            rec->>'lvl2_code',
-            COALESCE((rec->>'priority')::INT, 100),
-            COALESCE((rec->>'enabled')::BOOLEAN, true)
-        );
-        v_count := v_count + 1;
-    END LOOP;
-
-    RETURN v_count;
-END;
-$$ LANGUAGE plpgsql;
-
-------------------------------------------------------------
--- 验证：覆盖写回函数（写 override 审计日志，不参与分类）
+-- 覆盖写回函数
 ------------------------------------------------------------
 CREATE OR REPLACE FUNCTION bonjur_dm.upsert_bank_txn_override(
     p_bank_txn_id BIGINT,
     p_lvl1_code TEXT,
     p_lvl2_code TEXT,
-    p_note TEXT,
+    p_note TEXT DEFAULT NULL,
     p_created_by TEXT DEFAULT 'ui'
 )
 RETURNS VOID AS $$
 BEGIN
-    -- 写入 override（仅作为审计日志，不参与分类）
     INSERT INTO bonjur_dm.bank_txn_override (bank_txn_id, lvl1_code, lvl2_code, note, created_by)
     VALUES (p_bank_txn_id, p_lvl1_code, p_lvl2_code, p_note, p_created_by)
     ON CONFLICT (bank_txn_id) DO UPDATE SET
-        lvl1_code = excluded.lvl1_code,
-        lvl2_code = excluded.lvl2_code,
-        note = excluded.note,
+        lvl1_code = EXCLUDED.lvl1_code,
+        lvl2_code = EXCLUDED.lvl2_code,
+        note = EXCLUDED.note,
         updated_at = NOW();
 END;
 $$ LANGUAGE plpgsql;
 
--- 覆盖删除函数
 CREATE OR REPLACE FUNCTION bonjur_dm.delete_bank_txn_override(p_bank_txn_id BIGINT)
 RETURNS VOID AS $$
 BEGIN
@@ -152,10 +101,108 @@ END;
 $$ LANGUAGE plpgsql;
 
 ------------------------------------------------------------
--- 旧版函数/视图保留（兼容）
+-- 分类函数 v2（Bonjur）
 ------------------------------------------------------------
--- 旧版 v1 视图保留（兼容旧 UI）
-CREATE OR REPLACE VIEW bonjur_dm.v_bank_txn_classified AS
+DROP FUNCTION IF EXISTS bonjur_dm.fn_classify_bank_txn_v2(BIGINT) CASCADE;
+DROP TYPE IF EXISTS bonjur_dm.classify_result_v2 CASCADE;
+
+CREATE TYPE bonjur_dm.classify_result_v2 AS (
+    matched_rule_id   BIGINT,
+    lvl1_code         TEXT,
+    lvl2_code         TEXT,
+    classified_source TEXT  -- 'rule' | 'unclassified'
+);
+
+CREATE OR REPLACE FUNCTION bonjur_dm.fn_classify_bank_txn_v2(p_bank_txn_id BIGINT)
+RETURNS bonjur_dm.classify_result_v2
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_summary TEXT;
+    v_memo TEXT;
+    v_purpose TEXT;
+    v_counterparty_name TEXT;
+    v_in_amt NUMERIC;
+    v_out_amt NUMERIC;
+    v_rule_id BIGINT;
+    v_lvl1_code TEXT;
+    v_lvl2_code TEXT;
+    rec RECORD;
+BEGIN
+    SELECT t.summary, t.memo, t.purpose, t.counterparty_name, t.in_amt, t.out_amt
+    INTO v_summary, v_memo, v_purpose, v_counterparty_name, v_in_amt, v_out_amt
+    FROM bonjur_ods.bank_txn t
+    WHERE t.id = p_bank_txn_id;
+
+    -- Step 1: summary (contains)
+    IF v_summary IS NOT NULL AND LENGTH(TRIM(v_summary)) > 0 THEN
+        SELECT r.rule_id, r.lvl1_code, r.lvl2_code
+        INTO v_rule_id, v_lvl1_code, v_lvl2_code
+        FROM bonjur_cfg.bank_rule_map r
+        WHERE r.enabled = TRUE AND r.match_field = 'summary' AND r.match_type = 'contains'
+          AND (r.direction = 'any' OR (r.direction = 'in' AND v_in_amt > 0) OR (r.direction = 'out' AND v_out_amt > 0))
+          AND v_summary ILIKE '%' || r.match_value || '%'
+        ORDER BY r.priority ASC LIMIT 1;
+        IF FOUND THEN RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'); END IF;
+    END IF;
+
+    -- Step 2: memo (contains)
+    IF v_memo IS NOT NULL AND LENGTH(TRIM(v_memo)) > 0 THEN
+        SELECT r.rule_id, r.lvl1_code, r.lvl2_code
+        INTO v_rule_id, v_lvl1_code, v_lvl2_code
+        FROM bonjur_cfg.bank_rule_map r
+        WHERE r.enabled = TRUE AND r.match_field = 'memo' AND r.match_type = 'contains'
+          AND (r.direction = 'any' OR (r.direction = 'in' AND v_in_amt > 0) OR (r.direction = 'out' AND v_out_amt > 0))
+          AND v_memo ILIKE '%' || r.match_value || '%'
+        ORDER BY r.priority ASC LIMIT 1;
+        IF FOUND THEN RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'); END IF;
+    END IF;
+
+    -- Step 3: purpose (contains)
+    IF v_purpose IS NOT NULL AND LENGTH(TRIM(v_purpose)) > 0 THEN
+        SELECT r.rule_id, r.lvl1_code, r.lvl2_code
+        INTO v_rule_id, v_lvl1_code, v_lvl2_code
+        FROM bonjur_cfg.bank_rule_map r
+        WHERE r.enabled = TRUE AND r.match_field = 'purpose' AND r.match_type = 'contains'
+          AND (r.direction = 'any' OR (r.direction = 'in' AND v_in_amt > 0) OR (r.direction = 'out' AND v_out_amt > 0))
+          AND v_purpose ILIKE '%' || r.match_value || '%'
+        ORDER BY r.priority ASC LIMIT 1;
+        IF FOUND THEN RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'); END IF;
+    END IF;
+
+    -- Step 4: counterparty_name
+    IF v_counterparty_name IS NOT NULL AND LENGTH(TRIM(v_counterparty_name)) > 0 THEN
+        SELECT r.rule_id, r.lvl1_code, r.lvl2_code
+        INTO v_rule_id, v_lvl1_code, v_lvl2_code
+        FROM bonjur_cfg.bank_rule_map r
+        WHERE r.enabled = TRUE AND r.match_field = 'counterparty_name' AND r.match_type = 'contains'
+          AND LENGTH(r.match_value) >= 3
+          AND (r.direction = 'any' OR (r.direction = 'in' AND v_in_amt > 0) OR (r.direction = 'out' AND v_out_amt > 0))
+          AND v_counterparty_name ILIKE '%' || r.match_value || '%'
+        ORDER BY r.priority ASC LIMIT 1;
+        IF FOUND THEN RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'); END IF;
+
+        SELECT r.rule_id, r.lvl1_code, r.lvl2_code
+        INTO v_rule_id, v_lvl1_code, v_lvl2_code
+        FROM bonjur_cfg.bank_rule_map r
+        WHERE r.enabled = TRUE AND r.match_field = 'counterparty_name' AND r.match_type = 'exact'
+          AND (r.direction = 'any' OR (r.direction = 'in' AND v_in_amt > 0) OR (r.direction = 'out' AND v_out_amt > 0))
+          AND v_counterparty_name = r.match_value
+        ORDER BY r.priority ASC LIMIT 1;
+        IF FOUND THEN RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'); END IF;
+    END IF;
+
+    -- Step 5: unclassified
+    RETURN ROW(NULL::BIGINT, NULL::TEXT, NULL::TEXT, 'unclassified'::TEXT);
+END;
+$function$;
+
+------------------------------------------------------------
+-- 分类视图
+------------------------------------------------------------
+DROP VIEW IF EXISTS bonjur_dm.v_bank_txn_classified_v2 CASCADE;
+
+CREATE VIEW bonjur_dm.v_bank_txn_classified_v2 AS
 SELECT 
     t.id AS bank_txn_id,
     t.store_code,
@@ -166,10 +213,21 @@ SELECT
     t.purpose,
     t.in_amt,
     t.out_amt,
-    t.source_file_id,
-    -- 使用 v2 函数，但显示兼容字段名
     (bonjur_dm.fn_classify_bank_txn_v2(t.id)).matched_rule_id AS matched_rule_id,
     (bonjur_dm.fn_classify_bank_txn_v2(t.id)).lvl1_code AS lvl1_code,
     (bonjur_dm.fn_classify_bank_txn_v2(t.id)).lvl2_code AS lvl2_code,
-    (bonjur_dm.fn_classify_bank_txn_v2(t.id)).classified_source AS classified_source
-FROM bonjur_ods.bank_txn t;
+    (bonjur_dm.fn_classify_bank_txn_v2(t.id)).classified_source AS classified_source,
+    COALESCE(l1.lvl1_name, '（未分类）') AS lvl1_name,
+    COALESCE(l2.lvl2_name, NULL) AS lvl2_name,
+    t.source_file_id
+FROM bonjur_ods.bank_txn t
+LEFT JOIN yufeng_cfg.dim_category_lvl1 l1 
+  ON l1.lvl1_code = (bonjur_dm.fn_classify_bank_txn_v2(t.id)).lvl1_code
+LEFT JOIN yufeng_cfg.dim_category_lvl2 l2 
+  ON l2.lvl1_code = (bonjur_dm.fn_classify_bank_txn_v2(t.id)).lvl1_code
+  AND l2.lvl2_code = (bonjur_dm.fn_classify_bank_txn_v2(t.id)).lvl2_code;
+
+-- 兼容视图
+DROP VIEW IF EXISTS bonjur_dm.v_bank_txn_classified CASCADE;
+CREATE VIEW bonjur_dm.v_bank_txn_classified AS
+SELECT * FROM bonjur_dm.v_bank_txn_classified_v2;

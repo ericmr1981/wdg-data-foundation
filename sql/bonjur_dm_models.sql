@@ -1,12 +1,9 @@
--- Bonjur｜DM 模型（三张主表，对齐 Yufeng v2）
--- 执行日期：2026-03-25
--- 依赖：bonjur_ods.bank_txn, bonjur_dm.v_bank_txn_classified_v2, bonjur_ods.sales_monthly
--- 变更：使用 lvl1_code/lvl2_code 字段，共享 yufeng_cfg 字典
+-- Bonjur｜DM 模型 v2（使用 lvl1_code/lvl2_code，共享 yufeng_cfg 字典）
 
 ------------------------------------------------------------
 -- revenue_monthly（收入月报）
 ------------------------------------------------------------
-DROP VIEW IF EXISTS bonjur_dm.revenue_monthly;
+DROP VIEW IF EXISTS bonjur_dm.revenue_monthly CASCADE;
 
 CREATE VIEW bonjur_dm.revenue_monthly AS
 WITH bank_revenue AS (
@@ -38,25 +35,43 @@ ORDER BY COALESCE(b.month, s.month) DESC;
 ------------------------------------------------------------
 -- expense_monthly（费用月报）
 ------------------------------------------------------------
-DROP VIEW IF EXISTS bonjur_dm.expense_monthly;
+DROP VIEW IF EXISTS bonjur_dm.expense_monthly CASCADE;
 
 CREATE VIEW bonjur_dm.expense_monthly AS
 SELECT 
     date_trunc('month', t.txn_time)::date AS month,
-    COALESCE(c.lvl1, '（未分类）') AS lvl1,
-    COALESCE(c.lvl2, NULL) AS lvl2,
+    COALESCE(c.lvl1_name, '（未分类）') AS lvl1_name,
+    c.lvl1_code,
+    COALESCE(c.lvl2_name, NULL) AS lvl2_name,
+    c.lvl2_code,
     SUM(COALESCE(t.out_amt, 0)) AS total_out_amt,
     COUNT(*) AS txn_rows
 FROM bonjur_ods.bank_txn t
 INNER JOIN bonjur_dm.v_bank_txn_classified_v2 c ON t.id = c.bank_txn_id
 WHERE t.txn_time IS NOT NULL AND t.out_amt > 0
-GROUP BY date_trunc('month', t.txn_time)::date, c.lvl1, c.lvl2
+GROUP BY date_trunc('month', t.txn_time)::date, c.lvl1_code, c.lvl1_name, c.lvl2_code, c.lvl2_name
+ORDER BY month DESC, total_out_amt DESC;
+
+------------------------------------------------------------
+-- v_expense_lvl1_monthly（一级费用趋势）
+------------------------------------------------------------
+DROP VIEW IF EXISTS bonjur_dm.v_expense_lvl1_monthly CASCADE;
+
+CREATE VIEW bonjur_dm.v_expense_lvl1_monthly AS
+SELECT 
+    month,
+    lvl1_code,
+    lvl1_name,
+    SUM(total_out_amt) AS total_out_amt,
+    SUM(txn_rows) AS txn_rows
+FROM bonjur_dm.expense_monthly
+GROUP BY month, lvl1_code, lvl1_name
 ORDER BY month DESC, total_out_amt DESC;
 
 ------------------------------------------------------------
 -- profit_monthly（利润月报）
 ------------------------------------------------------------
-DROP VIEW IF EXISTS bonjur_dm.profit_monthly;
+DROP VIEW IF EXISTS bonjur_dm.profit_monthly CASCADE;
 
 CREATE VIEW bonjur_dm.profit_monthly AS
 WITH revenue AS (
@@ -66,18 +81,18 @@ expense AS (
     SELECT 
         month,
         SUM(total_out_amt) AS total_expense_amt,
-        SUM(CASE WHEN lvl1 = '材料采购' THEN total_out_amt ELSE 0 END) AS material_purchase_amt
+        SUM(CASE WHEN lvl1_code = 'MATERIAL' THEN total_out_amt ELSE 0 END) AS material_purchase_amt
     FROM bonjur_dm.expense_monthly
     GROUP BY month
 ),
 cashflow AS (
     SELECT 
-        month,
+        date_trunc('month', txn_time)::date AS month,
         SUM(COALESCE(in_amt, 0)) AS total_in_amt,
         SUM(COALESCE(out_amt, 0)) AS total_out_amt
     FROM bonjur_ods.bank_txn
     WHERE txn_time IS NOT NULL
-    GROUP BY month
+    GROUP BY date_trunc('month', txn_time)::date
 )
 SELECT 
     COALESCE(r.month, e.month) AS month,
@@ -101,12 +116,3 @@ ORDER BY COALESCE(r.month, e.month) DESC;
 -- 验证
 ------------------------------------------------------------
 SELECT 'DM Views Created' AS status;
-
--- 测试 revenue_monthly
-SELECT * FROM bonjur_dm.revenue_monthly LIMIT 5;
-
--- 测试 expense_monthly
-SELECT * FROM bonjur_dm.expense_monthly LIMIT 5;
-
--- 测试 profit_monthly
-SELECT * FROM bonjur_dm.profit_monthly LIMIT 5;

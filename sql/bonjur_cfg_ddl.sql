@@ -1,30 +1,50 @@
--- Bonjur｜CFG DDL（一期：银行流水关键词分类规则）
--- 说明：当前 Bonjur 可能尚未接入 bank_txn，但先把规则表结构准备好，便于 UI 复用。
+-- Bonjur｜CFG DDL（v2：bank_rule_map 使用 lvl1_code/lvl2_code）
 
-create schema if not exists bonjur_cfg;
+CREATE SCHEMA IF NOT EXISTS bonjur_cfg;
 
-create table if not exists bonjur_cfg.bank_rule_map (
-  rule_id      bigserial primary key,
-  enabled      boolean not null default true,
-  priority     int not null,
+CREATE TABLE IF NOT EXISTS bonjur_cfg.bank_rule_map (
+  rule_id      BIGSERIAL PRIMARY KEY,
+  enabled      BOOLEAN NOT NULL DEFAULT TRUE,
+  priority     INT NOT NULL,
 
-  match_field  text not null,   -- counterparty_name | summary | memo | purpose | any
-  match_type   text not null,   -- contains | regex
-  match_value  text not null,
+  match_field  TEXT NOT NULL,   -- counterparty_name | summary | memo | purpose
+  match_type   TEXT NOT NULL,   -- contains | exact | regex
+  match_value  TEXT NOT NULL,
 
-  -- 支持双重匹配（AND），与 yufeng_cfg 对齐
-  match_field2 text,
-  match_value2 text,
+  -- 双条件 AND 匹配（可选）
+  match_field2 TEXT,
+  match_value2 TEXT,
 
-  direction    text not null default 'any', -- in | out | any
+  direction    TEXT NOT NULL DEFAULT 'any', -- in | out | any
 
-  lvl1         text not null,
-  lvl2         text,
-  note         text,
+  lvl1_code    TEXT NOT NULL,
+  lvl2_code    TEXT,
+  note         TEXT,
 
-  created_at   timestamptz not null default now(),
-  updated_at   timestamptz not null default now()
+  created_by   TEXT NOT NULL DEFAULT 'seed',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-create index if not exists idx_bonjur_bank_rule_enabled_priority on bonjur_cfg.bank_rule_map(enabled, priority);
-create index if not exists idx_bonjur_bank_rule_lvl1 on bonjur_cfg.bank_rule_map(lvl1);
+-- 兼容升级：补齐新列（不删旧列）
+ALTER TABLE bonjur_cfg.bank_rule_map
+  ADD COLUMN IF NOT EXISTS lvl1_code TEXT,
+  ADD COLUMN IF NOT EXISTS lvl2_code TEXT,
+  ADD COLUMN IF NOT EXISTS created_by TEXT,
+  ADD COLUMN IF NOT EXISTS match_field2 TEXT,
+  ADD COLUMN IF NOT EXISTS match_value2 TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_bonjur_bank_rule_enabled_priority
+  ON bonjur_cfg.bank_rule_map(enabled, priority);
+
+CREATE INDEX IF NOT EXISTS idx_bonjur_bank_rule_match
+  ON bonjur_cfg.bank_rule_map(match_field, match_type, match_value)
+  WHERE enabled = TRUE;
+
+CREATE INDEX IF NOT EXISTS idx_bonjur_bank_rule_lvl1_code
+  ON bonjur_cfg.bank_rule_map(lvl1_code)
+  WHERE enabled = TRUE;
+
+CREATE INDEX IF NOT EXISTS idx_bonjur_bank_rule_match2
+  ON bonjur_cfg.bank_rule_map(match_field2, match_value2)
+  WHERE enabled = TRUE AND match_field2 IS NOT NULL;
