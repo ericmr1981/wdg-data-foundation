@@ -15,6 +15,9 @@ mb_key_*.md
 inputs/**
 !inputs/README.md
 
+# local exports/imports
+ops/imports/
+
 # harness backups
 .harness-backup-*/
 

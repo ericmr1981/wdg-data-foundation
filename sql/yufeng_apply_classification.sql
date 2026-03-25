@@ -118,7 +118,7 @@ BEGIN
     LIMIT 1;
     
     IF FOUND THEN
-      RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule');
+      RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'::TEXT);
     END IF;
   END IF;
 
@@ -140,7 +140,7 @@ BEGIN
     LIMIT 1;
     
     IF FOUND THEN
-      RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule');
+      RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'::TEXT);
     END IF;
   END IF;
 
@@ -162,7 +162,7 @@ BEGIN
     LIMIT 1;
     
     IF FOUND THEN
-      RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule');
+      RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'::TEXT);
     END IF;
   END IF;
 
@@ -186,7 +186,7 @@ BEGIN
     LIMIT 1;
     
     IF FOUND THEN
-      RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule');
+      RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'::TEXT);
     END IF;
     
     -- 4b: exact
@@ -206,7 +206,7 @@ BEGIN
     LIMIT 1;
     
     IF FOUND THEN
-      RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule');
+      RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'::TEXT);
     END IF;
   END IF;
 

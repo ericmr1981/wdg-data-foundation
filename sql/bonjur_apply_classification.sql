@@ -143,7 +143,7 @@ BEGIN
           AND (r.direction = 'any' OR (r.direction = 'in' AND v_in_amt > 0) OR (r.direction = 'out' AND v_out_amt > 0))
           AND v_summary ILIKE '%' || r.match_value || '%'
         ORDER BY r.priority ASC LIMIT 1;
-        IF FOUND THEN RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'); END IF;
+        IF FOUND THEN RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'::TEXT); END IF;
     END IF;
 
     -- Step 2: memo (contains)
@@ -155,7 +155,7 @@ BEGIN
           AND (r.direction = 'any' OR (r.direction = 'in' AND v_in_amt > 0) OR (r.direction = 'out' AND v_out_amt > 0))
           AND v_memo ILIKE '%' || r.match_value || '%'
         ORDER BY r.priority ASC LIMIT 1;
-        IF FOUND THEN RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'); END IF;
+        IF FOUND THEN RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'::TEXT); END IF;
     END IF;
 
     -- Step 3: purpose (contains)
@@ -167,7 +167,7 @@ BEGIN
           AND (r.direction = 'any' OR (r.direction = 'in' AND v_in_amt > 0) OR (r.direction = 'out' AND v_out_amt > 0))
           AND v_purpose ILIKE '%' || r.match_value || '%'
         ORDER BY r.priority ASC LIMIT 1;
-        IF FOUND THEN RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'); END IF;
+        IF FOUND THEN RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'::TEXT); END IF;
     END IF;
 
     -- Step 4: counterparty_name
@@ -180,7 +180,7 @@ BEGIN
           AND (r.direction = 'any' OR (r.direction = 'in' AND v_in_amt > 0) OR (r.direction = 'out' AND v_out_amt > 0))
           AND v_counterparty_name ILIKE '%' || r.match_value || '%'
         ORDER BY r.priority ASC LIMIT 1;
-        IF FOUND THEN RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'); END IF;
+        IF FOUND THEN RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'::TEXT); END IF;
 
         SELECT r.rule_id, r.lvl1_code, r.lvl2_code
         INTO v_rule_id, v_lvl1_code, v_lvl2_code
@@ -189,7 +189,7 @@ BEGIN
           AND (r.direction = 'any' OR (r.direction = 'in' AND v_in_amt > 0) OR (r.direction = 'out' AND v_out_amt > 0))
           AND v_counterparty_name = r.match_value
         ORDER BY r.priority ASC LIMIT 1;
-        IF FOUND THEN RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'); END IF;
+        IF FOUND THEN RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, 'rule'::TEXT); END IF;
     END IF;
 
     -- Step 5: unclassified
