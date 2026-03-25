@@ -205,22 +205,65 @@ def read_bank_excel(file_path: str) -> pd.DataFrame:
     - 自动识别表头行
     - 转换列名
     - 清洗数据
+
+    兼容：部分银行导出的 xlsx 的 worksheet dimension 可能错误（例如 ref="A1"），
+    会导致 pandas.read_excel 只读到第一格。[典型症状：只能读到 "[HISTORYDETAIL]" ]
+
+    为保证稳定性，这里优先用 openpyxl 逐行读取，再转成 DataFrame。
     """
-    # 读取文件，先找到表头行
-    df_raw = pd.read_excel(file_path, header=None, nrows=10)
 
-    # 找到表头行（包含"交易时间"的行）
+    def _norm(v) -> str:
+        if v is None:
+            return ""
+        return str(v).strip()
+
+    # 1) 先用 openpyxl 逐行读（不依赖 dimension）
+    rows: list[list[object]] = []
+    try:
+        from openpyxl import load_workbook
+
+        wb = load_workbook(file_path, data_only=True)
+        ws = wb.active
+
+        for idx, row in enumerate(ws.iter_rows(values_only=True), start=1):
+            rows.append(list(row))
+            # safety cap
+            if idx >= 20000:
+                break
+    except Exception:
+        rows = []
+
     header_row = None
-    for i, row in df_raw.iterrows():
-        if "交易时间" in row.values or "时间" in str(row.values):
-            header_row = i
-            break
+    if rows:
+        for i, row in enumerate(rows[:80]):
+            vals = [_norm(v) for v in row]
+            if any(v == "交易时间" for v in vals):
+                header_row = i
+                break
 
+    # 2) fallback：如果 openpyxl 读取失败，再尝试 pandas（普通 xlsx/xls）
     if header_row is None:
-        raise ValueError(f"无法识别表头行: {file_path}")
+        df_raw = pd.read_excel(file_path, header=None, nrows=10)
+        for i, row in df_raw.iterrows():
+            if "交易时间" in row.values:
+                header_row = i
+                break
 
-    # 读取数据，跳过表头前的行
-    df = pd.read_excel(file_path, header=header_row)
+        if header_row is None:
+            raise ValueError(f"无法识别表头行: {file_path}")
+
+        df = pd.read_excel(file_path, header=header_row)
+    else:
+        header = [_norm(v) for v in rows[header_row]]
+        # trim trailing empty header cols
+        last_non_empty = 0
+        for j, h in enumerate(header):
+            if h:
+                last_non_empty = j
+        header = header[: last_non_empty + 1]
+
+        data_rows = [r[: last_non_empty + 1] for r in rows[header_row + 1 :]]
+        df = pd.DataFrame(data_rows, columns=header)
 
     # 去除全空行
     df = df.dropna(how="all")

@@ -341,6 +341,13 @@ def create_ops_logger(
     Returns:
         OpsLogger 实例或 None
     """
+    # month 字段在 DB 里是 date；允许传 YYYY-MM，但需要转成 YYYY-MM-01
+    if month and isinstance(month, str):
+        m = month.strip()
+        if len(m) == 7 and m[4] == "-":
+            # "2026-03" -> "2026-03-01"
+            month = f"{m}-01"
+
     try:
         return OpsLogger(
             brand_code=brand_code,
