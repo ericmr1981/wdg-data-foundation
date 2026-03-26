@@ -1,0 +1,8 @@
+[
+  {
+    "id": "F-001",
+    "title": "TODO: first feature",
+    "passes": false,
+    "verify": "TODO: command or manual oracle"
+  }
+]
