@@ -11,7 +11,7 @@
 --   - bank_revenue_amt: 来自 v_bank_txn_classified 中 lvl1_code='REV_BIZ' 的 in_amt 汇总
 --   - diff_amt: bank_revenue_amt - biz_revenue_amt（业务-银行差异）
 ------------------------------------------------------------
-drop view if exists yufeng_dm.revenue_monthly;
+drop view if exists yufeng_dm.revenue_monthly cascade;
 
 create view yufeng_dm.revenue_monthly as
 select
@@ -46,7 +46,7 @@ order by date_trunc('month', t.txn_time)::date desc;
 --   - 排除 unclassified 可单独作为一类（lvl1='未分类'）
 --   - 未分类金额单独显示，便于监控覆盖率
 ------------------------------------------------------------
-drop view if exists yufeng_dm.expense_monthly;
+drop view if exists yufeng_dm.expense_monthly cascade;
 
 create view yufeng_dm.expense_monthly as
 select
@@ -80,7 +80,7 @@ order by month desc, total_out_amt desc;
 --   - 从 expense_monthly 汇总到 lvl1 级别
 --   - 通过 dim_category_lvl1 补齐展示名称/排序
 ------------------------------------------------------------
-drop view if exists yufeng_dm.v_expense_lvl1_monthly;
+drop view if exists yufeng_dm.v_expense_lvl1_monthly cascade;
 
 create view yufeng_dm.v_expense_lvl1_monthly as
 select
@@ -100,15 +100,16 @@ order by e.month desc, sort_order, total_out_amt desc;
 
 ------------------------------------------------------------
 -- T5.3 利润月报（profit_monthly）
--- 输出：month, store_code, bank_revenue_amt, total_in_amt, total_expense_amt, build_expense_amt,
+-- 输出：month, store_code, bank_revenue_amt, total_in_amt,
+--      total_expense_amt(含营建), build_expense_amt, expense_ex_build_amt(不含营建),
 --      profit_amt, cashflow_amt, material_purchase_amt, gross_profit_amt, gross_margin_rate,
 --      biz_revenue_amt, diff_amt
 -- 说明：
---   - profit_amt（新口径） = 营业收入 - 支出总金额 + 营建费用
+--   - profit_amt = 营业收入 - 支出总金额（不包括营建费用）
 --   - total_in_amt / total_expense_amt：完全按银行流水金额汇总（与分类无关）
 --   - gross_margin_rate = (营业收入 - 材料采购) / 营业收入
 ------------------------------------------------------------
-drop view if exists yufeng_dm.profit_monthly;
+drop view if exists yufeng_dm.profit_monthly cascade;
 
 create view yufeng_dm.profit_monthly as
 with agg as (
@@ -125,8 +126,11 @@ with agg as (
         -- 支出总金额：所有 out_amt>0（与分类无关，包含 unclassified）
         coalesce(sum(case when coalesce(t.out_amt,0) > 0 then coalesce(t.out_amt,0) else 0 end), 0) as total_expense_amt,
 
-        -- 营建费用（BUILD）：用于新利润口径（把营建费用加回去）
+        -- 营建费用（BUILD）
         coalesce(sum(case when c.lvl1_code = 'BUILD' and coalesce(t.out_amt,0) > 0 then coalesce(t.out_amt,0) else 0 end), 0) as build_expense_amt,
+
+        -- 支出总金额（不含营建）
+        coalesce(sum(case when (c.lvl1_code is distinct from 'BUILD') and coalesce(t.out_amt,0) > 0 then coalesce(t.out_amt,0) else 0 end), 0) as expense_ex_build_amt,
 
         -- 材料采购（用于毛利率）
         coalesce(sum(case when c.lvl1_code = 'MATERIAL' and coalesce(t.out_amt,0) > 0 then coalesce(t.out_amt,0) else 0 end), 0) as material_purchase_amt
@@ -143,9 +147,10 @@ select
     total_in_amt,
     total_expense_amt,
     build_expense_amt,
+    expense_ex_build_amt,
 
-    -- 利润（新口径） = 营业收入 - 支出总金额 + 营建费用
-    bank_revenue_amt - total_expense_amt + build_expense_amt as profit_amt,
+    -- 利润 = 营业收入 - 支出总金额（不含营建）
+    bank_revenue_amt - expense_ex_build_amt as profit_amt,
 
     -- 当月现金流 = 收入总金额 - 支出总金额
     total_in_amt - total_expense_amt as cashflow_amt,

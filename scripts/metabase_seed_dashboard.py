@@ -2,8 +2,15 @@
 """Seed Metabase Questions + Dashboard for 榆枫与山 via API key (X-Api-Key).
 
 Usage:
+  # Option A (recommended): API key
   export METABASE_URL=http://127.0.0.1:8082
   export METABASE_API_KEY='...'
+  python3 scripts/metabase_seed_dashboard.py
+
+  # Option B (local/dev): username + password (script will create a session)
+  export METABASE_URL=http://localhost:3001
+  export METABASE_USER='demo@metabase.com'
+  export METABASE_PASSWORD='demo123456'
   python3 scripts/metabase_seed_dashboard.py
 
 Design goals
@@ -26,11 +33,46 @@ import requests
 
 MB_URL = os.environ.get("METABASE_URL", "http://localhost:3000").rstrip("/")
 MB_KEY = os.environ.get("METABASE_API_KEY")
+MB_USER = os.environ.get("METABASE_USER")
+MB_PASSWORD = os.environ.get("METABASE_PASSWORD")
 
-HEADERS = {
-    "X-Api-Key": MB_KEY or "",
-    "Content-Type": "application/json",
-}
+
+def build_headers() -> dict:
+    base = {"Content-Type": "application/json"}
+
+    # Prefer API key when available.
+    if MB_KEY:
+        return {**base, "X-Api-Key": MB_KEY}
+
+    # Fall back to session auth (local/dev convenience).
+    user = MB_USER
+    pwd = MB_PASSWORD
+
+    # Safe default only for localhost dev.
+    if not user and (MB_URL.startswith("http://localhost") or MB_URL.startswith("http://127.0.0.1")):
+        user = "demo@metabase.com"
+        pwd = pwd or "demo123456"
+
+    if not user or not pwd:
+        die("METABASE_API_KEY or METABASE_USER/METABASE_PASSWORD is required")
+
+    r = requests.post(
+        MB_URL + "/api/session",
+        headers=base,
+        data=json.dumps({"username": user, "password": pwd}),
+        timeout=30,
+    )
+    if r.status_code >= 400:
+        raise RuntimeError(f"POST /api/session -> {r.status_code}: {r.text[:800]}")
+
+    sid = (r.json() or {}).get("id")
+    if not sid:
+        raise RuntimeError("Metabase /api/session did not return session id")
+
+    return {**base, "X-Metabase-Session": sid}
+
+
+HEADERS = build_headers()
 
 
 def die(msg: str) -> "NoReturn":  # type: ignore[name-defined]
@@ -94,13 +136,14 @@ def search_one(model: str, name: str) -> Optional[dict]:
 # Stable parameter UUIDs (dashboard + template tags)
 PID_MONTH = "00000000-0000-0000-0000-000000000001"
 PID_STORE = "00000000-0000-0000-0000-000000000002"
-PID_LVL1 = "00000000-0000-0000-0000-000000000003"  # dashboard 一级
-PID_LVL2 = "00000000-0000-0000-0000-000000000004"  # dashboard 二级
+
+# Dashboard filters (as requested)
+PID_EXP_LVL1 = "00000000-0000-0000-0000-000000000003"  # dashboard 支出一级
+PID_INC_LVL1 = "00000000-0000-0000-0000-000000000004"  # dashboard 收入一级
 
 # Card template-tag UUIDs (for reproducible mappings)
 TAG_EXP_LVL1 = "00000000-0000-0000-0000-00000000A001"
 TAG_INC_LVL1 = "00000000-0000-0000-0000-00000000A002"
-TAG_LVL2 = "00000000-0000-0000-0000-00000000B002"
 
 
 def card_payload(*, name: str, database_id: int, sql: str, description: str, display: str, viz: dict, template_tags: dict, parameters: list[dict]) -> dict:
@@ -210,9 +253,6 @@ def mp(card_id: int, parameter_id: str, tag_name: str) -> dict:
 
 
 def main() -> None:
-    if not MB_KEY:
-        die("METABASE_API_KEY is required")
-
     me = mb_get("/api/user/current")
     if not me.get("is_superuser"):
         print("WARN: api key user is not superuser; may lack permissions")
@@ -228,7 +268,8 @@ def main() -> None:
   SELECT
     to_char(t.txn_time, 'YYYY-MM') AS month,
     t.store_code,
-    c.lvl1,
+    c.lvl1_name AS lvl1_name,
+    c.classified_source,
     COALESCE(t.in_amt, 0)  AS in_amt,
     COALESCE(t.out_amt, 0) AS out_amt
   FROM yufeng_ods.bank_txn t
@@ -243,7 +284,7 @@ profit_agg AS (
   SELECT
     COALESCE(SUM(p.bank_revenue_amt), 0) AS in_biz,
     COALESCE(SUM(p.total_in_amt), 0) AS total_in_amt,
-    COALESCE(SUM(p.total_expense_amt), 0) AS total_out,
+    COALESCE(SUM(p.expense_ex_build_amt), 0) AS total_out,
     COALESCE(SUM(p.profit_amt), 0) AS profit_amt,
     COALESCE(SUM(p.cashflow_amt), 0) AS cashflow_amt,
     COALESCE(SUM(p.material_purchase_amt), 0) AS material_purchase_amt,
@@ -267,17 +308,17 @@ agg AS (
     -- 当月现金流（综合时为多月合计）
     MAX(profit_agg.cashflow_amt) AS cashflow_amt,
 
-    COALESCE(SUM(in_amt)  FILTER (WHERE in_amt  > 0 AND lvl1='其他收入'), 0) AS in_other,
+    COALESCE(SUM(in_amt)  FILTER (WHERE in_amt  > 0 AND lvl1_name='其他收入'), 0) AS in_other,
 
-    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='人力'), 0) AS out_hr,
-    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='租金物业'), 0) AS out_rent,
-    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='运费'), 0) AS out_ship,
-    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='管理费用'), 0) AS out_admin,
-    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='材料采购'), 0) AS out_material,
-    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='营建费用'), 0) AS out_build,
-    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='营销费用'), 0) AS out_mkt,
-    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='其他费用'), 0) AS out_otherexp,
-    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1='未分类'), 0) AS out_unclassified,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1_name='人力'), 0) AS out_hr,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1_name='租金物业'), 0) AS out_rent,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1_name='运费'), 0) AS out_ship,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1_name='管理费用'), 0) AS out_admin,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1_name='材料采购'), 0) AS out_material,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1_name='营建费用'), 0) AS out_build,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1_name='营销费用'), 0) AS out_mkt,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1_name='其他费用'), 0) AS out_otherexp,
+    COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND classified_source='unclassified'), 0) AS out_unclassified,
 
     MAX(profit_agg.profit_amt) AS profit_amt,
     MAX(profit_agg.gross_margin_rate) AS gross_margin_rate
@@ -290,7 +331,7 @@ rows AS (
   UNION ALL SELECT 12,'收入','其他收入', in_other, COALESCE(in_other/NULLIF(total_in,0), 0), NULL, '其他收入' FROM agg
 
   -- 支出总计：不展示占比
-  UNION ALL SELECT 20,'支出','支出总金额', total_out, NULL::numeric, NULL::text, NULL::text FROM agg
+  UNION ALL SELECT 20,'支出','支出总金额(不含营建)', total_out, NULL::numeric, NULL::text, NULL::text FROM agg
   UNION ALL SELECT 21,'支出','人力',     out_hr,          COALESCE(out_hr/NULLIF(total_out,0), 0), '人力', NULL FROM agg
   UNION ALL SELECT 22,'支出','租金物业', out_rent,        COALESCE(out_rent/NULLIF(total_out,0), 0), '租金物业', NULL FROM agg
   UNION ALL SELECT 23,'支出','运费',     out_ship,        COALESCE(out_ship/NULLIF(total_out,0), 0), '运费', NULL FROM agg
@@ -326,20 +367,16 @@ ORDER BY ord;"""
         template_tags={
             "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date"},
             "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
-            "expense_lvl1": {"id": TAG_EXP_LVL1, "name": "expense_lvl1", "display-name": "Expense Lvl1", "type": "text"},
-            "income_lvl1": {"id": TAG_INC_LVL1, "name": "income_lvl1", "display-name": "Income Lvl1", "type": "text"},
         },
         parameters=[
             {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "target": ["variable", ["template-tag", "month_date"]]},
             {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "target": ["variable", ["template-tag", "store_code"]]},
-            {"id": TAG_EXP_LVL1, "type": "string/=", "name": "Expense Lvl1", "slug": "expense_lvl1", "target": ["variable", ["template-tag", "expense_lvl1"]]},
-            {"id": TAG_INC_LVL1, "type": "string/=", "name": "Income Lvl1", "slug": "income_lvl1", "target": ["variable", ["template-tag", "income_lvl1"]]},
         ],
     )
 
     # Card 41: 支出一级
     sql_41 = r"""SELECT
-  c.lvl1 AS "类别",
+  c.lvl1_name AS "类别",
   SUM(COALESCE(t.out_amt,0)) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 JOIN yufeng_dm.v_bank_txn_classified c
@@ -349,7 +386,7 @@ WHERE t.txn_time IS NOT NULL
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   AND COALESCE(t.out_amt,0) > 0
   [[ AND t.store_code = {{store_code}} ]]
-GROUP BY c.lvl1
+GROUP BY c.lvl1_name
 ORDER BY "金额(元)" DESC;"""
 
     card41_id = upsert_card(
@@ -371,7 +408,7 @@ ORDER BY "金额(元)" DESC;"""
 
     # Card 42: 支出二级（含 一级/二级 筛选）
     sql_42 = r"""SELECT
-  COALESCE(NULLIF(c.lvl2,''), '（未填）') AS "类别",
+  COALESCE(NULLIF(c.lvl2_name,''), '（未填）') AS "类别",
   SUM(COALESCE(t.out_amt,0)) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 JOIN yufeng_dm.v_bank_txn_classified c
@@ -381,35 +418,32 @@ WHERE t.txn_time IS NOT NULL
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   AND COALESCE(t.out_amt,0) > 0
   [[ AND t.store_code = {{store_code}} ]]
-  [[ AND c.lvl1 = {{expense_lvl1}} ]]
-  [[ AND c.lvl2 = {{lvl2}} ]]
-GROUP BY COALESCE(NULLIF(c.lvl2,''), '（未填）')
+  [[ AND c.lvl1_name = {{expense_lvl1}} ]]
+GROUP BY COALESCE(NULLIF(c.lvl2_name,''), '（未填）')
 ORDER BY "金额(元)" DESC;"""
 
     card42_id = upsert_card(
         name="Yufeng｜支出二级分类（饼图）",
         database_id=db_id,
         sql=sql_42,
-        description="支出二级分类饼图（类别+金额）；支持一级/二级筛选。",
+        description="支出二级分类饼图（类别+金额）；支持支出一级筛选。",
         display="pie",
         visualization_settings={"pie.show_values": True, "pie.value_formatting": "currency"},
         template_tags={
             "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date"},
             "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
             "expense_lvl1": {"id": TAG_EXP_LVL1, "name": "expense_lvl1", "display-name": "Expense Lvl1", "type": "text"},
-            "lvl2": {"id": TAG_LVL2, "name": "lvl2", "display-name": "Lvl2", "type": "text"},
         },
         parameters=[
             {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "target": ["variable", ["template-tag", "month_date"]]},
             {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "target": ["variable", ["template-tag", "store_code"]]},
             {"id": TAG_EXP_LVL1, "type": "string/=", "name": "Expense Lvl1", "slug": "expense_lvl1", "target": ["variable", ["template-tag", "expense_lvl1"]]},
-            {"id": TAG_LVL2, "type": "string/=", "name": "Lvl2", "slug": "lvl2", "target": ["variable", ["template-tag", "lvl2"]]},
         ],
     )
 
     # Card 43: 收入二级（含 一级/二级 筛选）
     sql_43 = r"""SELECT
-  COALESCE(NULLIF(c.lvl2,''), '（未填）') AS "类别",
+  COALESCE(NULLIF(c.lvl2_name,''), '（未填）') AS "类别",
   SUM(COALESCE(t.in_amt,0)) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 JOIN yufeng_dm.v_bank_txn_classified c
@@ -419,29 +453,26 @@ WHERE t.txn_time IS NOT NULL
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   AND COALESCE(t.in_amt,0) > 0
   [[ AND t.store_code = {{store_code}} ]]
-  [[ AND c.lvl1 = {{income_lvl1}} ]]
-  [[ AND c.lvl2 = {{lvl2}} ]]
-GROUP BY COALESCE(NULLIF(c.lvl2,''), '（未填）')
+  [[ AND c.lvl1_name = {{income_lvl1}} ]]
+GROUP BY COALESCE(NULLIF(c.lvl2_name,''), '（未填）')
 ORDER BY "金额(元)" DESC;"""
 
     card43_id = upsert_card(
         name="Yufeng｜收入二级分类（柱状图）",
         database_id=db_id,
         sql=sql_43,
-        description="收入二级分类柱状图（类别+金额）；支持一级/二级筛选。",
+        description="收入二级分类柱状图（类别+金额）；支持收入一级筛选。",
         display="bar",
         visualization_settings={"graph.show_values": True, "graph.value_formatting": "currency"},
         template_tags={
             "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date"},
             "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
             "income_lvl1": {"id": TAG_INC_LVL1, "name": "income_lvl1", "display-name": "Income Lvl1", "type": "text"},
-            "lvl2": {"id": TAG_LVL2, "name": "lvl2", "display-name": "Lvl2", "type": "text"},
         },
         parameters=[
             {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "target": ["variable", ["template-tag", "month_date"]]},
             {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "target": ["variable", ["template-tag", "store_code"]]},
             {"id": TAG_INC_LVL1, "type": "string/=", "name": "Income Lvl1", "slug": "income_lvl1", "target": ["variable", ["template-tag", "income_lvl1"]]},
-            {"id": TAG_LVL2, "type": "string/=", "name": "Lvl2", "slug": "lvl2", "target": ["variable", ["template-tag", "lvl2"]]},
         ],
     )
 
@@ -494,7 +525,7 @@ ORDER BY month;"""
     # Card 46: 支出一级分类趋势图（按月，多条线）
     sql_46 = r"""SELECT
   date_trunc('month', t.txn_time)::date AS "月份",
-  COALESCE(c.lvl1, '（未分类）') AS "一级分类",
+  COALESCE(c.lvl1_name, '（未分类）') AS "一级分类",
   ROUND(SUM(COALESCE(t.out_amt, 0)), 2) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 LEFT JOIN yufeng_dm.v_bank_txn_classified c
@@ -521,17 +552,81 @@ ORDER BY 1, 2;"""
     )
 
     # -----------------
+    # Options cards (for dropdown filters)
+    # -----------------
+
+    store_options_id = upsert_card(
+        name="Yufeng｜门店下拉选项",
+        database_id=db_id,
+        sql=r"""SELECT store_code, store_name
+FROM yufeng_cfg.dim_store
+ORDER BY COALESCE(sort_order, 9999), store_code;""",
+        description="Dashboard filter options: store_code + store_name",
+        display="table",
+    )
+
+    # -----------------
     # Dashboard
     # -----------------
 
     dash_name = "榆枫与山｜经营看板"
-    dash_desc = "榆枫与山：收支总揽/支出一级/支出二级/收入二级 + 营业收入vs支出（不含营建）+ 支出一级分类趋势。统一筛选：月/门店/一级/二级。"
+    dash_desc = "榆枫与山：收支总揽/支出一级/支出二级/收入二级 + 营业收入vs支出（不含营建）+ 支出一级分类趋势。筛选：月（按月）/门店（下拉）/支出一级/收入一级。"
 
     dash_params = [
-        {"id": PID_MONTH, "name": "Month", "slug": "month_date", "type": "date/single", "sectionId": "date", "required": False},
-        {"id": PID_STORE, "name": "门店", "slug": "store_code", "type": "string/=", "sectionId": "string", "required": False},
-        {"id": PID_LVL1, "name": "一级", "slug": "lvl1", "type": "string/=", "sectionId": "string", "required": False},
-        {"id": PID_LVL2, "name": "二级", "slug": "lvl2", "type": "string/=", "sectionId": "string", "required": False},
+        # 1) Month: month-only picker
+        {"id": PID_MONTH, "name": "Month", "slug": "month_date", "type": "date/month-year", "sectionId": "date", "required": False},
+
+        # 2) Store: dropdown with store names (static list for now)
+        {
+            "id": PID_STORE,
+            "name": "门店",
+            "slug": "store_code",
+            "type": "category",
+            "sectionId": "string",
+            "required": False,
+            "values_source_type": "card",
+            "values_source_config": {
+                "card_id": store_options_id,
+                "value_field": ["field", 771, None],
+                "label_field": ["field", 772, None]
+            },
+        },
+
+        # 3) Expense lvl1
+        {
+            "id": PID_EXP_LVL1,
+            "name": "支出一级",
+            "slug": "expense_lvl1",
+            "type": "category",
+            "sectionId": "string",
+            "required": False,
+            "values_source_type": "static-list",
+            "values_source_config": {
+                "values": [
+                    ["人力", "人力"],
+                    ["租金物业", "租金物业"],
+                    ["运费", "运费"],
+                    ["管理费用", "管理费用"],
+                    ["材料采购", "材料采购"],
+                    ["营销费用", "营销费用"],
+                    ["其他费用", "其他费用"],
+                    ["营建费用", "营建费用"],
+                    ["（未分类）", "（未分类）"],
+                ]
+            },
+        },
+
+        # 4) Income lvl1
+        {
+            "id": PID_INC_LVL1,
+            "name": "收入一级",
+            "slug": "income_lvl1",
+            "type": "category",
+            "sectionId": "string",
+            "required": False,
+            "values_source_type": "static-list",
+            "values_source_config": {"values": [["营业收入", "营业收入"], ["其他收入", "其他收入"]]},
+        },
     ]
 
     dashcard_specs = [
@@ -545,8 +640,6 @@ ORDER BY 1, 2;"""
             "parameter_mappings": [
                 mp(card40_id, PID_MONTH, "month_date"),
                 mp(card40_id, PID_STORE, "store_code"),
-                mp(card40_id, PID_LVL1, "expense_lvl1"),
-                mp(card40_id, PID_LVL1, "income_lvl1"),
             ],
         },
         {
@@ -571,8 +664,7 @@ ORDER BY 1, 2;"""
             "parameter_mappings": [
                 mp(card42_id, PID_MONTH, "month_date"),
                 mp(card42_id, PID_STORE, "store_code"),
-                mp(card42_id, PID_LVL1, "expense_lvl1"),
-                mp(card42_id, PID_LVL2, "lvl2"),
+                mp(card42_id, PID_EXP_LVL1, "expense_lvl1"),
             ],
         },
         {
@@ -585,8 +677,7 @@ ORDER BY 1, 2;"""
             "parameter_mappings": [
                 mp(card43_id, PID_MONTH, "month_date"),
                 mp(card43_id, PID_STORE, "store_code"),
-                mp(card43_id, PID_LVL1, "income_lvl1"),
-                mp(card43_id, PID_LVL2, "lvl2"),
+                mp(card43_id, PID_INC_LVL1, "income_lvl1"),
             ],
         },
         {
