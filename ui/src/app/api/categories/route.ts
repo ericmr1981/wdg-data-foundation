@@ -8,17 +8,22 @@ import { getSessionUser, assertRole } from '@/lib/auth-server';
 // 约定：不把系统保留分类暴露给 UI（如 UNCLASSIFIED/OTHER_OUT），避免被误选
 export async function GET(request: Request) {
   const user = await getSessionUser();
+
+  // for error reporting
+  let brand: string | null = null;
+  let cfgSchema: string | null = null;
+
   try {
     assertRole(user, ['admin', 'operator']);
     const { searchParams } = new URL(request.url);
     const brandParam = searchParams.get('brand') || 'yufeng';
-    const brand = normalizeBrand(brandParam);
+    brand = normalizeBrand(brandParam);
 
     if (!brand) {
       return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
     }
 
-    const cfgSchema = getCfgSchema(brand);
+    cfgSchema = getCfgSchema(brand);
 
     const reservedLvl1Codes = ['UNCLASSIFIED', 'OTHER_OUT'];
 
@@ -58,7 +63,7 @@ export async function GET(request: Request) {
   } catch (error: any) {
     // 表不存在（新品牌未初始化字典）→ 返回空数组，避免页面报错
     if (error?.code === '42P01') {
-      console.warn(`Categories not found for brand ${brand} (schema ${cfgSchema}): table missing`);
+      console.warn(`Categories not found (brand=${brand || 'unknown'} schema=${cfgSchema || 'unknown'}): table missing`);
       return NextResponse.json({ success: true, data: { lvl1: [], lvl2ByLvl1: {} } });
     }
     console.error('Error fetching categories:', error);

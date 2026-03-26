@@ -92,10 +92,10 @@ export async function PUT(request: Request) {
     const values: any[] = [];
     let i = 1;
 
-    function add(col: string, val: any) {
+    const add = (col: string, val: any) => {
       patches.push(`${col} = $${i++}`);
       values.push(val);
-    }
+    };
 
     if (body.lvl2_name !== undefined) add('lvl2_name', String(body.lvl2_name || '').trim() || lvl2_code);
     if (body.enabled !== undefined) add('enabled', Boolean(body.enabled));

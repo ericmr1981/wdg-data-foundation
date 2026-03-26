@@ -330,11 +330,6 @@ export async function PUT(request: Request) {
       client.release();
     }
 
-    if (result.rows.length === 0) {
-      return NextResponse.json({ success: false, error: 'Rule not found' }, { status: 404 });
-    }
-
-    return NextResponse.json({ success: true, data: result.rows[0] });
   } catch (error: any) {
     const status = error?.status || 500;
     if (status === 400) {

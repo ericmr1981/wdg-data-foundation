@@ -78,10 +78,10 @@ export async function PUT(request: Request) {
     const patches: string[] = [];
     const values: any[] = [];
     let i = 1;
-    function add(col: string, val: any) {
+    const add = (col: string, val: any) => {
       patches.push(`${col} = $${i++}`);
       values.push(val);
-    }
+    };
 
     if (body.lvl1_name !== undefined) add('lvl1_name', String(body.lvl1_name || '').trim() || lvl1_code);
     if (body.direction !== undefined) add('direction', normDirection(body.direction));

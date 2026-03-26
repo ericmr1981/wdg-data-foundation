@@ -25,6 +25,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Use apt for pandas/psycopg2 (stable), pip for openpyxl (need >=3.1 for proper xlsx support)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
+    python3-pip \
     python3-pandas \
     python3-psycopg2 \
     && rm -rf /var/lib/apt/lists/*

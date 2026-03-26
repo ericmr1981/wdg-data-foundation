@@ -96,8 +96,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
     }
 
-    // 兼容旧版“仅 override（不沉淀规则）”请求：{ bank_txn_id, lvl1, lvl2?, note? }
-    // 旧版 UI 还在用中文名称（lvl1/lvl2），这里做一次 name->code 映射并写入 override，让页面可用。
+    const client = await pool.connect();
+    try {
+      // 兼容旧版“仅 override（不沉淀规则）”请求：{ bank_txn_id, lvl1, lvl2?, note? }
+      // 旧版 UI 还在用中文名称（lvl1/lvl2），这里做一次 name->code 映射并写入 override，让页面可用。
     if (bank_txn_id && !direction && !lvl1_code && (body.lvl1 || body.lvl1_name)) {
       const lvl1Name = body.lvl1 || body.lvl1_name;
       const lvl2Name = body.lvl2 || body.lvl2_name || null;
@@ -235,12 +237,16 @@ export async function POST(request: Request) {
     await client.query('COMMIT');
 
     return NextResponse.json({ success: true, message: 'Rule created and txn resolved' });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      console.error('Error creating rule from match:', error);
+      return NextResponse.json({ success: false, error: 'Failed to create rule' }, { status: 500 });
+    } finally {
+      client.release();
+    }
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
-    console.error('Error creating rule from match:', error);
+    console.error('Error in /api/match POST:', error);
     return NextResponse.json({ success: false, error: 'Failed to create rule' }, { status: 500 });
-  } finally {
-    client.release();
   }
 }
 

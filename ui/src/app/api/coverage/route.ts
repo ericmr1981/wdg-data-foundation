@@ -20,23 +20,30 @@ export async function GET(request: Request) {
     const schema = getDmSchema(brand);
 
     try {
-    const result = await pool.query(`
-      SELECT month, total_rows, covered_rows, unclassified_rows, coverage_rate_rows,
-             total_in_amt, covered_in_amt, unclassified_in_amt, coverage_rate_in_amt,
-             total_out_amt, covered_out_amt, unclassified_out_amt, coverage_rate_out_amt
-      FROM ${schema}.v_coverage_monthly
-      ORDER BY month DESC
-      LIMIT 3
-    `);
+      const result = await pool.query(
+        `
+        SELECT month, total_rows, covered_rows, unclassified_rows, coverage_rate_rows,
+               total_in_amt, covered_in_amt, unclassified_in_amt, coverage_rate_in_amt,
+               total_out_amt, covered_out_amt, unclassified_out_amt, coverage_rate_out_amt
+        FROM ${schema}.v_coverage_monthly
+        ORDER BY month DESC
+        LIMIT 3
+        `
+      );
 
-    return NextResponse.json({ success: true, data: result.rows });
-  } catch (error: any) {
-    const pgCode = error?.code;
-    if (pgCode === '42P01') {
-      return NextResponse.json({ success: true, data: [], note: 'v_coverage_monthly not ready' });
+      return NextResponse.json({ success: true, data: result.rows });
+    } catch (error: any) {
+      const pgCode = error?.code;
+      if (pgCode === '42P01') {
+        // 新品牌/新库尚未初始化视图：前端用空数据兜底
+        return NextResponse.json({ success: true, data: [], note: 'v_coverage_monthly not ready' });
+      }
+
+      console.error('Error fetching coverage:', error);
+      return NextResponse.json({ success: false, error: 'Failed to fetch coverage' }, { status: 500 });
     }
-
-    console.error('Error fetching coverage:', error);
+  } catch (error: any) {
+    console.error('Error in coverage route:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch coverage' }, { status: 500 });
   }
 }
