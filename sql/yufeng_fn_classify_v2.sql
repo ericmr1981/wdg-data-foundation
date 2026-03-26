@@ -175,10 +175,11 @@ END;
 $function$;
 
 -- ==================== 创建兼容视图（使用新函数） ====================
+-- 性能关键：只调用一次 fn_classify_bank_txn_v2（用 LATERAL），避免每行重复执行导致雪崩。
 DROP VIEW IF EXISTS yufeng_dm.v_bank_txn_classified_v2 CASCADE;
 
 CREATE VIEW yufeng_dm.v_bank_txn_classified_v2 AS
-SELECT 
+SELECT
     t.id AS bank_txn_id,
     t.store_code,
     t.txn_time,
@@ -188,12 +189,13 @@ SELECT
     t.purpose,
     t.in_amt,
     t.out_amt,
-    (yufeng_dm.fn_classify_bank_txn_v2(t.id)).matched_rule_id AS matched_rule_id,
-    (yufeng_dm.fn_classify_bank_txn_v2(t.id)).lvl1_code AS lvl1_code,
-    (yufeng_dm.fn_classify_bank_txn_v2(t.id)).lvl2_code AS lvl2_code,
-    (yufeng_dm.fn_classify_bank_txn_v2(t.id)).classified_source AS classified_source,
+    r.matched_rule_id,
+    r.lvl1_code,
+    r.lvl2_code,
+    r.classified_source,
     t.source_file_id
-FROM yufeng_ods.bank_txn t;
+FROM yufeng_ods.bank_txn t
+CROSS JOIN LATERAL yufeng_dm.fn_classify_bank_txn_v2(t.id) r;
 
 -- ==================== 验证 ====================
 SELECT '新函数创建完成' as status,

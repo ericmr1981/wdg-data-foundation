@@ -629,6 +629,7 @@ def do_import(file_path: str) -> dict:
         "load_excel": 3,
         "insert_bank_txn": 4,
         "update_ingest_status": 5,
+        "refresh_snapshot": 6,
     }
 
     try:
@@ -694,6 +695,25 @@ def do_import(file_path: str) -> dict:
 
         if ops:
             ops.step_end("update_ingest_status", rows_out=1)
+
+        # Step 5: 刷新分类 snapshot（L2 基建：可选，缺失不影响导入成功）
+        try:
+            if ops:
+                ops.step_start("refresh_snapshot", step_order=STEP_ORDER["refresh_snapshot"], detail={"source_file_id": source_file_id})
+
+            brand_code = _validate_brand(meta["brand_code"])
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT {brand_code}_dm.refresh_bank_txn_classified_snapshot(%s)", (source_file_id,))
+            conn.commit()
+
+            if ops:
+                ops.step_end("refresh_snapshot", rows_out=row_count)
+        except Exception as e:
+            # 兼容逐步上线：如果快照函数还没 apply（或权限/依赖未就绪），不阻断导入。
+            msg = f"WARN: refresh snapshot skipped: {e}"
+            print(msg)
+            if ops:
+                ops.step_end("refresh_snapshot", status="skipped", error_message=str(e)[:500])
 
         # 完成 pipeline
         if ops:
