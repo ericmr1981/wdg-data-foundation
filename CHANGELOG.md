@@ -11,3 +11,13 @@
   - result: pass
 - decision: keep
 - next: Define a real test oracle (pytest/integration) and set `harness.json:testCommand` accordingly
+
+## 2026-03-26 22:15
+- goal: Merge harness branch into main
+- bet: Merge repo-first harness baseline
+- commit: 6cf171c
+- verification:
+  - command: bash scripts/run_change_guard.sh
+  - result: pass
+- decision: keep
+- next: Keep improving real test oracle beyond compileall
