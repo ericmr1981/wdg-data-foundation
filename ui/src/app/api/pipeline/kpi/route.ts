@@ -23,42 +23,42 @@
      const dmSchema = getDmSchema(brand);
      const bankTxnTable = getOdsBankTxnTable(brand);
 
-     // 未分类定义：classified_source='unclassified'（不再依赖 UNCLASSIFIED 字典项）
-     const result = await pool.query(
+     // 注意：v_bank_txn_classified 可能很重（全量分类），在 VPS 上会导致接口卡死。
+     // KPI 改为基于 v_unclassified_detail（只包含未分类明细）做聚合，性能更稳定。
+     const aggResult = await pool.query(
        `
        SELECT
-         (SELECT count(*)::bigint
-          FROM ${dmSchema}.v_bank_txn_classified c
-          WHERE c.classified_source = 'unclassified') as unclassified_count,
-
-         (SELECT sum(coalesce(t.in_amt, 0) + coalesce(t.out_amt, 0))
-          FROM ${dmSchema}.v_bank_txn_classified c
-          INNER JOIN ${bankTxnTable} t ON c.bank_txn_id = t.id
-          WHERE c.classified_source = 'unclassified') as unclassified_amt,
-
-         (SELECT sum(coalesce(t.in_amt, 0) + coalesce(t.out_amt, 0))
-          FROM ${bankTxnTable} t) as total_amt
+         count(*)::bigint as unclassified_count,
+         sum(coalesce(in_amt, 0) + coalesce(out_amt, 0)) as unclassified_amt
+       FROM ${dmSchema}.v_unclassified_detail
        `
      );
 
-     const row = result.rows[0] || {};
-     const unclassifiedCount = parseInt(row.unclassified_count) || 0;
-     const unclassifiedAmt = parseFloat(row.unclassified_amt) || 0;
-     const totalAmt = parseFloat(row.total_amt) || 0;
-     const unclassifiedPct = totalAmt > 0 ? Math.round(unclassifiedAmt / totalAmt * 100 * 100) / 100 : 0;
+     const totalResult = await pool.query(
+       `
+       SELECT sum(coalesce(in_amt, 0) + coalesce(out_amt, 0)) as total_amt
+       FROM ${bankTxnTable}
+       `
+     );
 
-     // 查询未分类 Top 关键词
+     const aggRow = aggResult.rows[0] || {};
+     const totalRow = totalResult.rows[0] || {};
+
+     const unclassifiedCount = parseInt(aggRow.unclassified_count) || 0;
+     const unclassifiedAmt = parseFloat(aggRow.unclassified_amt) || 0;
+     const totalAmt = parseFloat(totalRow.total_amt) || 0;
+     const unclassifiedPct = totalAmt > 0 ? Math.round((unclassifiedAmt / totalAmt) * 100 * 100) / 100 : 0;
+
+     // 查询未分类 Top 关键词（直接从未分类明细聚合）
      const topKeywordsResult = await pool.query(
        `
        SELECT
-         COALESCE(c.counterparty_name, '') as counterparty_name,
-         COALESCE(c.summary, '') as summary,
+         COALESCE(counterparty_name, '') as counterparty_name,
+         COALESCE(summary, '') as summary,
          count(*) as txn_count,
-         sum(coalesce(t.in_amt, 0) + coalesce(t.out_amt, 0)) as total_amt
-       FROM ${dmSchema}.v_bank_txn_classified c
-       INNER JOIN ${bankTxnTable} t ON c.bank_txn_id = t.id
-       WHERE c.classified_source = 'unclassified'
-       GROUP BY c.counterparty_name, c.summary
+         sum(coalesce(in_amt, 0) + coalesce(out_amt, 0)) as total_amt
+       FROM ${dmSchema}.v_unclassified_detail
+       GROUP BY counterparty_name, summary
        ORDER BY txn_count desc
        LIMIT 10
        `
