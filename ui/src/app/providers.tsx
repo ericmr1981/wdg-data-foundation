@@ -37,7 +37,7 @@ function NavBar() {
   const [me, setMe] = useState<{ username: string; role: string } | null>(null);
 
   useEffect(() => {
-    fetch('/api/auth/me')
+    fetch('/api/auth/me', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (d?.success) setMe(d.data);
