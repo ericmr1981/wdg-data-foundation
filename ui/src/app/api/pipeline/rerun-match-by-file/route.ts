@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { getDmSchema, normalizeBrand } from '@/lib/brand-server';
 
 // POST /api/pipeline/rerun-match-by-file - 按文件重跑分类匹配
 export async function POST(request: Request) {
@@ -14,6 +15,12 @@ export async function POST(request: Request) {
     if (!brand) {
       return NextResponse.json({ success: false, error: 'Missing brand' }, { status: 400 });
     }
+
+    const normalizedBrand = normalizeBrand(brand);
+    if (!normalizedBrand) {
+      return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
+    }
+    const dmSchema = getDmSchema(normalizedBrand);
 
     const rerunAll = Boolean(all_files);
 
@@ -38,7 +45,7 @@ export async function POST(request: Request) {
           WHERE brand_code = $1 AND source_type='bank' AND status='success'
           ORDER BY created_at DESC
           `,
-          [brand]
+          [normalizedBrand]
         )
       : await pool.query(
           `
@@ -46,7 +53,7 @@ export async function POST(request: Request) {
           FROM raw.ingest_file
           WHERE brand_code = $1 AND id = ANY($2)
           `,
-          [brand, targetIds]
+          [normalizedBrand, targetIds]
         );
 
     const files = filesResult.rows;
@@ -58,34 +65,28 @@ export async function POST(request: Request) {
     }
 
     // 2. 对每个 source_file_id 重新执行分类
-    // 清除该文件的现有 override，重新通过规则匹配
+    // L2 snapshot 模式：通过 refresh_*_snapshot(source_file_id) 触发增量重算
     const results: { source_file_id: number; status: string; message: string }[] = [];
 
     const idsToProcess = rerunAll ? files.map((f: any) => Number(f.id)) : targetIds;
 
     for (const fileId of idsToProcess) {
       try {
-        // 2.1 清除该文件的现有 override（可选，保留以便 rule 重新匹配）
-        // await pool.query(`
-        //   DELETE FROM yufeng_dm.bank_txn_override
-        //   WHERE bank_txn_id IN (
-        //     SELECT id FROM yufeng_ods.bank_txn WHERE source_file_id = $1
-        //   )
-        // `, [fileId]);
+        await pool.query(
+          `SELECT ${dmSchema}.refresh_bank_txn_classified_snapshot($1)`,
+          [fileId]
+        );
 
-        // 2.2 刷新该文件的分类视图（实际上 view 是实时计算的，无需刷新）
-
-        // 2.3 更新 ingest_file 的 updated_at（可选）
-        await pool.query(`
-          UPDATE raw.ingest_file
-          SET updated_at = NOW()
-          WHERE id = $1
-        `, [fileId]);
+        // 记录一下“我确实动过这个文件”
+        await pool.query(
+          `UPDATE raw.ingest_file SET updated_at = NOW() WHERE id = $1`,
+          [fileId]
+        );
 
         results.push({
           source_file_id: fileId,
           status: 'success',
-          message: 'Classification re-run completed'
+          message: 'Snapshot refreshed'
         });
       } catch (err: any) {
         results.push({
@@ -110,7 +111,7 @@ export async function POST(request: Request) {
       VALUES ($1, $2, NOW(), NOW(), 'success', 'ui', $3)
       RETURNING run_id
       `,
-      [brand, files[0]?.store_code || null, noteJson]
+      [normalizedBrand, files[0]?.store_code || null, noteJson]
     );
 
     const runId = runInsert.rows[0].run_id;

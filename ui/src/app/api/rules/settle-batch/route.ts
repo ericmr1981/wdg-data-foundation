@@ -89,6 +89,7 @@ export async function POST(request: Request) {
 
     const created: any[] = [];
     const conflicts: ConflictItem[] = [];
+    const sourceFileIds = new Set<number>();
 
     await client.query('BEGIN');
 
@@ -100,7 +101,8 @@ export async function POST(request: Request) {
       // 获取流水信息确定 direction 和原始数据
       let actualDirection = 'any';
       const txnResult = await client.query(
-        `SELECT date_trunc('month', txn_time)::date as month, in_amt, out_amt, summary, memo, purpose, counterparty_name
+        `SELECT date_trunc('month', txn_time)::date as month, source_file_id,
+                in_amt, out_amt, summary, memo, purpose, counterparty_name
          FROM ${bankTxnTable} WHERE id = $1`,
         [bank_txn_id]
       );
@@ -113,6 +115,9 @@ export async function POST(request: Request) {
         }
       }
       const txn = txnResult.rows.length > 0 ? txnResult.rows[0] : null;
+      if (txn?.source_file_id) {
+        sourceFileIds.add(Number(txn.source_file_id));
+      }
 
       // 智能推断 match_type: summary/memo/purpose = contains; counterparty_name = exact
       // 批量沉淀默认使用 summary
@@ -301,6 +306,21 @@ export async function POST(request: Request) {
     }
 
     await client.query('COMMIT');
+
+    // L2 snapshot：批量规则写入后，刷新涉及文件的 snapshot（best-effort，不阻断返回）
+    try {
+      const ids = Array.from(sourceFileIds.values());
+      if (ids.length === 0) {
+        // 没拿到 source_file_id（少见），退化为全量刷新
+        await pool.query(`SELECT ${dmSchema}.refresh_bank_txn_classified_snapshot(NULL)`);
+      } else {
+        for (const fileId of ids) {
+          await pool.query(`SELECT ${dmSchema}.refresh_bank_txn_classified_snapshot($1)`, [fileId]);
+        }
+      }
+    } catch (e) {
+      console.warn('WARN: refresh snapshot skipped after batch settle:', e);
+    }
 
     return NextResponse.json({
       success: true,

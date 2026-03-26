@@ -171,7 +171,8 @@ export async function POST(request: Request) {
       if (bank_txn_id) {
         // 获取原始流水信息
         const txnResult = await client.query(
-          `SELECT date_trunc('month', txn_time)::date as month, summary, memo, purpose, counterparty_name, in_amt, out_amt
+          `SELECT date_trunc('month', txn_time)::date as month, source_file_id,
+                  summary, memo, purpose, counterparty_name, in_amt, out_amt
            FROM ${bankTxnTable} WHERE id = $1`,
           [bank_txn_id]
         );
@@ -211,6 +212,25 @@ export async function POST(request: Request) {
       }
 
       await client.query('COMMIT');
+
+      // L2 snapshot：规则写入后，刷新该流水所属文件的 snapshot（best-effort，不阻断返回）
+      try {
+        if (bank_txn_id) {
+          const fileRes = await pool.query(
+            `SELECT source_file_id FROM ${bankTxnTable} WHERE id = $1`,
+            [bank_txn_id]
+          );
+          const sourceFileId = fileRes.rows?.[0]?.source_file_id;
+          if (sourceFileId) {
+            await pool.query(`SELECT ${dmSchema}.refresh_bank_txn_classified_snapshot($1)`, [sourceFileId]);
+          } else {
+            // 没有 source_file_id（少见），退化为全量刷新
+            await pool.query(`SELECT ${dmSchema}.refresh_bank_txn_classified_snapshot(NULL)`);
+          }
+        }
+      } catch (e) {
+        console.warn('WARN: refresh snapshot skipped after rule settle:', e);
+      }
 
       return NextResponse.json({
         success: true,
