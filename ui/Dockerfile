@@ -16,22 +16,19 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-FROM node:20-bullseye-slim AS runner
+FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Python runtime + libs for import scripts
-# Use apt for pandas/psycopg2 (stable), pip for openpyxl (need >=3.1 for proper xlsx support)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# VPS 网络下 Alpine 构建更稳：用 APK 装 pandas/psycopg2，避免 apt 源超时。
+RUN apk add --no-cache \
     python3 \
-    python3-pip \
-    python3-pandas \
-    python3-psycopg2 \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN python3 -m pip install --no-cache-dir --upgrade pip && \
-    python3 -m pip install --no-cache-dir openpyxl==3.1.2
+    py3-pip \
+    py3-pandas \
+    py3-psycopg2 \
+    py3-openpyxl
 
 COPY --from=builder /app .
 
