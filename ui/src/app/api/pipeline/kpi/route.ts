@@ -23,26 +23,21 @@
      const dmSchema = getDmSchema(brand);
      const bankTxnTable = getOdsBankTxnTable(brand);
 
-     // 注意：v_bank_txn_classified / v_unclassified_detail 可能非常重（会触发全量分类），在 VPS 上会导致接口卡死。
-     // KPI 走“快速路径”：基于 v_coverage_by_file 做聚合（按文件已聚合，行数极少）。
-     const coverageAgg = await pool.query(
+     // 注意：v_coverage_by_file / v_bank_txn_classified 视图会触发全量分类，在 VPS 上极慢（60s+）。
+     // 临时方案：直接从 ods.bank_txn 读总额（秒级），未分类 KPI 先返回 0（保证页面秒开）。
+     const totalResult = await pool.query(
        `
-       SELECT
-         COALESCE(sum(unclassified_rows), 0)::bigint as unclassified_count,
-         (COALESCE(sum(unclassified_in_amt), 0) + COALESCE(sum(unclassified_out_amt), 0)) as unclassified_amt,
-         (COALESCE(sum(total_in_amt), 0) + COALESCE(sum(total_out_amt), 0)) as total_amt
-       FROM ${dmSchema}.v_coverage_by_file
-       WHERE import_status = 'success'
+       SELECT sum(coalesce(in_amt, 0) + coalesce(out_amt, 0)) as total_amt
+       FROM ${bankTxnTable}
        `
      );
 
-     const row = coverageAgg.rows[0] || {};
-     const unclassifiedCount = parseInt(row.unclassified_count) || 0;
-     const unclassifiedAmt = parseFloat(row.unclassified_amt) || 0;
-     const totalAmt = parseFloat(row.total_amt) || 0;
-     const unclassifiedPct = totalAmt > 0 ? Math.round((unclassifiedAmt / totalAmt) * 100 * 100) / 100 : 0;
+     const totalAmt = parseFloat(totalResult.rows[0]?.total_amt) || 0;
+     const unclassifiedCount = 0;
+     const unclassifiedAmt = 0;
+     const unclassifiedPct = 0;
 
-     // Top keywords：在 VPS 上代价较高（需要扫未分类明细），先返回空数组保证页面秒开。
+     // Top keywords：暂时跳过（避免触发全量分类）
      const topKeywords: any[] = [];
 
      return NextResponse.json({
