@@ -107,8 +107,8 @@ export async function POST(request: Request) {
 
     const runInsert = await pool.query(
       `
-      INSERT INTO ops.pipeline_run (brand_code, store_code, started_at, finished_at, status, triggered_by, note)
-      VALUES ($1, $2, NOW(), NOW(), 'success', 'ui', $3)
+      INSERT INTO ops.pipeline_run (run_id, brand_code, store_code, started_at, finished_at, status, triggered_by, note)
+      VALUES (gen_random_uuid(), $1, $2, NOW(), NOW(), 'success', 'ui', $3)
       RETURNING run_id
       `,
       [normalizedBrand, files[0]?.store_code || null, noteJson]
