@@ -268,7 +268,7 @@ def main() -> None:
   SELECT
     to_char(t.txn_time, 'YYYY-MM') AS month,
     t.store_code,
-    c.lvl1_name AS lvl1_name,
+    COALESCE(c.lvl1_name, c.lvl1) AS lvl1_name,
     c.classified_source,
     COALESCE(t.in_amt, 0)  AS in_amt,
     COALESCE(t.out_amt, 0) AS out_amt
@@ -376,7 +376,7 @@ ORDER BY ord;"""
 
     # Card 41: 支出一级
     sql_41 = r"""SELECT
-  c.lvl1_name AS "类别",
+  COALESCE(c.lvl1_name, c.lvl1) AS "类别",
   SUM(COALESCE(t.out_amt,0)) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 JOIN yufeng_dm.v_bank_txn_classified c
@@ -386,7 +386,7 @@ WHERE t.txn_time IS NOT NULL
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   AND COALESCE(t.out_amt,0) > 0
   [[ AND t.store_code = {{store_code}} ]]
-GROUP BY c.lvl1_name
+GROUP BY COALESCE(c.lvl1_name, c.lvl1)
 ORDER BY "金额(元)" DESC;"""
 
     card41_id = upsert_card(
@@ -408,7 +408,7 @@ ORDER BY "金额(元)" DESC;"""
 
     # Card 42: 支出二级（含 一级/二级 筛选）
     sql_42 = r"""SELECT
-  COALESCE(NULLIF(c.lvl2_name,''), '（未填）') AS "类别",
+  COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') AS "类别",
   SUM(COALESCE(t.out_amt,0)) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 JOIN yufeng_dm.v_bank_txn_classified c
@@ -418,8 +418,8 @@ WHERE t.txn_time IS NOT NULL
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   AND COALESCE(t.out_amt,0) > 0
   [[ AND t.store_code = {{store_code}} ]]
-  [[ AND c.lvl1_name = {{expense_lvl1}} ]]
-GROUP BY COALESCE(NULLIF(c.lvl2_name,''), '（未填）')
+  [[ AND COALESCE(c.lvl1_name, c.lvl1) = {{expense_lvl1}} ]]
+GROUP BY COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）')
 ORDER BY "金额(元)" DESC;"""
 
     card42_id = upsert_card(
@@ -443,7 +443,7 @@ ORDER BY "金额(元)" DESC;"""
 
     # Card 43: 收入二级（含 一级/二级 筛选）
     sql_43 = r"""SELECT
-  COALESCE(NULLIF(c.lvl2_name,''), '（未填）') AS "类别",
+  COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') AS "类别",
   SUM(COALESCE(t.in_amt,0)) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 JOIN yufeng_dm.v_bank_txn_classified c
@@ -453,8 +453,8 @@ WHERE t.txn_time IS NOT NULL
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   AND COALESCE(t.in_amt,0) > 0
   [[ AND t.store_code = {{store_code}} ]]
-  [[ AND c.lvl1_name = {{income_lvl1}} ]]
-GROUP BY COALESCE(NULLIF(c.lvl2_name,''), '（未填）')
+  [[ AND COALESCE(c.lvl1_name, c.lvl1) = {{income_lvl1}} ]]
+GROUP BY COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）')
 ORDER BY "金额(元)" DESC;"""
 
     card43_id = upsert_card(

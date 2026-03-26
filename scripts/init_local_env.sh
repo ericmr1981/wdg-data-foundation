@@ -268,6 +268,7 @@ main() {
 
   # 分类函数 + 兼容视图（v_bank_txn_classified / v_bank_txn_classified_v2）
   execute_sql_file "$PROJECT_DIR/sql/yufeng_apply_classification.sql" "Yufeng：应用分类（v2）"
+  execute_sql_file "$PROJECT_DIR/sql/yufeng_fix_v_bank_txn_classified_aliases.sql" "Yufeng：兼容视图补齐 lvl1_name/lvl2_name"
   execute_sql_file "$PROJECT_DIR/sql/bonjur_apply_classification.sql" "Bonjur：应用分类（v2）"
 
   # 覆盖率/未分类
