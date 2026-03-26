@@ -72,9 +72,14 @@ function NavBar() {
             </Link>
 
             {me?.role === 'admin' && (
-              <Link href="/admin/config" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
-                配置
-              </Link>
+              <>
+                <Link href="/lineage" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
+                  数据流地图
+                </Link>
+                <Link href="/admin/config" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
+                  配置
+                </Link>
+              </>
             )}
           </div>
 
