@@ -51,6 +51,8 @@ services:
       # 让上传文件与导入脚本落在宿主机目录（并与脚本内的 /inputs /scripts 路径对齐）
       - ./inputs:/inputs
       - ./scripts:/scripts
+      - ./sql:/sql:ro
+      - ./ops:/ops:ro
       - ./outputs:/outputs
     ports:
       - "${UI_PORT:-3002}:3000"
