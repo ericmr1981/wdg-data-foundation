@@ -51,6 +51,32 @@ type DbObjectDetail = {
   approx_rows: number | null;
 };
 
+type CoverageMonthly = {
+  month: string;
+  total_rows: number;
+  covered_rows: number;
+  unclassified_rows: number;
+  coverage_rate_rows: number;
+};
+
+type CoverageByFile = {
+  source_file_id: number;
+  file_name: string;
+  store_code: string;
+  file_month: string;
+  total_rows: number;
+  unclassified_rows: number;
+  coverage_rate_rows: number;
+  uploaded_at: string;
+};
+
+type PipelineKpi = {
+  unclassified_count: number;
+  unclassified_amt: number;
+  total_amt: number;
+  unclassified_pct: number;
+};
+
 function classNames(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(' ');
 }
@@ -68,9 +94,14 @@ export default function LineagePage() {
   const [objectName, setObjectName] = useState<string>('');
   const [detail, setDetail] = useState<DbObjectDetail | null>(null);
 
-  // Pipeline playback (admin-only page, but pipeline API itself supports operator too)
+  // Pipeline playback (admin-only page)
   const [runs, setRuns] = useState<PipelineRun[]>([]);
   const [runId, setRunId] = useState<string>('');
+
+  // V3 metrics overlay (admin-only)
+  const [coverageMonthly, setCoverageMonthly] = useState<CoverageMonthly[]>([]);
+  const [coverageByFile, setCoverageByFile] = useState<CoverageByFile[]>([]);
+  const [kpi, setKpi] = useState<PipelineKpi | null>(null);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string>(graph.nodes[0]?.id || '');
   const selectedNode: LineageNode | null = useMemo(
@@ -148,6 +179,71 @@ export default function LineagePage() {
     }
 
     loadRuns().catch(() => {});
+  }, [brand, authChecked, me?.role, router]);
+
+  // V3: metrics overlay (coverage + KPI)
+  useEffect(() => {
+    if (!authChecked) return;
+    if (me?.role !== 'admin') return;
+
+    async function loadMetrics() {
+      const [covMonthlyRes, covFileRes, kpiRes] = await Promise.all([
+        fetch(`/api/coverage?brand=${encodeURIComponent(brand)}`, { cache: 'no-store' }),
+        fetch(`/api/coverage/by-file?brand=${encodeURIComponent(brand)}`, { cache: 'no-store' }),
+        fetch(`/api/pipeline/kpi?brand=${encodeURIComponent(brand)}`, { cache: 'no-store' }),
+      ]);
+
+      if ([covMonthlyRes.status, covFileRes.status, kpiRes.status].includes(401)) {
+        router.replace('/login');
+        return;
+      }
+
+      const covMonthly = await covMonthlyRes.json().catch(() => null);
+      const covFile = await covFileRes.json().catch(() => null);
+      const kpiData = await kpiRes.json().catch(() => null);
+
+      if (covMonthly?.success) {
+        const rows = (covMonthly.data || []).map((r: any) => ({
+          month: String(r.month),
+          total_rows: Number(r.total_rows),
+          covered_rows: Number(r.covered_rows),
+          unclassified_rows: Number(r.unclassified_rows),
+          coverage_rate_rows: Number(r.coverage_rate_rows),
+        }));
+        setCoverageMonthly(rows);
+      } else {
+        setCoverageMonthly([]);
+      }
+
+      if (covFile?.success) {
+        const rows = (covFile.data || []).map((r: any) => ({
+          source_file_id: Number(r.source_file_id),
+          file_name: String(r.file_name),
+          store_code: String(r.store_code),
+          file_month: String(r.file_month),
+          total_rows: Number(r.total_rows),
+          unclassified_rows: Number(r.unclassified_rows),
+          coverage_rate_rows: Number(r.coverage_rate_rows),
+          uploaded_at: String(r.uploaded_at),
+        }));
+        setCoverageByFile(rows);
+      } else {
+        setCoverageByFile([]);
+      }
+
+      if (kpiData?.success) {
+        setKpi({
+          unclassified_count: Number(kpiData.data?.unclassified_count ?? 0),
+          unclassified_amt: Number(kpiData.data?.unclassified_amt ?? 0),
+          total_amt: Number(kpiData.data?.total_amt ?? 0),
+          unclassified_pct: Number(kpiData.data?.unclassified_pct ?? 0),
+        });
+      } else {
+        setKpi(null);
+      }
+    }
+
+    loadMetrics().catch(() => {});
   }, [brand, authChecked, me?.role, router]);
 
   // Load objects for schema
@@ -271,6 +367,29 @@ export default function LineagePage() {
   const padX = 20;
   const padY = 20;
 
+  const latestMonthly = coverageMonthly?.[0] || null;
+  const latestFile = coverageByFile?.[0] || null;
+
+  function metricBadgeForNode(nodeId: string): string | null {
+    if (nodeId === 'dm_views' && latestMonthly) {
+      const cov = Number.isFinite(latestMonthly.coverage_rate_rows) ? Math.round(latestMonthly.coverage_rate_rows) : null;
+      const u = latestMonthly.unclassified_rows;
+      if (cov == null) return null;
+      return `cov ${cov}% · u ${u}`;
+    }
+    if (nodeId === 'raw_ingest_file' && latestFile) {
+      const cov = Number.isFinite(latestFile.coverage_rate_rows) ? Math.round(latestFile.coverage_rate_rows) : null;
+      if (cov == null) return null;
+      return `last ${cov}%`;
+    }
+    if (nodeId === 'ui_pipeline' && kpi) {
+      const pct = Number.isFinite(kpi.unclassified_pct) ? Math.round(kpi.unclassified_pct) : null;
+      if (pct == null) return null;
+      return `uncl ${pct}%`;
+    }
+    return null;
+  }
+
   const nodesWithPos = graph.nodes.map((n) => {
     const x = padX + n.lane * laneWidth;
     const y = padY + n.order * (nodeH + gapY);
@@ -372,7 +491,7 @@ export default function LineagePage() {
               {nodesWithPos.map((n) => {
                 const selected = n.id === selectedNodeId;
                 const st = nodeStatus.get(n.id)?.status || 'unknown';
-                const badge = nodeStatus.get(n.id)?.label;
+                const badge = metricBadgeForNode(n.id) || nodeStatus.get(n.id)?.label;
                 const c = statusColor(st);
 
                 const fill = selected ? '#dbeafe' : c.fill;
@@ -453,6 +572,50 @@ export default function LineagePage() {
                   </div>
                 </div>
               )}
+
+              <div className="text-xs text-gray-600 border-t pt-3 space-y-2">
+                <div className="font-medium text-gray-700">Drilldown</div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="text-xs border rounded px-2 py-1 bg-white hover:bg-gray-50"
+                    onClick={() => router.push('/pipeline')}
+                  >
+                    打开 Pipeline
+                  </button>
+                  <button
+                    className="text-xs border rounded px-2 py-1 bg-white hover:bg-gray-50"
+                    onClick={() => router.push('/rules')}
+                  >
+                    打开 规则管理
+                  </button>
+                  <button
+                    className="text-xs border rounded px-2 py-1 bg-white hover:bg-gray-50"
+                    onClick={() => router.push('/match')}
+                  >
+                    打开 人工匹配
+                  </button>
+                </div>
+
+                {(latestMonthly || latestFile || kpi) && (
+                  <div className="text-[11px] text-gray-500 space-y-1">
+                    {latestMonthly && (
+                      <div>
+                        monthly: {latestMonthly.month} · coverage_rate_rows={Math.round(latestMonthly.coverage_rate_rows)}% · unclassified_rows={latestMonthly.unclassified_rows}
+                      </div>
+                    )}
+                    {latestFile && (
+                      <div>
+                        last file: {latestFile.file_month}/{latestFile.store_code} · coverage_rate_rows={Math.round(latestFile.coverage_rate_rows)}% · unclassified_rows={latestFile.unclassified_rows}
+                      </div>
+                    )}
+                    {kpi && (
+                      <div>
+                        KPI: unclassified_pct={Math.round(kpi.unclassified_pct)}% · total_amt={Math.round(kpi.total_amt)}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {selectedNode.ref?.kind === 'table' && selectedNode.ref.schema && selectedNode.ref.name && (
                 <button
