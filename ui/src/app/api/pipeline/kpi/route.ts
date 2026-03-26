@@ -23,53 +23,27 @@
      const dmSchema = getDmSchema(brand);
      const bankTxnTable = getOdsBankTxnTable(brand);
 
-     // 注意：v_bank_txn_classified 可能很重（全量分类），在 VPS 上会导致接口卡死。
-     // KPI 改为基于 v_unclassified_detail（只包含未分类明细）做聚合，性能更稳定。
-     const aggResult = await pool.query(
+     // 注意：v_bank_txn_classified / v_unclassified_detail 可能非常重（会触发全量分类），在 VPS 上会导致接口卡死。
+     // KPI 走“快速路径”：基于 v_coverage_by_file 做聚合（按文件已聚合，行数极少）。
+     const coverageAgg = await pool.query(
        `
        SELECT
-         count(*)::bigint as unclassified_count,
-         sum(coalesce(in_amt, 0) + coalesce(out_amt, 0)) as unclassified_amt
-       FROM ${dmSchema}.v_unclassified_detail
+         COALESCE(sum(unclassified_rows), 0)::bigint as unclassified_count,
+         (COALESCE(sum(unclassified_in_amt), 0) + COALESCE(sum(unclassified_out_amt), 0)) as unclassified_amt,
+         (COALESCE(sum(total_in_amt), 0) + COALESCE(sum(total_out_amt), 0)) as total_amt
+       FROM ${dmSchema}.v_coverage_by_file
+       WHERE import_status = 'success'
        `
      );
 
-     const totalResult = await pool.query(
-       `
-       SELECT sum(coalesce(in_amt, 0) + coalesce(out_amt, 0)) as total_amt
-       FROM ${bankTxnTable}
-       `
-     );
-
-     const aggRow = aggResult.rows[0] || {};
-     const totalRow = totalResult.rows[0] || {};
-
-     const unclassifiedCount = parseInt(aggRow.unclassified_count) || 0;
-     const unclassifiedAmt = parseFloat(aggRow.unclassified_amt) || 0;
-     const totalAmt = parseFloat(totalRow.total_amt) || 0;
+     const row = coverageAgg.rows[0] || {};
+     const unclassifiedCount = parseInt(row.unclassified_count) || 0;
+     const unclassifiedAmt = parseFloat(row.unclassified_amt) || 0;
+     const totalAmt = parseFloat(row.total_amt) || 0;
      const unclassifiedPct = totalAmt > 0 ? Math.round((unclassifiedAmt / totalAmt) * 100 * 100) / 100 : 0;
 
-     // 查询未分类 Top 关键词（直接从未分类明细聚合）
-     const topKeywordsResult = await pool.query(
-       `
-       SELECT
-         COALESCE(counterparty_name, '') as counterparty_name,
-         COALESCE(summary, '') as summary,
-         count(*) as txn_count,
-         sum(coalesce(in_amt, 0) + coalesce(out_amt, 0)) as total_amt
-       FROM ${dmSchema}.v_unclassified_detail
-       GROUP BY counterparty_name, summary
-       ORDER BY txn_count desc
-       LIMIT 10
-       `
-     );
-
-     const topKeywords = topKeywordsResult.rows.map((r: any) => ({
-       counterparty_name: r.counterparty_name,
-       summary: r.summary,
-       txn_count: parseInt(r.txn_count),
-       total_amt: parseFloat(r.total_amt) || 0
-     }));
+     // Top keywords：在 VPS 上代价较高（需要扫未分类明细），先返回空数组保证页面秒开。
+     const topKeywords: any[] = [];
 
      return NextResponse.json({
        success: true,
