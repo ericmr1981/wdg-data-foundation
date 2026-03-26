@@ -23,12 +23,14 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 # Python runtime + libs for import scripts
 # VPS 网络下 Alpine 构建更稳：用 APK 装 pandas/psycopg2，避免 apt 源超时。
-RUN apk add --no-cache \
-    python3 \
-    py3-pip \
-    py3-pandas \
-    py3-psycopg2 \
-    py3-openpyxl
+# 默认切到阿里云镜像源（更快更稳）；如需回退，可在构建时覆盖该 RUN。
+RUN sed -i 's#https\?://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /etc/apk/repositories && \
+    apk add --no-cache \
+      python3 \
+      py3-pip \
+      py3-pandas \
+      py3-psycopg2 \
+      py3-openpyxl
 
 COPY --from=builder /app .
 
