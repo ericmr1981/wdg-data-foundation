@@ -141,9 +141,17 @@ PID_STORE = "00000000-0000-0000-0000-000000000002"
 PID_EXP_LVL1 = "00000000-0000-0000-0000-000000000003"  # dashboard 支出一级
 PID_INC_LVL1 = "00000000-0000-0000-0000-000000000004"  # dashboard 收入一级
 
+# Detail drilldown filters
+PID_EXP_LVL2 = "00000000-0000-0000-0000-000000000005"  # dashboard 支出二级
+PID_INC_LVL2 = "00000000-0000-0000-0000-000000000006"  # dashboard 收入二级
+PID_KEYWORD = "00000000-0000-0000-0000-000000000007"   # dashboard 关键词（对方单位/摘要/附言/用途）
+
 # Card template-tag UUIDs (for reproducible mappings)
 TAG_EXP_LVL1 = "00000000-0000-0000-0000-00000000A001"
 TAG_INC_LVL1 = "00000000-0000-0000-0000-00000000A002"
+TAG_EXP_LVL2 = "00000000-0000-0000-0000-00000000A003"
+TAG_INC_LVL2 = "00000000-0000-0000-0000-00000000A004"
+TAG_KEYWORD = "00000000-0000-0000-0000-00000000A005"
 
 
 def card_payload(*, name: str, database_id: int, sql: str, description: str, display: str, viz: dict, template_tags: dict, parameters: list[dict]) -> dict:
@@ -191,7 +199,16 @@ def upsert_card(*, name: str, database_id: int, sql: str, description: str = "",
     return int(created["id"])
 
 
-def upsert_dashboard(*, name: str, description: str, parameters: list[dict], dashcard_specs: list[dict]) -> int:
+def upsert_dashboard(*, name: str, description: str, parameters: list[dict], dashcard_specs: list[dict], tabs: Optional[list[dict]] = None) -> int:
+    """Upsert dashboard + dashcards.
+
+    Supports Metabase dashboard tabs by best-effort calling:
+      - PUT /api/dashboard/:id (meta)
+      - PUT /api/dashboard/:id/cards (cards + tabs)
+
+    If /cards fails (older/newer servers), falls back to PUT /api/dashboard/:id with `dashcards`.
+    """
+
     existing = search_one("dashboard", name)
 
     if existing and existing.get("id"):
@@ -200,20 +217,57 @@ def upsert_dashboard(*, name: str, description: str, parameters: list[dict], das
         created = mb_post("/api/dashboard", {"name": name, "description": description})
         did = int(created["id"])
 
+    current = mb_get(f"/api/dashboard/{did}") or {}
+
     # Need existing dashcard IDs to update.
-    current = mb_get(f"/api/dashboard/{did}")
-    current_dashcards = current.get("dashcards") or []
+    current_dashcards = current.get("dashcards") or current.get("cards") or []
     by_card_id = {int(dc.get("card_id")): dc for dc in current_dashcards if dc.get("card_id") is not None}
+
+    # Tabs: map desired names -> ids (reuse existing ids when present; otherwise use negative temp ids)
+    desired_tabs: list[dict] = []
+    tab_id_by_name: dict[str, int] = {}
+
+    if tabs:
+        existing_tabs = current.get("tabs") or []
+        if isinstance(existing_tabs, list):
+            for t in existing_tabs:
+                if isinstance(t, dict) and t.get("id") is not None and t.get("name"):
+                    try:
+                        tab_id_by_name[str(t["name"])] = int(t["id"])
+                    except Exception:
+                        pass
+
+        next_temp = -2
+        for t in tabs:
+            tname = str(t.get("name") or "").strip()
+            if not tname:
+                continue
+            tid = tab_id_by_name.get(tname)
+            if tid is None:
+                # prefer provided id; else allocate temp
+                if t.get("id") is not None:
+                    tid = int(t["id"])
+                else:
+                    tid = next_temp
+                    next_temp -= 1
+            desired_tabs.append({"id": tid, "name": tname, "description": t.get("description") or ""})
+
+    tab_id_map = {t["name"]: int(t["id"]) for t in desired_tabs} if desired_tabs else {}
 
     new_dashcards: list[dict] = []
     for spec in dashcard_specs:
         card_id = int(spec["card_id"])
+        tab_name = spec.get("tab")
+        dashboard_tab_id = None
+        if tab_name and tab_id_map:
+            dashboard_tab_id = tab_id_map.get(str(tab_name))
+
         if card_id in by_card_id:
             dc = by_card_id[card_id]
             dc_id = dc.get("id")
             if dc_id is None:
-                # Extremely defensive; should not happen.
                 dc_id = -card_id
+
             new_dashcards.append({
                 "id": dc_id,
                 "card_id": card_id,
@@ -224,6 +278,7 @@ def upsert_dashboard(*, name: str, description: str, parameters: list[dict], das
                 "series": dc.get("series") or [],
                 "visualization_settings": dc.get("visualization_settings") or {},
                 "parameter_mappings": spec.get("parameter_mappings") or [],
+                "dashboard_tab_id": dashboard_tab_id,
             })
         else:
             new_dashcards.append({
@@ -236,14 +291,43 @@ def upsert_dashboard(*, name: str, description: str, parameters: list[dict], das
                 "series": [],
                 "visualization_settings": {},
                 "parameter_mappings": spec.get("parameter_mappings") or [],
+                "dashboard_tab_id": dashboard_tab_id,
             })
 
+    # 1) Update dashboard meta (name/desc/parameters + tabs)
+    meta_payload: dict = {
+        "name": name,
+        "description": description,
+        "parameters": parameters,
+    }
+    if desired_tabs:
+        meta_payload["tabs"] = desired_tabs
+    mb_put(f"/api/dashboard/{did}", meta_payload)
+
+    # 2) Update cards + tabs (best-effort)
+    if desired_tabs:
+        try:
+            mb_put(
+                f"/api/dashboard/{did}/cards",
+                {
+                    "cards": new_dashcards,
+                    "tabs": desired_tabs,
+                    "ordered_tabs": [t["id"] for t in desired_tabs],
+                },
+            )
+            return did
+        except Exception as e:
+            print(f"WARN: PUT /api/dashboard/{did}/cards failed, falling back to PUT /api/dashboard/:id with dashcards. err={e}")
+
+    # Fallback: full update via /api/dashboard/:id
     payload = {
         "name": name,
         "description": description,
         "parameters": parameters,
         "dashcards": new_dashcards,
     }
+    if desired_tabs:
+        payload["tabs"] = desired_tabs
     mb_put(f"/api/dashboard/{did}", payload)
     return did
 
@@ -551,6 +635,118 @@ ORDER BY 1, 2;"""
         ],
     )
 
+    # Card 47: 支出明细（用于下钻）
+    sql_47 = r"""SELECT
+  t.txn_time AS "时间",
+  t.store_code AS "门店",
+  COALESCE(c.lvl1_name, c.lvl1) AS "支出一级",
+  COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') AS "支出二级",
+  t.counterparty_name AS "对方单位",
+  t.summary AS "摘要",
+  t.memo AS "附言",
+  t.purpose AS "用途",
+  ROUND(COALESCE(t.out_amt,0), 2) AS "支出(元)",
+  t.id AS "bank_txn_id",
+  t.source_file_id,
+  c.matched_rule_id,
+  c.classified_source
+FROM yufeng_ods.bank_txn t
+JOIN yufeng_dm.v_bank_txn_classified c
+  ON c.bank_txn_id = t.id
+WHERE t.txn_time IS NOT NULL
+  AND COALESCE(t.out_amt,0) > 0
+  [[ AND extract(year from t.txn_time) = extract(year from {{month_date}})
+     AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
+  [[ AND t.store_code = {{store_code}} ]]
+  [[ AND COALESCE(c.lvl1_name, c.lvl1) = {{expense_lvl1}} ]]
+  [[ AND COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') = {{expense_lvl2}} ]]
+  [[ AND (
+        COALESCE(t.counterparty_name,'') ILIKE '%' || {{keyword}} || '%'
+     OR COALESCE(t.summary,'') ILIKE '%' || {{keyword}} || '%'
+     OR COALESCE(t.memo,'') ILIKE '%' || {{keyword}} || '%'
+     OR COALESCE(t.purpose,'') ILIKE '%' || {{keyword}} || '%'
+  ) ]]
+ORDER BY COALESCE(t.out_amt,0) DESC, t.txn_time DESC
+LIMIT 2000;"""
+
+    card47_id = upsert_card(
+        name="Yufeng｜支出明细（下钻）",
+        database_id=db_id,
+        sql=sql_47,
+        description="用于下钻查看支出明细：按月/门店/支出一级/支出二级/关键词筛选；按金额倒序。",
+        display="table",
+        template_tags={
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date"},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
+            "expense_lvl1": {"id": TAG_EXP_LVL1, "name": "expense_lvl1", "display-name": "Expense Lvl1", "type": "text"},
+            "expense_lvl2": {"id": TAG_EXP_LVL2, "name": "expense_lvl2", "display-name": "Expense Lvl2", "type": "text"},
+            "keyword": {"id": TAG_KEYWORD, "name": "keyword", "display-name": "Keyword", "type": "text"},
+        },
+        parameters=[
+            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": TAG_EXP_LVL1, "type": "string/=", "name": "Expense Lvl1", "slug": "expense_lvl1", "target": ["variable", ["template-tag", "expense_lvl1"]]},
+            {"id": TAG_EXP_LVL2, "type": "string/=", "name": "Expense Lvl2", "slug": "expense_lvl2", "target": ["variable", ["template-tag", "expense_lvl2"]]},
+            {"id": TAG_KEYWORD, "type": "string/contains", "name": "Keyword", "slug": "keyword", "target": ["variable", ["template-tag", "keyword"]]},
+        ],
+    )
+
+    # Card 48: 收入明细（用于下钻）
+    sql_48 = r"""SELECT
+  t.txn_time AS "时间",
+  t.store_code AS "门店",
+  COALESCE(c.lvl1_name, c.lvl1) AS "收入一级",
+  COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') AS "收入二级",
+  t.counterparty_name AS "对方单位",
+  t.summary AS "摘要",
+  t.memo AS "附言",
+  t.purpose AS "用途",
+  ROUND(COALESCE(t.in_amt,0), 2) AS "收入(元)",
+  t.id AS "bank_txn_id",
+  t.source_file_id,
+  c.matched_rule_id,
+  c.classified_source
+FROM yufeng_ods.bank_txn t
+JOIN yufeng_dm.v_bank_txn_classified c
+  ON c.bank_txn_id = t.id
+WHERE t.txn_time IS NOT NULL
+  AND COALESCE(t.in_amt,0) > 0
+  [[ AND extract(year from t.txn_time) = extract(year from {{month_date}})
+     AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
+  [[ AND t.store_code = {{store_code}} ]]
+  [[ AND COALESCE(c.lvl1_name, c.lvl1) = {{income_lvl1}} ]]
+  [[ AND COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') = {{income_lvl2}} ]]
+  [[ AND (
+        COALESCE(t.counterparty_name,'') ILIKE '%' || {{keyword}} || '%'
+     OR COALESCE(t.summary,'') ILIKE '%' || {{keyword}} || '%'
+     OR COALESCE(t.memo,'') ILIKE '%' || {{keyword}} || '%'
+     OR COALESCE(t.purpose,'') ILIKE '%' || {{keyword}} || '%'
+  ) ]]
+ORDER BY COALESCE(t.in_amt,0) DESC, t.txn_time DESC
+LIMIT 2000;"""
+
+    card48_id = upsert_card(
+        name="Yufeng｜收入明细（下钻）",
+        database_id=db_id,
+        sql=sql_48,
+        description="用于下钻查看收入明细：按月/门店/收入一级/收入二级/关键词筛选；按金额倒序。",
+        display="table",
+        template_tags={
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date"},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
+            "income_lvl1": {"id": TAG_INC_LVL1, "name": "income_lvl1", "display-name": "Income Lvl1", "type": "text"},
+            "income_lvl2": {"id": TAG_INC_LVL2, "name": "income_lvl2", "display-name": "Income Lvl2", "type": "text"},
+            "keyword": {"id": TAG_KEYWORD, "name": "keyword", "display-name": "Keyword", "type": "text"},
+        },
+        parameters=[
+            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": TAG_INC_LVL1, "type": "string/=", "name": "Income Lvl1", "slug": "income_lvl1", "target": ["variable", ["template-tag", "income_lvl1"]]},
+            {"id": TAG_INC_LVL2, "type": "string/=", "name": "Income Lvl2", "slug": "income_lvl2", "target": ["variable", ["template-tag", "income_lvl2"]]},
+            {"id": TAG_KEYWORD, "type": "string/contains", "name": "Keyword", "slug": "keyword", "target": ["variable", ["template-tag", "keyword"]]},
+        ],
+    )
+
     # -----------------
     # Options cards (for dropdown filters)
     # -----------------
@@ -570,7 +766,7 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
     # -----------------
 
     dash_name = "榆枫与山｜经营看板"
-    dash_desc = "榆枫与山：收支总揽/支出一级/支出二级/收入二级 + 营业收入vs支出（不含营建）+ 支出一级分类趋势。筛选：月（按月）/门店（下拉）/支出一级/收入一级。"
+    dash_desc = "榆枫与山：概览（收支总揽/支出一级/支出二级/收入二级/趋势）+ 明细下钻（支出/收入明细表）。筛选：月（按月）/门店（下拉）/支出一级/支出二级/收入一级/收入二级/关键词。"
 
     dash_params = [
         # 1) Month: month-only picker
@@ -627,11 +823,100 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
             "values_source_type": "static-list",
             "values_source_config": {"values": [["营业收入", "营业收入"], ["其他收入", "其他收入"]]},
         },
+
+        # 5) Expense lvl2 (detail)
+        {
+            "id": PID_EXP_LVL2,
+            "name": "支出二级",
+            "slug": "expense_lvl2",
+            "type": "category",
+            "sectionId": "string",
+            "required": False,
+            "values_source_type": "static-list",
+            "values_source_config": {
+                "values": [
+                    ["（未填）", "（未填）"],
+                    ["租金", "租金"],
+                    ["物业费", "物业费"],
+                    ["水电费", "水电费"],
+                    ["工资", "工资"],
+                    ["社保", "社保"],
+                    ["劳务派遣", "劳务派遣"],
+                    ["人力服务", "人力服务"],
+                    ["货拉拉", "货拉拉"],
+                    ["快递", "快递"],
+                    ["同城配送", "同城配送"],
+                    ["其他运费", "其他运费"],
+                    ["系统使用费", "系统使用费"],
+                    ["办公费用", "办公费用"],
+                    ["差旅费", "差旅费"],
+                    ["维修费", "维修费"],
+                    ["其他管理", "其他管理"],
+                    ["银行手续费", "银行手续费"],
+                    ["支付通道费", "支付通道费"],
+                    ["原材料", "原材料"],
+                    ["辅料", "辅料"],
+                    ["包装", "包装"],
+                    ["其他采购", "其他采购"],
+                    ["工程款", "工程款"],
+                    ["施工费", "施工费"],
+                    ["装修费", "装修费"],
+                    ["设备采购", "设备采购"],
+                    ["其他营建", "其他营建"],
+                    ["广告费", "广告费"],
+                    ["礼品费", "礼品费"],
+                    ["推广费", "推广费"],
+                    ["营销费", "营销费"],
+                    ["其他营销", "其他营销"],
+                ]
+            },
+        },
+
+        # 6) Income lvl2 (detail)
+        {
+            "id": PID_INC_LVL2,
+            "name": "收入二级",
+            "slug": "income_lvl2",
+            "type": "category",
+            "sectionId": "string",
+            "required": False,
+            "values_source_type": "static-list",
+            "values_source_config": {
+                "values": [
+                    ["（未填）", "（未填）"],
+                    ["美团", "美团"],
+                    ["饿了么", "饿了么"],
+                    ["抖音", "抖音"],
+                    ["京东", "京东"],
+                    ["微信/财付通", "微信/财付通"],
+                    ["支付宝", "支付宝"],
+                    ["其他渠道", "其他渠道"],
+                    ["注资", "注资"],
+                    ["借款", "借款"],
+                    ["贷款", "贷款"],
+                    ["利息", "利息"],
+                    ["退税", "退税"],
+                    ["退款", "退款"],
+                ]
+            },
+        },
+
+        # 7) Keyword (detail)
+        {
+            "id": PID_KEYWORD,
+            "name": "关键词",
+            "slug": "keyword",
+            "type": "string/contains",
+            "sectionId": "string",
+            "required": False,
+        },
     ]
 
     dashcard_specs = [
+        # 概览 Tab
         {
             "id": -101,
+            "tab": "概览",
             "card_id": card40_id,
             "col": 0,
             "row": 0,
@@ -644,6 +929,7 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
         },
         {
             "id": -102,
+            "tab": "概览",
             "card_id": card41_id,
             "col": 0,
             "row": 8,
@@ -656,6 +942,7 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
         },
         {
             "id": -103,
+            "tab": "概览",
             "card_id": card42_id,
             "col": 12,
             "row": 8,
@@ -669,6 +956,7 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
         },
         {
             "id": -104,
+            "tab": "概览",
             "card_id": card43_id,
             "col": 0,
             "row": 16,
@@ -682,6 +970,7 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
         },
         {
             "id": -105,
+            "tab": "概览",
             "card_id": card45_id,
             "col": 0,
             "row": 24,
@@ -694,6 +983,7 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
         },
         {
             "id": -106,
+            "tab": "概览",
             "card_id": card46_id,
             "col": 0,
             "row": 32,
@@ -703,6 +993,40 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
                 mp(card46_id, PID_STORE, "store_code"),
             ],
         },
+
+        # 明细 Tab（下钻）
+        {
+            "id": -107,
+            "tab": "明细",
+            "card_id": card47_id,
+            "col": 0,
+            "row": 0,
+            "size_x": 24,
+            "size_y": 12,
+            "parameter_mappings": [
+                mp(card47_id, PID_MONTH, "month_date"),
+                mp(card47_id, PID_STORE, "store_code"),
+                mp(card47_id, PID_EXP_LVL1, "expense_lvl1"),
+                mp(card47_id, PID_EXP_LVL2, "expense_lvl2"),
+                mp(card47_id, PID_KEYWORD, "keyword"),
+            ],
+        },
+        {
+            "id": -108,
+            "tab": "明细",
+            "card_id": card48_id,
+            "col": 0,
+            "row": 12,
+            "size_x": 24,
+            "size_y": 12,
+            "parameter_mappings": [
+                mp(card48_id, PID_MONTH, "month_date"),
+                mp(card48_id, PID_STORE, "store_code"),
+                mp(card48_id, PID_INC_LVL1, "income_lvl1"),
+                mp(card48_id, PID_INC_LVL2, "income_lvl2"),
+                mp(card48_id, PID_KEYWORD, "keyword"),
+            ],
+        },
     ]
 
     dash_id = upsert_dashboard(
@@ -710,6 +1034,10 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
         description=dash_desc,
         parameters=dash_params,
         dashcard_specs=dashcard_specs,
+        tabs=[
+            {"name": "概览"},
+            {"name": "明细"},
+        ],
     )
 
     print("DONE")
@@ -720,6 +1048,9 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
         ("Yufeng｜支出二级分类（饼图）", card42_id),
         ("Yufeng｜收入二级分类（柱状图）", card43_id),
         ("Yufeng｜营业收入 vs 支出（不含营建）", card45_id),
+        ("Yufeng｜支出一级分类趋势（多线图）", card46_id),
+        ("Yufeng｜支出明细（下钻）", card47_id),
+        ("Yufeng｜收入明细（下钻）", card48_id),
     ]:
         print(f"Card: {name} (id={cid}) -> {MB_URL}/question/{cid}")
 
