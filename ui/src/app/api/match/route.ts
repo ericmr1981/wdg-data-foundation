@@ -11,7 +11,15 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const brandParam = searchParams.get('brand') || 'yufeng';
     const brand = normalizeBrand(brandParam);
-    const month = searchParams.get('month');
+    let month = searchParams.get('month');
+    // Accept both YYYY-MM-01 (date) and YYYY-MM (month) formats.
+    // DB column is DATE (first day of month), so normalize YYYY-MM -> YYYY-MM-01.
+    if (month) {
+      const m = month.trim();
+      if (/^\d{4}-\d{2}$/.test(m)) month = `${m}-01`;
+      else if (/^\d{4}\/\d{2}$/.test(m)) month = `${m.replace('/', '-')}-01`;
+      else month = m;
+    }
     const page = parseInt(searchParams.get('page') || '1');
     const pageSize = parseInt(searchParams.get('pageSize') || '20');
 
