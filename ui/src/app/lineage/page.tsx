@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useBrand } from '@/lib/brand-context';
 import { getCfgSchema, getDmSchema, getOdsSchema } from '@/lib/brand-server';
 import { getLineageGraph, type LineageNode } from '@/lib/lineage-manifest';
@@ -55,10 +56,12 @@ function classNames(...xs: Array<string | false | null | undefined>) {
 }
 
 export default function LineagePage() {
+  const router = useRouter();
   const { brand } = useBrand();
   const graph = useMemo(() => getLineageGraph(brand), [brand]);
 
   const [me, setMe] = useState<{ username: string; role: string } | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [schemas, setSchemas] = useState<DbSchemaRow[]>([]);
   const [schema, setSchema] = useState<string>('');
   const [objects, setObjects] = useState<DbObjectRow[]>([]);
@@ -78,17 +81,34 @@ export default function LineagePage() {
   // auth/me (admin-only page)
   useEffect(() => {
     fetch('/api/auth/me', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (d?.success) setMe(d.data);
+      .then(async (r) => {
+        if (!r.ok) return null;
+        return r.json();
       })
-      .catch(() => {});
+      .then((d) => {
+        if (d?.success) {
+          setMe(d.data);
+        } else {
+          setMe(null);
+        }
+      })
+      .catch(() => {
+        setMe(null);
+      })
+      .finally(() => setAuthChecked(true));
   }, []);
 
-  // Load schemas
+  // Load schemas (admin only)
   useEffect(() => {
+    if (!authChecked) return;
+    if (me?.role !== 'admin') return;
+
     async function loadSchemas() {
       const res = await fetch('/api/db/introspect', { cache: 'no-store' });
+      if (res.status === 401) {
+        router.replace('/login');
+        return;
+      }
       const data = await res.json();
       if (data?.success) {
         setSchemas(data.data || []);
@@ -105,16 +125,22 @@ export default function LineagePage() {
     }
 
     loadSchemas().catch(() => {});
-  }, [brand]);
+  }, [brand, authChecked, me?.role, router]);
 
   // Load recent pipeline runs (for playback)
   useEffect(() => {
+    if (!authChecked) return;
+    if (me?.role !== 'admin') return;
+
     async function loadRuns() {
       const res = await fetch('/api/pipeline', { cache: 'no-store' });
+      if (res.status === 401) {
+        router.replace('/login');
+        return;
+      }
       const data = await res.json();
       if (data?.success) {
         const rows: PipelineRun[] = data.data || [];
-        // Default filter: current brand first, but keep all in memory
         setRuns(rows);
         const firstForBrand = rows.find((r) => r.brand_code === brand);
         setRunId(firstForBrand?.run_id || rows?.[0]?.run_id || '');
@@ -122,7 +148,7 @@ export default function LineagePage() {
     }
 
     loadRuns().catch(() => {});
-  }, [brand]);
+  }, [brand, authChecked, me?.role, router]);
 
   // Load objects for schema
   useEffect(() => {
@@ -158,8 +184,22 @@ export default function LineagePage() {
     loadDetail().catch(() => {});
   }, [schema, objectName]);
 
+  if (!authChecked) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-gray-500">加载中...</div>
+      </div>
+    );
+  }
+
   const isAdmin = me?.role === 'admin';
-  if (me && !isAdmin) {
+  if (!isAdmin) {
+    // If not logged in, send to login; if logged in but role mismatch, show forbidden.
+    if (!me) {
+      router.replace('/login');
+      return null;
+    }
+
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
         Forbidden：该页面仅 admin 可访问。
