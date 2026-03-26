@@ -448,7 +448,8 @@ export default function RulesPage() {
     if (!deleteRuleId) return;
     try {
       setDeleteLoading(true);
-      const res = await fetch(`/api/rules?id=${deleteRuleId}&brand=${brand}`, { method: 'DELETE' });
+      // hard delete (admin only)
+      const res = await fetch(`/api/rules?id=${deleteRuleId}&brand=${brand}&hard=true`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         setDeleteRuleId(null);

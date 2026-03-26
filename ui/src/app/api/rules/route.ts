@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
-import { getCfgRuleTable, getCfgSchema, normalizeBrand } from '@/lib/brand-server';
+import { getCfgRuleTable, getCfgSchema, getDmSchema, normalizeBrand } from '@/lib/brand-server';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 
 const RESERVED_LVL1_CODES = new Set(['UNCLASSIFIED', 'OTHER_OUT']);
@@ -360,10 +360,29 @@ export async function DELETE(request: Request) {
     }
 
     const ruleTable = getCfgRuleTable(brand);
+    const dmSchema = getDmSchema(brand);
 
     // operator: soft delete (enabled=false)
     // admin: can hard delete with ?hard=true
     const hard = searchParams.get('hard') === 'true';
+
+    // L2 snapshot：找出受影响的 source_file_id（best-effort）
+    let affectedFileIds: number[] = [];
+    try {
+      const aff = await pool.query(
+        `
+        SELECT DISTINCT source_file_id
+        FROM ${dmSchema}.bank_txn_classified_snapshot
+        WHERE matched_rule_id = $1::bigint
+          AND source_file_id IS NOT NULL
+        `,
+        [rule_id]
+      );
+      affectedFileIds = (aff.rows || []).map((r: any) => Number(r.source_file_id)).filter((x: any) => Number.isFinite(x));
+    } catch (e) {
+      // snapshot table might not exist for new brands; ignore
+      affectedFileIds = [];
+    }
 
     const client = await pool.connect();
     try {
@@ -378,11 +397,21 @@ export async function DELETE(request: Request) {
           return NextResponse.json({ success: false, error: 'Rule not found' }, { status: 404 });
         }
         await client.query('COMMIT');
+
+        // best-effort refresh snapshot
+        try {
+          for (const fileId of affectedFileIds) {
+            await pool.query(`SELECT ${dmSchema}.refresh_bank_txn_classified_snapshot($1)`, [fileId]);
+          }
+        } catch (e) {
+          console.warn('WARN: refresh snapshot skipped after rule delete:', e);
+        }
+
         return NextResponse.json({ success: true, message: 'Rule hard-deleted' });
       }
 
       const result = await client.query(
-        `UPDATE ${ruleTable} SET enabled=false WHERE rule_id=$1 RETURNING rule_id`,
+        `UPDATE ${ruleTable} SET enabled=false, updated_at=now() WHERE rule_id=$1 RETURNING rule_id`,
         [rule_id]
       );
 
@@ -392,6 +421,16 @@ export async function DELETE(request: Request) {
       }
 
       await client.query('COMMIT');
+
+      // best-effort refresh snapshot
+      try {
+        for (const fileId of affectedFileIds) {
+          await pool.query(`SELECT ${dmSchema}.refresh_bank_txn_classified_snapshot($1)`, [fileId]);
+        }
+      } catch (e) {
+        console.warn('WARN: refresh snapshot skipped after rule disable:', e);
+      }
+
       return NextResponse.json({ success: true, message: 'Rule disabled (soft delete)' });
     } catch (e) {
       await client.query('ROLLBACK');
