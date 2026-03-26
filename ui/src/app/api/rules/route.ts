@@ -93,7 +93,12 @@ export async function GET(request: Request) {
     );
 
     return NextResponse.json({ success: true, data: result.rows });
-  } catch (error) {
+  } catch (error: any) {
+    // 表不存在（新品牌未初始化）→ 返回空数组，避免页面报错
+    if (error?.code === '42P01') {
+      console.warn(`Rules table not found for brand ${brand} (${ruleTable}): table missing`);
+      return NextResponse.json({ success: true, data: [] });
+    }
     console.error('Error fetching rules:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch rules' }, { status: 500 });
   }
@@ -157,7 +162,7 @@ export async function POST(request: Request) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SET LOCAL wdg.user = $1', [user?.username || 'unknown']);
+      await client.query("SELECT set_config('wdg.user', $1, true)", [user?.username || 'unknown']);
 
       const result = await client.query(
         `
@@ -275,7 +280,7 @@ export async function PUT(request: Request) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SET LOCAL wdg.user = $1', [user?.username || 'unknown']);
+      await client.query("SELECT set_config('wdg.user', $1, true)", [user?.username || 'unknown']);
 
       const result = await client.query(
         `
@@ -368,7 +373,7 @@ export async function DELETE(request: Request) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SET LOCAL wdg.user = $1', [user?.username || 'unknown']);
+      await client.query("SELECT set_config('wdg.user', $1, true)", [user?.username || 'unknown']);
 
       if (hard) {
         assertRole(user, ['admin']);

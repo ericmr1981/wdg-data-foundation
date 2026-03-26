@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SET LOCAL wdg.user = $1', [user?.username || 'unknown']);
+      await client.query("SELECT set_config('wdg.user', $1, true)", [user?.username || 'unknown']);
 
       // sort_order = index*10
       await client.query(

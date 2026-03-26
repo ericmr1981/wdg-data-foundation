@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     if (!brand) return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
 
     const res = await pool.query(
-      `SELECT * FROM ops.stores WHERE brand_code=$1 ORDER BY store_code`,
+      `SELECT * FROM ops.stores WHERE brand_code=$1 ORDER BY sort_order NULLS LAST, store_code`,
       [brand]
     );
     return NextResponse.json({ success: true, data: res.rows });

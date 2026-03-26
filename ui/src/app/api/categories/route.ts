@@ -55,7 +55,12 @@ export async function GET(request: Request) {
         lvl2ByLvl1
       }
     });
-  } catch (error) {
+  } catch (error: any) {
+    // 表不存在（新品牌未初始化字典）→ 返回空数组，避免页面报错
+    if (error?.code === '42P01') {
+      console.warn(`Categories not found for brand ${brand} (schema ${cfgSchema}): table missing`);
+      return NextResponse.json({ success: true, data: { lvl1: [], lvl2ByLvl1: {} } });
+    }
     console.error('Error fetching categories:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch categories' }, { status: 500 });
   }

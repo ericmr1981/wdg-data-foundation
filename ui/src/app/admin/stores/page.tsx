@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { fetchBrands } from '@/lib/brands-client';
+import { useBrand } from '@/lib/brand-context';
 
 type StoreRow = {
   brand_code: string;
@@ -32,23 +32,13 @@ function SortableItem({ id, store }: { id: string; store: StoreRow }) {
 }
 
 export default function AdminStoresPage() {
-  const [brand, setBrand] = useState('yufeng');
-  const [brands, setBrands] = useState<Array<{ brand_code: string; brand_name: string }>>([]);
+  const { brand } = useBrand();
   const [stores, setStores] = useState<StoreRow[]>([]);
 
   const [store_code, setCode] = useState('');
   const [store_name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    fetchBrands().then((b) => {
-      if (b.length) {
-        setBrands(b);
-        setBrand(b[0].brand_code);
-      }
-    });
-  }, []);
 
   useEffect(() => {
     if (brand) load();
@@ -103,14 +93,7 @@ export default function AdminStoresPage() {
       <h1 className="text-xl font-semibold">Admin / Stores</h1>
 
       <div className="bg-white border rounded p-4 space-y-2">
-        <div className="flex items-center gap-2">
-          <div className="text-sm text-gray-600">品牌</div>
-          <select className="border rounded px-2 py-1" value={brand} onChange={(e) => setBrand(e.target.value)}>
-            {brands.map((b) => (
-              <option key={b.brand_code} value={b.brand_code}>{b.brand_name}</option>
-            ))}
-          </select>
-        </div>
+        <div className="text-xs text-gray-500">当前品牌：{brand}（切换请用顶部导航栏的“品牌”下拉）</div>
 
         <div className="font-medium">新增门店</div>
         <div className="flex gap-2">

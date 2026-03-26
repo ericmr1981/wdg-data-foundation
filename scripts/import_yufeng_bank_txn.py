@@ -368,10 +368,26 @@ def create_ingest_file(meta: dict, file_hash: str, file_size: int, conn) -> int:
 
 
 def _validate_brand(brand_code: str) -> str:
+    """Validate brand code format only.
+
+    Actual existence check happens after DB connection (ops.brands).
+    """
     brand_code = (brand_code or '').lower().strip()
-    if brand_code not in ("yufeng", "bonjur"):
-        raise ValueError(f"不支持的品牌 brand_code: {brand_code}")
+    if not re.match(r"^[a-z][a-z0-9_]{1,31}$", brand_code):
+        raise ValueError(f"非法 brand_code: {brand_code}")
     return brand_code
+
+
+def assert_brand_exists(conn, brand_code: str):
+    """Ensure brand exists in ops.brands and is enabled."""
+    brand_code = _validate_brand(brand_code)
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM ops.brands WHERE brand_code=%s AND enabled=true LIMIT 1",
+            (brand_code,),
+        )
+        if cur.fetchone() is None:
+            raise ValueError(f"未知或未启用的品牌 brand_code: {brand_code}")
 
 
 def delete_existing_data(brand_code: str, source_file_id: int, conn):
@@ -583,7 +599,7 @@ def do_import(file_path: str) -> dict:
     # 解析路径
     meta = parse_path(file_path)
 
-    # 验证 brand_code（目前支持 yufeng / bonjur）
+    # 验证 brand_code 格式（存在性在 DB 连接后校验）
     _validate_brand(meta["brand_code"])
 
     # 初始化 Ops Logger
@@ -602,6 +618,9 @@ def do_import(file_path: str) -> dict:
 
     # 连接数据库
     conn = get_db_connection()
+
+    # 品牌必须存在（否则直接失败，避免写入奇怪 schema）
+    assert_brand_exists(conn, meta["brand_code"])
 
     # 步骤顺序
     STEP_ORDER = {

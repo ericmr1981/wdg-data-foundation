@@ -30,14 +30,15 @@ export async function POST(request: Request) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SET LOCAL wdg.user = $1', [user?.username || 'unknown']);
+      await client.query("SELECT set_config('wdg.user', $1, true)", [user?.username || 'unknown']);
 
       // Update priority using unnest with ordinality
       // priority = base + (ord-1)*step
       const res = await client.query(
         `
         WITH x AS (
-          SELECT unnest($1::bigint[]) AS rule_id, generate_series(1, array_length($1::bigint[], 1)) AS ord
+          SELECT *
+          FROM unnest($1::bigint[]) WITH ORDINALITY AS t(rule_id, ord)
         )
         UPDATE ${ruleTable} r
         SET priority = $2 + (x.ord - 1) * $3,

@@ -13,7 +13,7 @@ export async function GET() {
   const user = await getSessionUser();
   try {
     assertRole(user, ['admin']);
-    const res = await pool.query(`SELECT * FROM ops.brands ORDER BY brand_code`);
+    const res = await pool.query(`SELECT * FROM ops.brands ORDER BY sort_order NULLS LAST, brand_code`);
     return NextResponse.json({ success: true, data: res.rows });
   } catch (err: any) {
     const status = err?.status || 500;

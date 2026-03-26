@@ -8,7 +8,10 @@ export async function GET() {
   try {
     assertRole(user, ['admin', 'operator']);
     const res = await pool.query(
-      `SELECT brand_code, brand_name FROM ops.brands WHERE enabled=true ORDER BY brand_code`
+      `SELECT brand_code, brand_name
+       FROM ops.brands
+       WHERE enabled=true
+       ORDER BY sort_order NULLS LAST, brand_code`
     );
     return NextResponse.json({ success: true, data: res.rows });
   } catch (err: any) {

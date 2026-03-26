@@ -19,7 +19,7 @@ export async function GET(request: Request) {
       SELECT store_code, store_name
       FROM ops.stores
       WHERE brand_code=$1 AND enabled=true
-      ORDER BY store_code
+      ORDER BY sort_order NULLS LAST, store_code
       `,
       [brand]
     );

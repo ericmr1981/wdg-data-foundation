@@ -70,6 +70,12 @@ function NavBar() {
             <Link href="/upload" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
               文件上传
             </Link>
+
+            {me?.role === 'admin' && (
+              <Link href="/admin/config" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
+                配置
+              </Link>
+            )}
           </div>
 
           <div className="flex items-center gap-3">

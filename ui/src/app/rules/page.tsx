@@ -127,6 +127,14 @@ export default function RulesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingRule, setEditingRule] = useState<BankRule | null>(null);
 
+  // 导入规则（从其他品牌复制）
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importBrands, setImportBrands] = useState<Array<{ brand_code: string; brand_name: string }>>([]);
+  const [importFrom, setImportFrom] = useState<string>('');
+  const [importMode, setImportMode] = useState<'merge' | 'append'>('merge');
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+
   // 删除确认 Modal（避免被浏览器禁用 confirm 弹窗）
   const [deleteRuleId, setDeleteRuleId] = useState<number | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -139,6 +147,10 @@ export default function RulesPage() {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchLvl1, setSearchLvl1] = useState('');
   const [searchDirection, setSearchDirection] = useState('');
+  const [searchGroup, setSearchGroup] = useState('');
+
+  // 分组字典（来自 DB，可用于过滤/输入提示）
+  const [ruleGroups, setRuleGroups] = useState<Array<{ group_name: string; sort_order: number }>>([]);
 
   const [formData, setFormData] = useState({
     priority: 1000,
@@ -176,7 +188,9 @@ export default function RulesPage() {
 
   useEffect(() => {
     fetchCategories();
+    fetchRuleGroups();
     fetchRules();
+    fetchImportBrands();
   }, [brand]);
 
   async function fetchCategories() {
@@ -189,6 +203,33 @@ export default function RulesPage() {
       }
     } catch (err) {
       console.error('Failed to fetch categories:', err);
+    }
+  }
+
+  async function fetchRuleGroups() {
+    try {
+      const res = await fetch(`/api/rule-groups?brand=${brand}`);
+      const data = await res.json();
+      if (data.success) {
+        setRuleGroups(data.data || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch rule groups:', err);
+    }
+  }
+
+  async function fetchImportBrands() {
+    try {
+      const res = await fetch('/api/brands');
+      const data = await res.json();
+      if (data.success) {
+        setImportBrands(data.data || []);
+        // 默认 source 选一个不是当前 brand 的
+        const first = (data.data || []).find((b: any) => b.brand_code !== brand);
+        setImportFrom(first?.brand_code || '');
+      }
+    } catch (err) {
+      // ignore
     }
   }
 
@@ -277,9 +318,13 @@ export default function RulesPage() {
       if (searchDirection && rule.direction !== searchDirection) {
         return false;
       }
+      // 分组筛选
+      if (searchGroup && String((rule as any).group_name || '') !== searchGroup) {
+        return false;
+      }
       return true;
     });
-  }, [rules, searchKeyword, searchLvl1, searchDirection]);
+  }, [rules, searchKeyword, searchLvl1, searchDirection, searchGroup]);
 
   const lvl1NameByCode = useMemo(() => {
     const m = new Map<string, string>();
@@ -341,8 +386,10 @@ export default function RulesPage() {
         alert(`保存失败: ${data.error}`);
         return;
       }
-      await fetchRules();
+      // 体验：先退出拖拽模式，让页面“立刻返回”；再后台刷新列表
       setReorderMode(false);
+      setReorderIds([]);
+      fetchRules();
       alert('优先级顺序已保存');
     } catch (e: any) {
       alert(`保存失败: ${e.message}`);
@@ -479,7 +526,7 @@ export default function RulesPage() {
           {!reorderMode ? (
             <button
               onClick={() => {
-                if (searchKeyword || searchLvl1 || searchDirection) {
+                if (searchKeyword || searchLvl1 || searchDirection || searchGroup) {
                   alert('请先清除筛选后再排序（避免只排序子集造成误解）');
                   return;
                 }
@@ -508,6 +555,16 @@ export default function RulesPage() {
               </button>
             </>
           )}
+
+          <button
+            onClick={() => {
+              setImportError(null);
+              setShowImportModal(true);
+            }}
+            className="px-3 py-2 border rounded-lg bg-white hover:bg-gray-50"
+          >
+            导入规则
+          </button>
 
           <button
             onClick={() => { resetForm(); setEditingRule(null); setShowModal(true); }}
@@ -558,7 +615,7 @@ export default function RulesPage() {
 
       {/* 搜索/筛选 */}
       <div className="bg-white shadow rounded-lg p-4 mb-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">关键词</label>
             <input
@@ -597,14 +654,27 @@ export default function RulesPage() {
               <option value="any">任意</option>
             </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">分组</label>
+            <select
+              value={searchGroup}
+              onChange={(e) => setSearchGroup(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm"
+            >
+              <option value="">全部</option>
+              {ruleGroups.map(g => (
+                <option key={g.group_name} value={g.group_name}>{g.group_name}</option>
+              ))}
+            </select>
+          </div>
         </div>
-        {(searchKeyword || searchLvl1 || searchDirection) && (
+        {(searchKeyword || searchLvl1 || searchDirection || searchGroup) && (
           <div className="mt-3 flex items-center justify-between">
             <span className="text-sm text-gray-500">
               筛选结果：{filteredRules.length} / {rules.length} 条
             </span>
             <button
-              onClick={() => { setSearchKeyword(''); setSearchLvl1(''); setSearchDirection(''); }}
+              onClick={() => { setSearchKeyword(''); setSearchLvl1(''); setSearchDirection(''); setSearchGroup(''); }}
               className="text-sm text-blue-600 hover:text-blue-800"
             >
               清除筛选
@@ -713,6 +783,92 @@ export default function RulesPage() {
         </div>
       )}
 
+      {/* 导入规则 Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h2 className="text-lg font-semibold mb-2">从其他品牌导入规则</h2>
+            <div className="text-sm text-gray-600 mb-4">目标品牌：{brand}</div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">来源品牌</label>
+                <select
+                  className="mt-1 block w-full border rounded-md px-3 py-2"
+                  value={importFrom}
+                  onChange={(e) => setImportFrom(e.target.value)}
+                >
+                  <option value="">请选择</option>
+                  {importBrands
+                    .filter((b) => b.brand_code !== brand)
+                    .map((b) => (
+                      <option key={b.brand_code} value={b.brand_code}>{b.brand_name}（{b.brand_code}）</option>
+                    ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">模式</label>
+                <select
+                  className="mt-1 block w-full border rounded-md px-3 py-2"
+                  value={importMode}
+                  onChange={(e) => setImportMode(e.target.value as any)}
+                >
+                  <option value="merge">merge（去重导入，不覆盖现有）</option>
+                  <option value="append">append（全量追加，可能产生重复）</option>
+                </select>
+              </div>
+
+              {importError && (
+                <div className="text-sm text-red-600">{importError}</div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  className="px-4 py-2 border rounded-lg hover:bg-gray-50"
+                  disabled={importLoading}
+                  onClick={() => setShowImportModal(false)}
+                >
+                  取消
+                </button>
+                <button
+                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                  disabled={importLoading || !importFrom}
+                  onClick={async () => {
+                    if (!importFrom) return;
+                    if (!confirm(`确认从 ${importFrom} 导入规则到 ${brand}？`)) return;
+                    setImportLoading(true);
+                    setImportError(null);
+                    try {
+                      const res = await fetch('/api/admin/rules/import-from-brand', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ from_brand: importFrom, to_brand: brand, mode: importMode }),
+                      });
+                      const data = await res.json();
+                      if (!data.success) {
+                        const extra = data.code ? ` (${data.code})` : '';
+                        throw new Error((data.error || '导入失败') + extra);
+                      }
+                      await fetchRuleGroups();
+                      await fetchRules();
+                      alert(`导入完成：新增 ${data.data?.inserted ?? 0} 条规则`);
+                      setShowImportModal(false);
+                    } catch (e: any) {
+                      setImportError(e.message);
+                    } finally {
+                      setImportLoading(false);
+                    }
+                  }}
+                >
+                  {importLoading ? '导入中...' : '开始导入'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 编辑/新增 Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -734,11 +890,18 @@ export default function RulesPage() {
                 <label className="block text-sm font-medium text-gray-700">分组（可选）</label>
                 <input
                   type="text"
+                  list="wdg-rule-groups"
                   value={(formData as any).group_name || ''}
                   onChange={(e) => setFormData({ ...(formData as any), group_name: e.target.value })}
                   placeholder="例如：基础规则 / 门店特例 / 临时"
                   className="mt-1 block w-full border rounded-md px-3 py-2"
                 />
+                <datalist id="wdg-rule-groups">
+                  {ruleGroups.map(g => (
+                    <option key={g.group_name} value={g.group_name} />
+                  ))}
+                </datalist>
+                <p className="text-xs text-gray-500 mt-1">分组目前主要用于管理/过滤（不影响匹配逻辑）；建议同一品牌内复用统一命名。</p>
               </div>
 
               <div>
