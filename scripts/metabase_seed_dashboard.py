@@ -1034,10 +1034,7 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
         description=dash_desc,
         parameters=dash_params,
         dashcard_specs=dashcard_specs,
-        tabs=[
-            {"name": "概览"},
-            {"name": "明细"},
-        ],
+        tabs=None,
     )
 
     print("DONE")
