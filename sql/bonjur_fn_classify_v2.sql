@@ -175,10 +175,11 @@ END;
 $function$;
 
 -- ==================== 创建 v2 视图（带字典名称 join） ====================
+-- 性能关键：只调用一次 fn_classify_bank_txn_v2（用 LATERAL），避免每行重复执行 3-4 次导致雪崩。
 DROP VIEW IF EXISTS bonjur_dm.v_bank_txn_classified_v2 CASCADE;
 
 CREATE VIEW bonjur_dm.v_bank_txn_classified_v2 AS
-SELECT 
+SELECT
     t.id AS bank_txn_id,
     t.store_code,
     t.txn_time,
@@ -188,20 +189,20 @@ SELECT
     t.purpose,
     t.in_amt,
     t.out_amt,
-    (bonjur_dm.fn_classify_bank_txn_v2(t.id)).matched_rule_id AS matched_rule_id,
-    (bonjur_dm.fn_classify_bank_txn_v2(t.id)).lvl1_code AS lvl1_code,
-    (bonjur_dm.fn_classify_bank_txn_v2(t.id)).lvl2_code AS lvl2_code,
-    (bonjur_dm.fn_classify_bank_txn_v2(t.id)).classified_source AS classified_source,
-    -- join 字典表获取名称（共享 yufeng_cfg 字典）
-    COALESCE(c1.lvl1_name, '（未分类）') AS lvl1,
-    COALESCE(c2.lvl2_name, NULL) AS lvl2,
+    r.matched_rule_id,
+    r.lvl1_code,
+    r.lvl2_code,
+    r.classified_source,
+    COALESCE(c1.lvl1_name, '（未分类）') AS lvl1_name,
+    COALESCE(c2.lvl2_name, NULL) AS lvl2_name,
     t.source_file_id
 FROM bonjur_ods.bank_txn t
-LEFT JOIN yufeng_cfg.dim_category_lvl1 c1 
-    ON c1.lvl1_code = (bonjur_dm.fn_classify_bank_txn_v2(t.id)).lvl1_code
-LEFT JOIN yufeng_cfg.dim_category_lvl2 c2 
-    ON c2.lvl1_code = (bonjur_dm.fn_classify_bank_txn_v2(t.id)).lvl1_code
-    AND c2.lvl2_code = (bonjur_dm.fn_classify_bank_txn_v2(t.id)).lvl2_code;
+CROSS JOIN LATERAL bonjur_dm.fn_classify_bank_txn_v2(t.id) r
+LEFT JOIN bonjur_cfg.dim_category_lvl1 c1
+    ON c1.lvl1_code = r.lvl1_code
+LEFT JOIN bonjur_cfg.dim_category_lvl2 c2
+    ON c2.lvl1_code = r.lvl1_code
+    AND c2.lvl2_code = r.lvl2_code;
 
 -- ==================== 验证 ====================
 SELECT 'Bonjur v2 分类函数创建完成' as status,
