@@ -1,0 +1,14 @@
+[
+  {
+    "id": "F-001",
+    "title": "Repo-first harness baseline installed (init + guard pass)",
+    "passes": true,
+    "verify": "bash init.sh && bash scripts/run_change_guard.sh"
+  },
+  {
+    "id": "F-002",
+    "title": "Add a meaningful project test oracle (pytest/integration) and wire harness.json:testCommand",
+    "passes": false,
+    "verify": "TBD"
+  }
+]
