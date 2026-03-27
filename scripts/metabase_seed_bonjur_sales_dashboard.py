@@ -224,6 +224,37 @@ ORDER BY "实收率(%)" DESC;
         ],
     )
 
+    # Service-fee discrepancy monthly summary
+    sql_service_fee_monthly = r"""
+SELECT
+  month AS "月份",
+  SUM(service_fee_adjust_amt) AS "服务费校验差值(合计)",
+  AVG(service_fee_adjust_amt) AS "服务费校验差值(日均)",
+  COUNT(*) AS "天数"
+FROM bonjur_dm.sales_daily_report_v1
+WHERE 1=1
+  [[ AND month = date_trunc('month', {{month_date}}) ]]
+  [[ AND store_code = {{store_code}} ]]
+GROUP BY month
+ORDER BY month;
+"""
+
+    card_service_fee_monthly_id = upsert_card(
+        name="Bonjur｜服务费校验差值（月汇总）",
+        database_id=db_id,
+        sql=sql_service_fee_monthly,
+        description="服务费校验差值 = 营业收入 + 平台服务费 - 营业收入(含服务费)。按月汇总用于口径对齐检查（理想接近0）。",
+        display="table",
+        template_tags={
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date", "required": False},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store", "type": "text", "required": False},
+        },
+        parameters=[
+            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
+        ],
+    )
+
     # -----------------
     # Dashboard
     # -----------------
@@ -288,6 +319,18 @@ ORDER BY "实收率(%)" DESC;
             "parameter_mappings": [
                 mp(card_cash_in_rate_id, PID_MONTH, "month_date"),
                 mp(card_cash_in_rate_id, PID_STORE, "store_code"),
+            ],
+        },
+        {
+            "id": -205,
+            "card_id": card_service_fee_monthly_id,
+            "col": 0,
+            "row": 30,
+            "size_x": 24,
+            "size_y": 8,
+            "parameter_mappings": [
+                mp(card_service_fee_monthly_id, PID_MONTH, "month_date"),
+                mp(card_service_fee_monthly_id, PID_STORE, "store_code"),
             ],
         },
     ]
