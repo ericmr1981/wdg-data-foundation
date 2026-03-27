@@ -872,8 +872,9 @@ export default function RulesPage() {
 
       {/* 编辑/新增 Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto">
+          <div className="min-h-full flex items-start justify-center p-4">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-semibold mb-4">{editingRule ? '编辑规则' : '新增规则'}</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -1140,6 +1141,7 @@ export default function RulesPage() {
                 </button>
               </div>
             </form>
+            </div>
           </div>
         </div>
       )}
