@@ -13,7 +13,13 @@ function BrandSelector() {
     fetchBrands()
       .then((rows) => {
         if (!rows.length) return;
-        setOpts(rows.map((r) => ({ code: r.brand_code, name: r.brand_name })));
+        const next = rows.map((r) => ({ code: r.brand_code, name: r.brand_name }));
+        setOpts(next);
+
+        // 若新增/禁用品牌导致当前 brand 不在列表里，自动切到第一个可用品牌
+        if (!next.find((b) => b.code === brand)) {
+          setBrand(next[0].code as any);
+        }
       })
       .catch(() => {});
   }, []);

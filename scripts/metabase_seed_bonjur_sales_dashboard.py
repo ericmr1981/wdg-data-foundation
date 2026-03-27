@@ -41,22 +41,24 @@ from scripts.metabase_seed_dashboard import (  # type: ignore
 
 # Dashboard parameter IDs (stable)
 PID_MONTH = "00000000-0000-0000-0000-00000000B001"
-# Bonjur-specific store filter (dashboard uses store_name dropdown in UI).
+# Bonjur-specific store filter id.
 PID_STORE = "00000000-0000-0000-0000-00000000B002"
 
 
-def _card_field_ref(card_id: int, col_name: str) -> list:
-    """Return Metabase-style field_ref from a native question's result_metadata.
+def _get_table_id_by_name(name: str) -> int:
+    t = search_one("table", name)
+    if not t or not t.get("id"):
+        raise RuntimeError(f"Metabase table not found by name: {name}")
+    return int(t["id"])
 
-    We avoid hardcoding Metabase field IDs because they vary per instance.
-    """
 
-    c = mb_get(f"/api/card/{card_id}") or {}
-    meta = c.get("result_metadata") or []
-    for m in meta:
-        if isinstance(m, dict) and m.get("name") == col_name and m.get("field_ref") is not None:
-            return m["field_ref"]
-    raise RuntimeError(f"Cannot find field_ref for card_id={card_id} col={col_name}; meta={meta!r}")
+def _get_field_id(table_id: int, field_name: str) -> int:
+    meta = mb_get(f"/api/table/{table_id}/query_metadata") or {}
+    fields = meta.get("fields") or []
+    for f in fields:
+        if isinstance(f, dict) and f.get("name") == field_name and f.get("id") is not None:
+            return int(f["id"])
+    raise RuntimeError(f"Field not found: table_id={table_id} field={field_name}")
 
 
 def main() -> None:
@@ -73,7 +75,6 @@ def main() -> None:
     sql_overview = r"""
 SELECT
   month,
-  store_code,
   store_name,
   gross_sales_amt AS "营业额",
   revenue_amt AS "营业收入",
@@ -85,8 +86,8 @@ SELECT
   service_fee_adjust_amt AS "服务费校验差值"
 FROM bonjur_dm.sales_daily_report_v1
 WHERE 1=1
-  [[ AND month = date_trunc('month', {{month_date}}) ]]
-  [[ AND store_code = {{store_code}} ]]
+  [[ AND month = {{month_date}} ]]
+  [[ AND store_name = {{store_name}} ]]
 ORDER BY biz_date DESC
 LIMIT 31;
 """
@@ -98,13 +99,13 @@ LIMIT 31;
         description="Bonjur 自助下载营业数据（日报）。含实收率、折扣、服务费校验项。",
         display="table",
         template_tags={
-            # optional parameters (SQL already COALESCE/[[ ... ]] guarded)
-            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date", "required": False},
-            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store", "type": "text", "required": False},
+            # optional parameters
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "月份", "type": "date", "required": False},
+            "store_name": {"id": PID_STORE, "name": "store_name", "display-name": "门店", "type": "text", "required": False},
         },
         parameters=[
-            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
-            {"id": PID_STORE, "type": "string/=", "name": "Store", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": PID_MONTH, "type": "date/single", "name": "月份", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "门店", "slug": "store_name", "required": False, "target": ["variable", ["template-tag", "store_name"]]},
         ],
     )
 
@@ -126,8 +127,8 @@ SELECT
   channel_name AS "渠道",
   revenue_amt AS "营业收入"
 FROM bonjur_dm.v_sales_monthly_channel_breakdown_v1
-WHERE month = COALESCE(date_trunc('month', {{month_date}}), (SELECT max(month) FROM bonjur_dm.sales_monthly_report_v1))
-  [[ AND store_code = {{store_code}} ]]
+WHERE month = COALESCE({{month_date}}, (SELECT max(month) FROM bonjur_dm.sales_monthly_report_v1))
+  [[ AND store_name = {{store_name}} ]]
   AND (
     channel_level = 1
     OR (channel_level = 0 AND channel_code NOT IN ('wechat','alipay'))
@@ -148,12 +149,12 @@ ORDER BY revenue_amt DESC;
             "pie.inner_radius": 0.6,
         },
         template_tags={
-            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date", "required": False},
-            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store", "type": "text", "required": False},
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "月份", "type": "date", "required": False},
+            "store_name": {"id": PID_STORE, "name": "store_name", "display-name": "门店", "type": "text", "required": False},
         },
         parameters=[
-            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
-            {"id": PID_STORE, "type": "string/=", "name": "Store", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": PID_MONTH, "type": "date/single", "name": "月份", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "门店", "slug": "store_name", "required": False, "target": ["variable", ["template-tag", "store_name"]]},
         ],
     )
 
@@ -166,7 +167,7 @@ SELECT
   revenue_amt AS "营业收入"
 FROM bonjur_dm.sales_monthly_report_v1
 WHERE 1=1
-  [[ AND store_code = {{store_code}} ]]
+  [[ AND store_name = {{store_name}} ]]
 ORDER BY month;
 """
 
@@ -181,11 +182,10 @@ ORDER BY month;
             "graph.metrics": ["营业额", "营业收入"],
         },
         template_tags={
-            # Month is not used here (full history), only store is applied.
-            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store", "type": "text", "required": False},
+            "store_name": {"id": PID_STORE, "name": "store_name", "display-name": "门店", "type": "text", "required": False},
         },
         parameters=[
-            {"id": PID_STORE, "type": "string/=", "name": "Store", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "门店", "slug": "store_name", "required": False, "target": ["variable", ["template-tag", "store_name"]]},
         ],
     )
 
@@ -199,8 +199,8 @@ SELECT
        ELSE NULL
   END AS "实收率(%)"
 FROM bonjur_dm.v_sales_monthly_channel_breakdown_v1
-WHERE month = COALESCE(date_trunc('month', {{month_date}}), (SELECT max(month) FROM bonjur_dm.sales_monthly_report_v1))
-  [[ AND store_code = {{store_code}} ]]
+WHERE month = COALESCE({{month_date}}, (SELECT max(month) FROM bonjur_dm.sales_monthly_report_v1))
+  [[ AND store_name = {{store_name}} ]]
 ORDER BY "实收率(%)" DESC;
 """
 
@@ -215,12 +215,12 @@ ORDER BY "实收率(%)" DESC;
             "graph.metrics": ["实收率(%)"],
         },
         template_tags={
-            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date", "required": False},
-            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store", "type": "text", "required": False},
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "月份", "type": "date", "required": False},
+            "store_name": {"id": PID_STORE, "name": "store_name", "display-name": "门店", "type": "text", "required": False},
         },
         parameters=[
-            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
-            {"id": PID_STORE, "type": "string/=", "name": "Store", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": PID_MONTH, "type": "date/single", "name": "月份", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "门店", "slug": "store_name", "required": False, "target": ["variable", ["template-tag", "store_name"]]},
         ],
     )
 
@@ -233,8 +233,8 @@ SELECT
   COUNT(*) AS "天数"
 FROM bonjur_dm.sales_daily_report_v1
 WHERE 1=1
-  [[ AND month = date_trunc('month', {{month_date}}) ]]
-  [[ AND store_code = {{store_code}} ]]
+  [[ AND month = {{month_date}} ]]
+  [[ AND store_name = {{store_name}} ]]
 GROUP BY month
 ORDER BY month;
 """
@@ -246,12 +246,12 @@ ORDER BY month;
         description="服务费校验差值 = 营业收入 + 平台服务费 - 营业收入(含服务费)。按月汇总用于口径对齐检查（理想接近0）。",
         display="table",
         template_tags={
-            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date", "required": False},
-            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store", "type": "text", "required": False},
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "月份", "type": "date", "required": False},
+            "store_name": {"id": PID_STORE, "name": "store_name", "display-name": "门店", "type": "text", "required": False},
         },
         parameters=[
-            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
-            {"id": PID_STORE, "type": "string/=", "name": "Store", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": PID_MONTH, "type": "date/single", "name": "月份", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "门店", "slug": "store_name", "required": False, "target": ["variable", ["template-tag", "store_name"]]},
         ],
     )
 
@@ -262,15 +262,78 @@ ORDER BY month;
     # -----------------
 
     dash_name = "Bonjur｜营业看板（自助下载）"
-    dash_desc = "Bonjur 营业数据（自助下载）：营业日报 + 月趋势（营业额vs营业收入）+ 营业收入拆分（环形图）+ 渠道实收率。筛选：月份（按月）/门店（下拉）。"
+    dash_desc = "Bonjur 营业数据（自助下载）：营业日报 + 月趋势（营业额vs营业收入）+ 营业收入拆分（环形图）+ 渠道实收率 + 服务费校验差值（月汇总）。筛选：月份（按月）/门店（店名下拉）。"
 
-    # NOTE (方案A): keep dashboard filters on simple, widely-supported parameter types
-    # to avoid Metabase UI 400 errors.
-    # - Month uses a single-date picker, but SQL always truncates to month.
-    # - Store uses store_code exact match (optional).
+    # Month dropdown options (month date -> YYYY-MM label)
+    month_options_id = upsert_card(
+        name="Options｜Bonjur month dropdown",
+        database_id=db_id,
+        sql=r"""SELECT DISTINCT
+  month AS month_date,
+  to_char(month, 'YYYY-MM') AS month_label
+FROM bonjur_dm.sales_monthly_report_v1
+ORDER BY month_date;""",
+        description="Dashboard filter options: month_date + month_label",
+        display="table",
+    )
+
+    # Store dropdown options (store_name)
+    store_options_id = upsert_card(
+        name="Options｜Bonjur store dropdown",
+        database_id=db_id,
+        sql=r"""SELECT store_name
+FROM bonjur_cfg.dim_store
+ORDER BY store_name;""",
+        description="Dashboard filter options: store_name",
+        display="table",
+    )
+
+    # Extract field_ref from options cards result_metadata (Metabase-specific)
+    def _field_ref(card_id: int, col: str) -> list:
+        c = mb_get(f"/api/card/{card_id}") or {}
+        meta = c.get("result_metadata") or []
+        for m in meta:
+            if isinstance(m, dict) and m.get("name") == col and m.get("field_ref") is not None:
+                return m["field_ref"]
+        raise RuntimeError(f"Cannot find field_ref for card_id={card_id} col={col}")
+
+    month_value_field = _field_ref(month_options_id, "month_date")
+    month_label_field = _field_ref(month_options_id, "month_label")
+
+    store_value_field = _field_ref(store_options_id, "store_name")
+
     dash_params = [
-        {"id": PID_MONTH, "name": "Month（按月）", "slug": "month_date", "type": "date/single", "required": False, "default": "2026-02-01"},
-        {"id": PID_STORE, "name": "门店（store_code）", "slug": "store_code", "type": "string/=", "required": False},
+        # Month: dropdown showing YYYY-MM
+        {
+            "id": PID_MONTH,
+            "name": "月份",
+            "slug": "month_date",
+            "type": "category",
+            "sectionId": "date",
+            "required": False,
+            "values_source_type": "card",
+            "values_source_config": {
+                "card_id": month_options_id,
+                "value_field": month_value_field,
+                "label_field": month_label_field,
+            },
+        },
+
+        # Store: dropdown showing store_name, returning store_name
+        {
+            "id": PID_STORE,
+            "name": "门店",
+            "slug": "store_name",
+            "type": "category",
+            "sectionId": "string",
+            "required": False,
+            "values_source_type": "card",
+            "values_source_config": {
+                "card_id": store_options_id,
+                "value_field": store_value_field,
+                "label_field": store_value_field,
+            },
+        },
     ]
 
     dashcard_specs = [
@@ -283,7 +346,7 @@ ORDER BY month;
             "size_y": 10,
             "parameter_mappings": [
                 mp(card_overview_id, PID_MONTH, "month_date"),
-                mp(card_overview_id, PID_STORE, "store_code"),
+                mp(card_overview_id, PID_STORE, "store_name"),
             ],
         },
         {
@@ -294,7 +357,7 @@ ORDER BY month;
             "size_x": 24,
             "size_y": 10,
             "parameter_mappings": [
-                mp(card_trend_id, PID_STORE, "store_code"),
+                mp(card_trend_id, PID_STORE, "store_name"),
             ],
         },
         {
@@ -306,7 +369,7 @@ ORDER BY month;
             "size_y": 10,
             "parameter_mappings": [
                 mp(card_rev_id, PID_MONTH, "month_date"),
-                mp(card_rev_id, PID_STORE, "store_code"),
+                mp(card_rev_id, PID_STORE, "store_name"),
             ],
         },
         {
@@ -318,7 +381,7 @@ ORDER BY month;
             "size_y": 10,
             "parameter_mappings": [
                 mp(card_cash_in_rate_id, PID_MONTH, "month_date"),
-                mp(card_cash_in_rate_id, PID_STORE, "store_code"),
+                mp(card_cash_in_rate_id, PID_STORE, "store_name"),
             ],
         },
         {
@@ -330,7 +393,7 @@ ORDER BY month;
             "size_y": 8,
             "parameter_mappings": [
                 mp(card_service_fee_monthly_id, PID_MONTH, "month_date"),
-                mp(card_service_fee_monthly_id, PID_STORE, "store_code"),
+                mp(card_service_fee_monthly_id, PID_STORE, "store_name"),
             ],
         },
     ]

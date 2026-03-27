@@ -1,5 +1,17 @@
 # Progress Log
 
+## 2026-03-27 14:20
+- goal: Upload 回执补全（返回 source_file_id / 导入状态）+ 新增品牌/门店体验收口
+- bet: /api/upload 计算文件 sha256 并回读 raw.ingest_file（best-effort）；Brand 下拉在当前 brand 不可用时自动切换到第一个可用品牌
+- commit: HEAD
+- verification:
+  - command: (ui) npm run build
+  - result: pass (Next build ok)
+  - command: bash scripts/run_change_guard.sh
+  - result: pass
+- decision: keep
+- next: 需要的话把 /api/upload 的回执信息（status/row_count/error_message）同步展示到更多页面（比如 lineage）
+
 ## 2026-03-27 08:55
 - goal: Reduce harness drift-check noise while keeping progress logging useful
 - bet: Allow progress log to reference the current commit symbolically (commit: HEAD)

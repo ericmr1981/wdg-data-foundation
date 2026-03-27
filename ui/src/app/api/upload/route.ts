@@ -4,6 +4,7 @@ import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { existsSync } from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
+import crypto from 'crypto';
 import pool from '@/lib/db';
 
 // POST /api/upload - 上传文件并触发导入
@@ -38,8 +39,13 @@ export async function POST(request: Request) {
     // 保存文件
     const fileName = file.name;
     const filePath = path.join(uploadDir, fileName);
-    const buffer = await file.arrayBuffer();
-    await writeFile(filePath, Buffer.from(buffer));
+    const arrayBuffer = await file.arrayBuffer();
+    const fileBuffer = Buffer.from(arrayBuffer);
+
+    // 上传回执：提前计算 SHA-256（与导入脚本的幂等逻辑对齐）
+    const fileHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+
+    await writeFile(filePath, fileBuffer);
 
     let importResult = null;
     let importError = null;
@@ -110,12 +116,41 @@ export async function POST(request: Request) {
       }
     }
 
+    // 上传回执：尝试回读 raw.ingest_file（无论 triggerImport 与否，只要库里存在就会回显）
+    let sourceFileId: number | null = null;
+    let importStatus: string | null = null;
+    let rowCount: number | null = null;
+    let errorMessage: string | null = null;
+
+    try {
+      const q = await pool.query(
+        `SELECT id, status, row_count, error_message
+         FROM raw.ingest_file
+         WHERE file_hash = $1
+         LIMIT 1`,
+        [fileHash]
+      );
+      if (q.rows?.length) {
+        sourceFileId = Number(q.rows[0].id);
+        importStatus = q.rows[0].status;
+        rowCount = q.rows[0].row_count ?? null;
+        errorMessage = q.rows[0].error_message ?? null;
+      }
+    } catch {
+      // best-effort: do not block upload on receipt query
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         filePath,
         fileName,
         fileMonth: yyyyMM,
+        fileHash,
+        sourceFileId,
+        importStatus,
+        rowCount,
+        errorMessage,
         importResult,
         importError
       }
