@@ -58,7 +58,11 @@ if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/n
   HEAD_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "")
   if [[ -n "$LOG_FILE" && -n "$HEAD_SHA" ]]; then
     if ! grep -q "$HEAD_SHA" "$LOG_FILE"; then
-      echo "[WARN] $LOG_FILE does not mention HEAD commit ($HEAD_SHA). Add an entry with: commit: $HEAD_SHA"
+      # Allow a symbolic marker so the progress log can refer to the current HEAD
+      # without requiring impossible self-referential commit hashes.
+      if ! grep -q "commit: HEAD" "$LOG_FILE"; then
+        echo "[WARN] $LOG_FILE does not mention HEAD commit ($HEAD_SHA). Add an entry with: commit: $HEAD_SHA (or use: commit: HEAD)"
+      fi
     fi
   fi
 fi
