@@ -874,7 +874,7 @@ export default function RulesPage() {
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto">
           <div className="min-h-full flex items-start justify-center p-4">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="text-lg font-semibold mb-4">{editingRule ? '编辑规则' : '新增规则'}</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
