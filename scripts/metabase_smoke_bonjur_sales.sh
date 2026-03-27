@@ -13,12 +13,17 @@ MB_URL="${METABASE_URL:-http://localhost:3001}"
 MB_KEY="${METABASE_API_KEY:?METABASE_API_KEY is required}"
 
 # Defaults (can override)
-STORE_CODE="${BONJUR_STORE_CODE:-wz_oh_wxc}"
+STORE_CODE="${BONJUR_STORE_CODE:-hz_in77}"
 
 # Pick latest month available in dataplatform PG (local docker)
 MONTH_DATE="${BONJUR_MONTH_DATE:-}"
 if [[ -z "$MONTH_DATE" ]]; then
-  MONTH_DATE=$(docker exec -i dataplatform-pg psql -U postgres -d dataplatform -t -A -c "select to_char(max(month),'YYYY-MM-DD') from bonjur_dm.sales_monthly_report_v1;" | tr -d '[:space:]')
+  # Prefer the main dev PG container; fall back to dashboard compose PG.
+  PG_CONTAINER="dataplatform-pg"
+  if ! docker ps --format '{{.Names}}' | grep -q "^${PG_CONTAINER}$"; then
+    PG_CONTAINER="dataplatform-pg-dashboard"
+  fi
+  MONTH_DATE=$(docker exec -i "$PG_CONTAINER" psql -U postgres -d dataplatform -t -A -c "select to_char(max(month),'YYYY-MM-DD') from bonjur_dm.sales_monthly_report_v1;" | tr -d '[:space:]')
 fi
 
 if [[ -z "$MONTH_DATE" ]]; then
