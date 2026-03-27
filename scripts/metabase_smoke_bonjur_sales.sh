@@ -48,29 +48,50 @@ fi
 
 echo "[INFO] card ids: $CARD_IDS"
 
-payload=$(cat <<JSON
-{
-  "parameters": [
-    {"type": "date/single", "target": ["variable", ["template-tag", "month_date"]], "value": "$MONTH_DATE"},
-    {"type": "string/=", "target": ["variable", ["template-tag", "store_code"]], "value": "$STORE_CODE"}
-  ]
-}
-JSON
-)
-
 for id in $CARD_IDS; do
   echo "[RUN] card $id"
+
+  card_json=$(curl -s -H "X-Api-Key: $MB_KEY" "$MB_URL/api/card/$id")
+  tags=$(echo "$card_json" | python3 -c 'import sys,json; c=json.load(sys.stdin);
+q=c.get("dataset_query",{});
+stages=q.get("stages") or [];
+nt=(stages[0].get("template-tags") if stages and isinstance(stages[0],dict) else {}) or {};
+print(" ".join(nt.keys()))')
+
+  params_json=$(TAGS="$tags" MONTH_DATE="$MONTH_DATE" STORE_CODE="$STORE_CODE" python3 - <<'PY'
+import json, os
+MONTH_DATE=os.environ["MONTH_DATE"]
+STORE_CODE=os.environ["STORE_CODE"]
+tags=set(os.environ.get("TAGS","").split())
+params=[]
+if "month_date" in tags:
+  params.append({"type":"date/single","target":["variable",["template-tag","month_date"]],"value":MONTH_DATE})
+if "store_code" in tags:
+  params.append({"type":"string/=","target":["variable",["template-tag","store_code"]],"value":STORE_CODE})
+print(json.dumps({"parameters":params}))
+PY
+)
+
+  TAGS="$tags" MONTH_DATE="$MONTH_DATE" STORE_CODE="$STORE_CODE" \
   curl -s -X POST \
     -H "Content-Type: application/json" \
     -H "X-Api-Key: $MB_KEY" \
     "$MB_URL/api/card/$id/query" \
-    -d "$payload" \
+    -d "$params_json" \
   | python3 -c 'import sys,json; o=json.load(sys.stdin);
-status=o.get("status");
-err=o.get("error");
-rc=o.get("row_count");
-print(f"  status={status} row_count={rc} error={err}");
-raise SystemExit(0 if status=="completed" else 1)'
+# Normalize errors
+err=o.get("error")
+if err is None and isinstance(o.get("via"), list) and o["via"]:
+    err=o["via"][0].get("message")
+status=o.get("status")
+rc=o.get("row_count")
+if status is None and isinstance(o.get("data"), dict) and isinstance(o["data"].get("rows"), list):
+    status="completed"
+    rc=len(o["data"]["rows"])
+print(f"  status={status} row_count={rc} error={err}")
+if err or status != "completed":
+    raise SystemExit(1)
+'
 
 done
 

@@ -158,6 +158,38 @@ ORDER BY revenue_amt DESC;
     )
 
 
+    # Monthly trend: gross vs revenue.
+    sql_trend = r"""
+SELECT
+  month AS "月份",
+  gross_sales_amt AS "营业额",
+  revenue_amt AS "营业收入"
+FROM bonjur_dm.sales_monthly_report_v1
+WHERE 1=1
+  [[ AND store_code = {{store_code}} ]]
+ORDER BY month;
+"""
+
+    card_trend_id = upsert_card(
+        name="Bonjur｜月趋势：营业额 vs 营业收入",
+        database_id=db_id,
+        sql=sql_trend,
+        description="月度趋势对比：营业额 vs 营业收入。",
+        display="line",
+        visualization_settings={
+            "graph.dimensions": ["月份"],
+            "graph.metrics": ["营业额", "营业收入"],
+        },
+        template_tags={
+            # Month is not used here (full history), only store is applied.
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store", "type": "text", "required": False},
+        },
+        parameters=[
+            {"id": PID_STORE, "type": "string/=", "name": "Store", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
+        ],
+    )
+
+
     # Cash-in-rate by channel: revenue/gross per channel (monthly).
     sql_cash_in_by_channel = r"""
 SELECT
@@ -199,7 +231,7 @@ ORDER BY "实收率(%)" DESC;
     # -----------------
 
     dash_name = "Bonjur｜营业看板（自助下载）"
-    dash_desc = "Bonjur 营业数据（自助下载）：营业日报 + 营业收入（环形图）+ 渠道实收率。筛选：月份（按月）/门店（下拉）。"
+    dash_desc = "Bonjur 营业数据（自助下载）：营业日报 + 月趋势（营业额vs营业收入）+ 营业收入拆分（环形图）+ 渠道实收率。筛选：月份（按月）/门店（下拉）。"
 
     # Dropdown options (store_code -> store_name)
     store_options_id = upsert_card(
@@ -251,9 +283,20 @@ ORDER BY store_code;""",
         },
         {
             "id": -202,
-            "card_id": card_rev_id,
+            "card_id": card_trend_id,
             "col": 0,
             "row": 10,
+            "size_x": 24,
+            "size_y": 10,
+            "parameter_mappings": [
+                mp(card_trend_id, PID_STORE, "store_code"),
+            ],
+        },
+        {
+            "id": -203,
+            "card_id": card_rev_id,
+            "col": 0,
+            "row": 20,
             "size_x": 12,
             "size_y": 10,
             "parameter_mappings": [
@@ -262,10 +305,10 @@ ORDER BY store_code;""",
             ],
         },
         {
-            "id": -203,
+            "id": -204,
             "card_id": card_cash_in_rate_id,
             "col": 12,
-            "row": 10,
+            "row": 20,
             "size_x": 12,
             "size_y": 10,
             "parameter_mappings": [
