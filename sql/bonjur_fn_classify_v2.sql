@@ -63,6 +63,10 @@ BEGIN
               OR (r.direction = 'out' AND v_out_amt IS NOT NULL AND v_out_amt > 0)
           )
           AND v_summary ILIKE '%' || r.match_value || '%'
+          AND (
+              r.match_field2 IS NULL
+              OR (r.match_field2 = 'counterparty_name' AND v_counterparty_name = r.match_value2)
+          )
         ORDER BY r.priority ASC
         LIMIT 1;
         
@@ -86,6 +90,10 @@ BEGIN
               OR (r.direction = 'out' AND v_out_amt IS NOT NULL AND v_out_amt > 0)
           )
           AND v_memo ILIKE '%' || r.match_value || '%'
+          AND (
+              r.match_field2 IS NULL
+              OR (r.match_field2 = 'counterparty_name' AND v_counterparty_name = r.match_value2)
+          )
         ORDER BY r.priority ASC
         LIMIT 1;
         
@@ -109,6 +117,10 @@ BEGIN
               OR (r.direction = 'out' AND v_out_amt IS NOT NULL AND v_out_amt > 0)
           )
           AND v_purpose ILIKE '%' || r.match_value || '%'
+          AND (
+              r.match_field2 IS NULL
+              OR (r.match_field2 = 'counterparty_name' AND v_counterparty_name = r.match_value2)
+          )
         ORDER BY r.priority ASC
         LIMIT 1;
         
