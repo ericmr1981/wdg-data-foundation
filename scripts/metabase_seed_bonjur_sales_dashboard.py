@@ -233,39 +233,13 @@ ORDER BY "实收率(%)" DESC;
     dash_name = "Bonjur｜营业看板（自助下载）"
     dash_desc = "Bonjur 营业数据（自助下载）：营业日报 + 月趋势（营业额vs营业收入）+ 营业收入拆分（环形图）+ 渠道实收率。筛选：月份（按月）/门店（下拉）。"
 
-    # Dropdown options (store_code -> store_name)
-    store_options_id = upsert_card(
-        name="Options｜Bonjur store dropdown",
-        database_id=db_id,
-        sql=r"""SELECT store_code, store_name
-FROM bonjur_cfg.dim_store
-ORDER BY store_code;""",
-        description="Dashboard filter options: store_code + store_name",
-        display="table",
-    )
-
-    store_value_field = _card_field_ref(store_options_id, "store_code")
-    store_label_field = _card_field_ref(store_options_id, "store_name")
-
+    # NOTE (方案A): keep dashboard filters on simple, widely-supported parameter types
+    # to avoid Metabase UI 400 errors.
+    # - Month uses a single-date picker, but SQL always truncates to month.
+    # - Store uses store_code exact match (optional).
     dash_params = [
-        # Month: month-only picker
-        {"id": PID_MONTH, "name": "Month", "slug": "month_date", "type": "date/month-year", "sectionId": "date", "required": False},
-
-        # Store: dropdown showing store_name, returning store_code
-        {
-            "id": PID_STORE,
-            "name": "门店",
-            "slug": "store_code",
-            "type": "category",
-            "sectionId": "string",
-            "required": False,
-            "values_source_type": "card",
-            "values_source_config": {
-                "card_id": store_options_id,
-                "value_field": store_value_field,
-                "label_field": store_label_field,
-            },
-        },
+        {"id": PID_MONTH, "name": "Month（按月）", "slug": "month_date", "type": "date/single", "required": False, "default": "2026-02-01"},
+        {"id": PID_STORE, "name": "门店（store_code）", "slug": "store_code", "type": "string/=", "required": False},
     ]
 
     dashcard_specs = [
