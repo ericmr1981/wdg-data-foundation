@@ -280,28 +280,10 @@ export default function LineagePage() {
     loadDetail().catch(() => {});
   }, [schema, objectName]);
 
-  if (!authChecked) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">加载中...</div>
-      </div>
-    );
-  }
-
-  const isAdmin = me?.role === 'admin';
-  if (!isAdmin) {
-    // If not logged in, send to login; if logged in but role mismatch, show forbidden.
-    if (!me) {
-      router.replace('/login');
-      return null;
-    }
-
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-        Forbidden：该页面仅 admin 可访问。
-      </div>
-    );
-  }
+  // ============================================================
+  // IMPORTANT: all hooks must run on every render.
+  // Do NOT early-return before calling hooks (React error #310).
+  // ============================================================
 
   const runOptions = runs
     .filter((r) => r.brand_code === brand)
@@ -350,6 +332,29 @@ export default function LineagePage() {
 
     return m;
   }, [selectedRun?.run_id]);
+
+  if (!authChecked) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-gray-500">加载中...</div>
+      </div>
+    );
+  }
+
+  const isAdmin = me?.role === 'admin';
+  if (!isAdmin) {
+    // If not logged in, send to login; if logged in but role mismatch, show forbidden.
+    if (!me) {
+      router.replace('/login');
+      return null;
+    }
+
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+        Forbidden：该页面仅 admin 可访问。
+      </div>
+    );
+  }
 
   function statusColor(status: string) {
     if (status === 'success') return { stroke: '#16a34a', fill: '#dcfce7', text: '#14532d' };
