@@ -129,7 +129,7 @@ SELECT * FROM raw.ingest_file WHERE brand_code = 'bonjur' ORDER BY created_at DE
 
 ```bash
 # 进入项目目录
-cd /path/to/数据中台
+cd /Users/ericmr/Documents/GitHub/wdg-data-foundation
 
 # 方式1：仅初始化数据库（不含样例数据）
 ./scripts/init_local_env.sh
@@ -193,4 +193,4 @@ SELECT * FROM yufeng_dm.revenue_monthly LIMIT 1;
 
 - 输入规范：`inputs/README.md`
 - 幂等导入策略：`scripts/idempotent_import.md`
-- 任务进度：`ProjectTasks.md`
+- 项目记录（Obsidian，不在 repo 版本控制内）：`/Users/ericmr/Documents/GitHub/Obsidian/项目/WDG`
