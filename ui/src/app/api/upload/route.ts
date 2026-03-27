@@ -65,7 +65,11 @@ export async function POST(request: Request) {
         if (source === 'bank') {
           scriptName = 'import_yufeng_bank_txn.py';
         } else if (source === 'sales') {
-          scriptName = 'import_bonjur_sales_daily.py';
+          // Bonjur 营业数据（自助下载）为日粒度明细，导入到 bonjur_ods.sales_daily_self_service
+          // 旧的 import_bonjur_sales_daily.py 目标是 bonjur_ods.sales_monthly（在 VPS 可能是 view），会导致插入失败
+          scriptName = brand === 'bonjur'
+            ? 'import_bonjur_sales_self_service_daily.py'
+            : 'import_bonjur_sales_daily.py';
         } else {
           return NextResponse.json({ success: false, error: 'Unknown source type' }, { status: 400 });
         }
