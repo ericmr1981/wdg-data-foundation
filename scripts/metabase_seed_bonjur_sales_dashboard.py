@@ -81,12 +81,13 @@ LIMIT 31;
         description="Bonjur 自助下载营业数据（日报）。含实收率、折扣、服务费校验项。",
         display="table",
         template_tags={
-            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date"},
-            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
+            # optional parameters (SQL already COALESCE/[[ ... ]] guarded)
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date", "required": False},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text", "required": False},
         },
         parameters=[
-            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "target": ["variable", ["template-tag", "month_date"]]},
-            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
         ],
     )
 
@@ -116,12 +117,12 @@ ORDER BY gross_sales_amt DESC;
             "graph.metrics": ["营业额"],
         },
         template_tags={
-            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date"},
-            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date", "required": False},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text", "required": False},
         },
         parameters=[
-            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "target": ["variable", ["template-tag", "month_date"]]},
-            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
         ],
     )
 
@@ -150,12 +151,12 @@ ORDER BY revenue_amt DESC;
             "graph.metrics": ["营业收入"],
         },
         template_tags={
-            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date"},
-            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date", "required": False},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text", "required": False},
         },
         parameters=[
-            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "target": ["variable", ["template-tag", "month_date"]]},
-            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
         ],
     )
 
@@ -166,9 +167,11 @@ ORDER BY revenue_amt DESC;
     dash_name = "Bonjur｜营业看板（自助下载）"
     dash_desc = "Bonjur 营业数据（自助下载）报表：实收率 + 渠道拆分（细分到微信/支付宝子渠道）。"
 
+    # NOTE: Metabase native template-tags behave as required if referenced outside [[ ... ]] blocks.
+    # Our breakdown cards reference {{month_date}} in COALESCE(), so the dashboard must provide a default.
     dash_params = [
-        {"id": PID_MONTH, "name": "Month", "slug": "month_date", "type": "date/single"},
-        {"id": PID_STORE, "name": "Store Code", "slug": "store_code", "type": "string/="},
+        {"id": PID_MONTH, "name": "Month", "slug": "month_date", "type": "date/single", "required": False, "default": "2026-02-01"},
+        {"id": PID_STORE, "name": "Store Code", "slug": "store_code", "type": "string/=", "required": False},
     ]
 
     dashcard_specs = [
