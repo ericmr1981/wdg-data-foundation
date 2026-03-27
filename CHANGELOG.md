@@ -3,7 +3,7 @@
 ## 2026-03-27 16:12
 - goal: Fix Metabase「支出一级分类趋势」图表轴识别错误（X/Y 对调）
 - bet: Seed 时显式指定 X=月份、Y=金额(元)、series=一级分类，避免 Metabase 自动推断
-- commit: HEAD
+- commit: fcba940
 - verification:
   - command: bash scripts/run_change_guard.sh
   - result: pass
