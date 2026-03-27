@@ -34,11 +34,14 @@ from scripts.metabase_seed_dashboard import (  # type: ignore
     upsert_card,
     upsert_dashboard,
     mp,
+    search_one,
+    mb_put,
 )
 
 
 # Dashboard parameter IDs (stable)
 PID_MONTH = "00000000-0000-0000-0000-00000000B001"
+# Bonjur-specific store filter (dashboard uses store_name dropdown in UI).
 PID_STORE = "00000000-0000-0000-0000-00000000B002"
 
 
@@ -65,10 +68,10 @@ SELECT
   refund_amt AS "退款金额",
   platform_service_fee_amt AS "平台服务费",
   revenue_incl_service_fee_amt AS "营业收入(含服务费)",
-  service_fee_adjust_amt AS "服务费调整项"
+  service_fee_adjust_amt AS "服务费校验差值"
 FROM bonjur_dm.sales_daily_report_v1
 WHERE 1=1
-  [[ AND month = {{month_date}} ]]
+  [[ AND month = date_trunc('month', {{month_date}}) ]]
   [[ AND store_code = {{store_code}} ]]
 ORDER BY biz_date DESC
 LIMIT 31;
@@ -83,11 +86,11 @@ LIMIT 31;
         template_tags={
             # optional parameters (SQL already COALESCE/[[ ... ]] guarded)
             "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date", "required": False},
-            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text", "required": False},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store", "type": "text", "required": False},
         },
         parameters=[
             {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
-            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
         ],
     )
 
@@ -97,7 +100,7 @@ SELECT
   channel_name AS "渠道",
   gross_sales_amt AS "营业额"
 FROM bonjur_dm.v_sales_monthly_channel_breakdown_v1
-WHERE month = COALESCE({{month_date}}, (SELECT max(month) FROM bonjur_dm.sales_monthly_report_v1))
+WHERE month = COALESCE(date_trunc('month', {{month_date}}), (SELECT max(month) FROM bonjur_dm.sales_monthly_report_v1))
   [[ AND store_code = {{store_code}} ]]
   AND (
     channel_level = 1
@@ -118,11 +121,11 @@ ORDER BY gross_sales_amt DESC;
         },
         template_tags={
             "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date", "required": False},
-            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text", "required": False},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store", "type": "text", "required": False},
         },
         parameters=[
             {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
-            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
         ],
     )
 
@@ -131,7 +134,7 @@ SELECT
   channel_name AS "渠道",
   revenue_amt AS "营业收入"
 FROM bonjur_dm.v_sales_monthly_channel_breakdown_v1
-WHERE month = COALESCE({{month_date}}, (SELECT max(month) FROM bonjur_dm.sales_monthly_report_v1))
+WHERE month = COALESCE(date_trunc('month', {{month_date}}), (SELECT max(month) FROM bonjur_dm.sales_monthly_report_v1))
   [[ AND store_code = {{store_code}} ]]
   AND (
     channel_level = 1
@@ -152,16 +155,108 @@ ORDER BY revenue_amt DESC;
         },
         template_tags={
             "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date", "required": False},
-            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text", "required": False},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store", "type": "text", "required": False},
         },
         parameters=[
             {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
-            {"id": PID_STORE, "type": "string/=", "name": "Store Code", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
+        ],
+    )
+
+
+    # Extra card: monthly trend line for gross vs revenue (plus cash-in-rate).
+    sql_trend = r"""
+SELECT
+  month AS "月份",
+  gross_sales_amt AS "营业额",
+  revenue_amt AS "营业收入",
+  cash_in_rate_pct AS "实收率(%)"
+FROM bonjur_dm.sales_monthly_report_v1
+WHERE 1=1
+  [[ AND store_code = {{store_code}} ]]
+ORDER BY month;
+"""
+
+    card_trend_id = upsert_card(
+        name="Bonjur｜月度趋势：营业额 vs 营业收入",
+        database_id=db_id,
+        sql=sql_trend,
+        description="按月对比营业额与营业收入，并显示实收率。",
+        display="line",
+        visualization_settings={
+            "graph.dimensions": ["月份"],
+            "graph.metrics": ["营业额", "营业收入"],
+        },
+        template_tags={
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date", "required": False},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store", "type": "text", "required": False},
+        },
+        parameters=[
+            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
+        ],
+    )
+
+    # Revenue breakdown donut (replaces bar chart).
+    card_rev_donut_id = upsert_card(
+        name="Bonjur｜营业收入拆分（月/渠道，环形图）",
+        database_id=db_id,
+        sql=sql_breakdown_rev,
+        description="营业收入按渠道拆分（环形图展示）。",
+        display="pie",
+        visualization_settings={
+            "pie.show_values": True,
+            "pie.value_formatting": "currency",
+            "pie.inner_radius": 0.6,
+        },
+        template_tags={
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date", "required": False},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store", "type": "text", "required": False},
+        },
+        parameters=[
+            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
+        ],
+    )
+
+    # Cash-in-rate by channel: revenue/gross per channel (monthly).
+    sql_cash_in_by_channel = r"""
+SELECT
+  channel_name AS "渠道",
+  CASE WHEN COALESCE(gross_sales_amt,0) > 0
+       THEN ROUND(100.0 * COALESCE(revenue_amt,0) / gross_sales_amt, 2)
+       ELSE NULL
+  END AS "实收率(%)"
+FROM bonjur_dm.v_sales_monthly_channel_breakdown_v1
+WHERE month = COALESCE(date_trunc('month', {{month_date}}), (SELECT max(month) FROM bonjur_dm.sales_monthly_report_v1))
+  [[ AND store_code = {{store_code}} ]]
+ORDER BY "实收率(%)" DESC;
+"""
+
+    card_cash_in_rate_id = upsert_card(
+        name="Bonjur｜实收率按渠道（收入/营业额）",
+        database_id=db_id,
+        sql=sql_cash_in_by_channel,
+        description="各渠道的实收率 = 营业收入 / 营业额。",
+        display="bar",
+        visualization_settings={
+            "graph.dimensions": ["渠道"],
+            "graph.metrics": ["实收率(%)"],
+        },
+        template_tags={
+            "month_date": {"id": PID_MONTH, "name": "month_date", "display-name": "Month", "type": "date", "required": False},
+            "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store", "type": "text", "required": False},
+        },
+        parameters=[
+            {"id": PID_MONTH, "type": "date/single", "name": "Month", "slug": "month_date", "required": False, "target": ["variable", ["template-tag", "month_date"]]},
+            {"id": PID_STORE, "type": "string/=", "name": "Store", "slug": "store_code", "required": False, "target": ["variable", ["template-tag", "store_code"]]},
         ],
     )
 
     # -----------------
     # Dashboard
+    # -----------------
+
     # -----------------
 
     dash_name = "Bonjur｜营业看板（自助下载）"
@@ -171,7 +266,7 @@ ORDER BY revenue_amt DESC;
     # Our breakdown cards reference {{month_date}} in COALESCE(), so the dashboard must provide a default.
     dash_params = [
         {"id": PID_MONTH, "name": "Month", "slug": "month_date", "type": "date/single", "required": False, "default": "2026-02-01"},
-        {"id": PID_STORE, "name": "Store Code", "slug": "store_code", "type": "string/=", "required": False},
+        {"id": PID_STORE, "name": "Store", "slug": "store_code", "type": "string/=", "required": False},
     ]
 
     dashcard_specs = [
@@ -189,26 +284,26 @@ ORDER BY revenue_amt DESC;
         },
         {
             "id": -202,
-            "card_id": card_gross_id,
+            "card_id": card_rev_donut_id,
             "col": 0,
             "row": 10,
             "size_x": 12,
             "size_y": 10,
             "parameter_mappings": [
-                mp(card_gross_id, PID_MONTH, "month_date"),
-                mp(card_gross_id, PID_STORE, "store_code"),
+                mp(card_rev_donut_id, PID_MONTH, "month_date"),
+                mp(card_rev_donut_id, PID_STORE, "store_code"),
             ],
         },
         {
             "id": -203,
-            "card_id": card_rev_id,
+            "card_id": card_trend_id,
             "col": 12,
             "row": 10,
             "size_x": 12,
             "size_y": 10,
             "parameter_mappings": [
-                mp(card_rev_id, PID_MONTH, "month_date"),
-                mp(card_rev_id, PID_STORE, "store_code"),
+                mp(card_trend_id, PID_MONTH, "month_date"),
+                mp(card_trend_id, PID_STORE, "store_code"),
             ],
         },
     ]
