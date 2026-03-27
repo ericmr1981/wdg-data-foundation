@@ -256,5 +256,5 @@ lsof -i :5432
 
 
 UI up：
-cd /Users/ericmr/Documents/GitHub/Obsidian/项目/WDG/ui
+cd /Users/ericmr/Documents/GitHub/wdg-data-foundation/ui
 npm run dev

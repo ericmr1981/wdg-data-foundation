@@ -3,7 +3,9 @@
 > 目标：在一台新机器/新环境上，从 0 到「PG + 初始化 + 导入样例 + UI + 验证查询」跑通。
 
 ## 1. 目录位置
-- 项目目录：`/Users/ericmr/Documents/GitHub/Obsidian/项目/WDG`
+- 代码仓库目录：`/Users/ericmr/Documents/GitHub/wdg-data-foundation`
+
+> 注：项目治理/验收证据等记录维护在 Obsidian（不在本 repo 版本控制内）。
 
 后续所有命令默认在该目录执行。
 
@@ -18,7 +20,7 @@
 
 初始化：
 ```bash
-cd "/Users/ericmr/Documents/GitHub/Obsidian/项目/WDG"
+cd "/Users/ericmr/Documents/GitHub/wdg-data-foundation"
 cp .env.example .env
 
 # 让当前 shell 生效（脚本也会自动 source .env）
@@ -35,7 +37,7 @@ set -a && source .env && set +a
 ## 4. 启动 PostgreSQL + 初始化库表
 ### 4.1 一键初始化（推荐）
 ```bash
-cd "/Users/ericmr/Documents/GitHub/Obsidian/项目/WDG"
+cd "/Users/ericmr/Documents/GitHub/wdg-data-foundation"
 ./scripts/init_local_env.sh
 ```
 
@@ -46,7 +48,7 @@ cd "/Users/ericmr/Documents/GitHub/Obsidian/项目/WDG"
 
 ### 4.2 初始化 + 导入样例数据 + 跑一遍 pipeline
 ```bash
-cd "/Users/ericmr/Documents/GitHub/Obsidian/项目/WDG"
+cd "/Users/ericmr/Documents/GitHub/wdg-data-foundation"
 ./scripts/init_local_env.sh --with-sample-data
 ```
 
@@ -54,7 +56,7 @@ cd "/Users/ericmr/Documents/GitHub/Obsidian/项目/WDG"
 
 ## 5. 启动 UI（Next.js）
 ```bash
-cd "/Users/ericmr/Documents/GitHub/Obsidian/项目/WDG/ui"
+cd "/Users/ericmr/Documents/GitHub/wdg-data-foundation/ui"
 
 # 首次
 npm install
