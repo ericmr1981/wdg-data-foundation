@@ -1,6 +1,6 @@
 {
   "initCommand": "bash init.sh",
-  "testCommand": "python3 -m compileall -q -x '/\\.venv/' .",
+  "testCommand": "bash scripts/selftest.sh",
   "e2eCommand": "",
-  "acceptanceSummary": "Repo-first harness baseline: init + compileall, then incrementally add real tests/oracles."
+  "acceptanceSummary": "Repo-first harness: init, drift guard, and a lightweight selftest oracle (compileall + optional script entrypoint smoke tests when deps are installed)."
 }

@@ -7,8 +7,8 @@
   },
   {
     "id": "F-002",
-    "title": "Add a meaningful project test oracle (pytest/integration) and wire harness.json:testCommand",
-    "passes": false,
-    "verify": "TBD"
+    "title": "Add a meaningful project test oracle and wire harness.json:testCommand",
+    "passes": true,
+    "verify": "bash scripts/selftest.sh (or via: bash scripts/run_change_guard.sh)"
   }
 ]
