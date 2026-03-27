@@ -629,10 +629,11 @@ ORDER BY 1, 2;"""
         visualization_settings={
             "graph.show_values": True,
             "graph.value_formatting": "currency",
-            # Fix axis auto-detection: X=月份, Y=金额(元), series=一级分类
-            "graph.dimensions": ["月份"],
+            # X=月份, series=一级分类, Y=金额(元)
+            # Note: In Metabase line charts, the breakout dimension often needs to be included
+            # in graph.dimensions (not only series_dimension), otherwise it may collapse into a single total line.
+            "graph.dimensions": ["月份", "一级分类"],
             "graph.metrics": ["金额(元)"],
-            "graph.series_dimension": "一级分类",
         },
         template_tags={
             "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
