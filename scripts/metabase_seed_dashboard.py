@@ -626,7 +626,14 @@ ORDER BY 1, 2;"""
         sql=sql_46,
         description="支出的一级分类按月趋势（多线图）；支持 Store 筛选。",
         display="line",
-        visualization_settings={"graph.show_values": True, "graph.value_formatting": "currency"},
+        visualization_settings={
+            "graph.show_values": True,
+            "graph.value_formatting": "currency",
+            # Fix axis auto-detection: X=月份, Y=金额(元), series=一级分类
+            "graph.dimensions": ["月份"],
+            "graph.metrics": ["金额(元)"],
+            "graph.series_dimension": "一级分类",
+        },
         template_tags={
             "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
         },
