@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
-import { getDmSchema, normalizeBrand } from '@/lib/brand-server';
+import { getDmSchemaSafe, normalizeBrand } from '@/lib/brand-server';
 
 // GET /api/coverage/unclassified-by-file?brand=xxx&file_id=123 - 获取按文件维度的未分类TopN
 export async function GET(request: Request) {
@@ -13,7 +13,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
   }
 
-  const schema = getDmSchema(brand);
+  let schema: string;
+  try {
+    schema = await getDmSchemaSafe(brand);
+  } catch (err: any) {
+    if (err?.status === 400) {
+      return NextResponse.json({ success: false, error: err.message }, { status: 400 });
+    }
+    throw err;
+  }
 
   try {
     let query = '';

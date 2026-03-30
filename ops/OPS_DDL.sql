@@ -60,6 +60,32 @@ end;
 $$ language plpgsql;
 
 -- ============================================================
+-- 0c. Schema whitelist: approved brand schemas
+-- ============================================================
+create table if not exists ops.allowed_schemas (
+    schema_name   text primary key,
+    brand_code    text not null,
+    description   text,
+    enabled       boolean not null default true,
+    created_at    timestamptz not null default now()
+);
+
+-- 初始化已知的 schema（可按需增删）
+insert into ops.allowed_schemas (schema_name, brand_code, description)
+values
+    ('yufeng',     'yufeng',  'Yufeng raw/ods/cfg/dm shared schema'),
+    ('yufeng_raw', 'yufeng',  'Yufeng raw ingest files'),
+    ('yufeng_ods', 'yufeng',  'Yufeng ODS layer'),
+    ('yufeng_cfg', 'yufeng',  'Yufeng configuration & rules'),
+    ('yufeng_dm',  'yufeng',  'Yufeng data mart layer'),
+    ('bonjur',     'bonjur',  'Bonjur raw/ods/cfg/dm shared schema'),
+    ('bonjur_ods', 'bonjur',  'Bonjur ODS layer'),
+    ('bonjur_dm',  'bonjur',  'Bonjur data mart layer'),
+    ('ops',        'system',  'Pipeline & auth metadata'),
+    ('raw',        'system',  'Cross-brand raw file registry')
+on conflict (schema_name) do nothing;
+
+-- ============================================================
 -- 1. Pipeline Run：一次完整的 T+1 批处理运行
 -- ============================================================
 create table if not exists ops.pipeline_run (
