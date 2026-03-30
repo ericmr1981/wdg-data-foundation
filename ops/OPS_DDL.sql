@@ -34,6 +34,32 @@ create index if not exists idx_sessions_token on ops.sessions(token);
 create index if not exists idx_sessions_user on ops.sessions(user_id);
 
 -- ============================================================
+-- 0b. Login rate-limiting: brute-force protection
+-- ============================================================
+create table if not exists ops.login_attempts (
+    attempt_id    bigserial primary key,
+    ip_address    inet not null,
+    username      text not null,
+    success       boolean not null default false,
+    attempted_at  timestamptz not null default now(),
+    user_id       uuid references ops.users(user_id)  -- null on failed login (user unknown)
+);
+
+-- 5分钟内同一 IP 的失败次数索引
+create index if not exists idx_login_attempts_ip_time
+    on ops.login_attempts(ip_address, attempted_at desc)
+    where success = false;
+
+-- 定期清理（保留30天）
+create or replace function ops.clean_old_login_attempts()
+returns void as $$
+begin
+    delete from ops.login_attempts
+    where attempted_at < now() - interval '30 days';
+end;
+$$ language plpgsql;
+
+-- ============================================================
 -- 1. Pipeline Run：一次完整的 T+1 批处理运行
 -- ============================================================
 create table if not exists ops.pipeline_run (
