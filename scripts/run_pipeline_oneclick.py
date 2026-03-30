@@ -484,6 +484,8 @@ def main():
 
     # 初始化 Ops Logger（整个 pipeline 的主 run_id）
     ops = None
+    # 记录已启动但尚未正常结束的步骤（用于异常回滚）
+    started_steps: list[tuple[str, int]] = []
     if not args.dry_run:
         ops = create_ops_logger(
             brand_code="pipeline",
@@ -496,6 +498,13 @@ def main():
         if ops:
             # Step: run_import_yufeng
             ops.step_start("run_import_yufeng", step_order=1)
+            started_steps.append(("run_import_yufeng", 1))
+
+    def _rollback_started_steps(reason: str):
+        """异常时回滚所有已启动但未结束的步骤"""
+        if ops:
+            for step_name, step_order in reversed(started_steps):
+                ops.step_end(step_name, status="rollback", error_message=reason[:500])
 
     # 连接数据库
     conn = None
@@ -524,58 +533,71 @@ def main():
                 # Step: run_import_bonjur (placeholder for yufeng, no-op)
                 if ops:
                     ops.step_start("run_import_bonjur", step_order=2)
+                    started_steps.append(("run_import_bonjur", 2))
                     ops.step_end("run_import_bonjur", rows_out=0, detail={"note": "skipped for yufeng"})
+                    started_steps.pop()  # 已正常结束，移除
 
                 # Step: apply_classification_sql
                 if ops:
                     ops.step_start("apply_classification_sql", step_order=3)
+                    started_steps.append(("apply_classification_sql", 3))
 
                 result = run_yufeng_pipeline(conn, args.month, args.dry_run)
                 results[brand] = result
 
                 if ops:
                     ops.step_end("apply_classification_sql", rows_out=1)
+                    started_steps.pop()
 
                 # Step: apply_coverage_sql
                 if ops:
                     ops.step_start("apply_coverage_sql", step_order=4)
+                    started_steps.append(("apply_coverage_sql", 4))
 
                 # Coverage is part of run_yufeng_pipeline, mark as success
                 if ops:
                     ops.step_end("apply_coverage_sql", rows_out=1)
+                    started_steps.pop()
 
             elif brand == "bonjur":
                 # Step: run_import_yufeng (skipped for bonjur)
                 if ops:
                     ops.step_start("run_import_yufeng", step_order=1)
+                    started_steps.append(("run_import_yufeng", 1))
                     ops.step_end("run_import_yufeng", rows_out=0, detail={"note": "skipped for bonjur"})
+                    started_steps.pop()
 
                 # Step: run_import_bonjur
                 if ops:
                     ops.step_start("run_import_bonjur", step_order=2)
+                    started_steps.append(("run_import_bonjur", 2))
 
                 result = run_bonjur_pipeline(conn, args.month, args.dry_run)
                 results[brand] = result
 
                 if ops:
                     ops.step_end("run_import_bonjur", rows_out=1)
+                    started_steps.pop()
 
         # Step: print_summary
         if ops:
             ops.step_start("print_summary", step_order=5)
+            started_steps.append(("print_summary", 5))
 
     except Exception as e:
         error_msg = str(e)
         print(f"ERROR: Pipeline failed: {error_msg}")
+        _rollback_started_steps(error_msg)
         if ops:
-            ops.step_end("print_summary", status="failed", error_message=error_msg[:500])
             ops.finish(status="failed", note=error_msg[:500])
         raise
     finally:
         if conn:
             conn.close()
         if ops:
-            ops.step_end("print_summary", rows_out=1)
+            # 正常结束时移除未结束的步骤（可能在 finally 之前已被 step_end 处理）
+            for step_name, _ in started_steps:
+                ops.step_end(step_name, rows_out=0, detail={"note": "finalized in finally"})
             ops.finish(status="success")
             ops.close()
 

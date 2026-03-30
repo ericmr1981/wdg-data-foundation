@@ -241,6 +241,7 @@ class OpsLogger:
         rows_rejected: Optional[int] = None,
         error_message: Optional[str] = None,
         detail: Optional[dict] = None,
+        rollback: bool = False,
     ):
         """
         标记步骤结束
@@ -252,11 +253,16 @@ class OpsLogger:
             rows_rejected: 拒绝行数
             error_message: 错误信息
             detail: 额外信息
+            rollback: 是否标记为回滚（清除 rows_out，记录回滚原因）
         """
+        if rollback:
+            status = "rollback"
+            detail = {**(detail or {}), "rollback": True, "rollback_reason": error_message or "cancelled by pipeline"}
+
         self._update_step_run(
             step_name=step_name,
             status=status,
-            rows_out=rows_out,
+            rows_out=None if rollback else rows_out,
             rows_rejected=rows_rejected,
             error_message=error_message,
             detail=detail,
