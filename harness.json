@@ -1,6 +1,6 @@
 {
   "initCommand": "bash init.sh",
-  "testCommand": "python3 -m compileall -q -x '/\\.venv/' .",
+  "testCommand": "python3 -m compileall -q -x '/\\.venv/' . && .venv/bin/pytest tests/ -v",
   "e2eCommand": "",
-  "acceptanceSummary": "Repo-first harness baseline: init + compileall, then incrementally add real tests/oracles."
+  "acceptanceSummary": "Repo-first harness baseline: init + compileall + pytest."
 }
