@@ -29,6 +29,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
     }
 
+    // ── File type validation (whitelist: .xlsx, .csv) ──
+    const ALLOWED_EXTENSIONS = ['.xlsx', '.csv'] as const;
+    const fileExt = '.' + file.name.toLowerCase().split('.').pop()!;
+    if (!ALLOWED_EXTENSIONS.includes(fileExt as typeof ALLOWED_EXTENSIONS[number])) {
+      return NextResponse.json(
+        { success: false, error: `Invalid file type: ${fileExt}. Allowed: ${[...ALLOWED_EXTENSIONS].join(', ')}` },
+        { status: 400 }
+      );
+    }
+
     // 创建上传目录
     const uploadDir = path.join(process.cwd(), '..', 'inputs', brand, store, source, yyyyMM);
     if (!existsSync(uploadDir)) {

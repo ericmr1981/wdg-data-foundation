@@ -1,5 +1,21 @@
 # Progress Log
 
+## 2026-03-30 13:00
+- goal: WDG architecture refactoring to P2 (security + testability)
+- bet: T-001 — Login brute-force protection
+  - ops.login_attempts table (IP, username, success, user_id)
+  - 5 failed / 5 min → 429 + Retry-After header
+  - No user-enumeration: same error for bad user or bad password
+  - 30-day cleanup function
+- commit: a14ba9c
+- verification:
+  - command: cd ui && npx tsc --noEmit
+  - result: pass
+  - command: bash scripts/run_change_guard.sh
+  - result: pass
+- decision: keep
+- next: T-002 — upload file-type validation
+
 ## 2026-03-27 16:12
 - goal: Fix Metabase「支出一级分类趋势」图表轴识别错误（X/Y 对调）
 - bet: Seed 时显式指定 X=月份、Y=金额(元)、series=一级分类，避免 Metabase 自动推断

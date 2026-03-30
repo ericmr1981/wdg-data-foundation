@@ -7,8 +7,32 @@
   },
   {
     "id": "F-002",
-    "title": "Add a meaningful project test oracle (pytest/integration) and wire harness.json:testCommand",
+    "title": "Login rate-limiting: ops.login_attempts + IP lockout (5 attempts / 5 min → 429)",
+    "passes": true,
+    "verify": "cd ui && npx tsc --noEmit && bash ../scripts/run_change_guard.sh"
+  },
+  {
+    "id": "F-003",
+    "title": "Upload file-type validation: whitelist .xlsx/.csv only",
     "passes": false,
-    "verify": "TBD"
+    "verify": "cd ui && npx tsc --noEmit"
+  },
+  {
+    "id": "F-004",
+    "title": "ETL pipeline transaction + step rollback on failure",
+    "passes": false,
+    "verify": "python3 -m py_compile scripts/ops_logger.py scripts/run_pipeline_oneclick.py"
+  },
+  {
+    "id": "F-005",
+    "title": "Schema whitelist validation (ops.allowed_schemas table)",
+    "passes": false,
+    "verify": "cd ui && npx tsc --noEmit"
+  },
+  {
+    "id": "F-006",
+    "title": "Classification rules JSON-ized + pytest unit tests",
+    "passes": false,
+    "verify": "pytest tests/test_classify.py -v"
   }
 ]
