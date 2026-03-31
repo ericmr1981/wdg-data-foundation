@@ -57,6 +57,8 @@ export async function POST(request: Request) {
     const yufengApply = await readFile(path.join(repoRoot, 'sql', 'yufeng_apply_classification.sql'), 'utf8');
     const yufengCoverage = await readFile(path.join(repoRoot, 'sql', 'yufeng_coverage_and_unclassified.sql'), 'utf8');
     const yufengByFile = await readFile(path.join(repoRoot, 'sql', 'yufeng_coverage_by_file.sql'), 'utf8');
+    const yufengSnapshot = await readFile(path.join(repoRoot, 'sql', 'yufeng_classification_snapshot.sql'), 'utf8');
+    const yufengDmModels = await readFile(path.join(repoRoot, 'sql', 'yufeng_dm_models.sql'), 'utf8');
 
     // We only take the function+views+seed part from apply_classification, because table DDL differs by runtime.
     const applyPart = sliceFromMarker(yufengApply, '------------------------------------------------------------\n-- 分类函数 v2（返回 code）');
@@ -64,6 +66,8 @@ export async function POST(request: Request) {
     const sqlApply = applyBrandSql(applyPart, brand);
     const sqlCoverage = applyBrandSql(yufengCoverage, brand);
     const sqlByFile = applyBrandSql(yufengByFile, brand);
+    const sqlSnapshot = applyBrandSql(yufengSnapshot, brand);
+    const sqlDmModels = applyBrandSql(yufengDmModels, brand);
 
     const client = await pool.connect();
     try {
@@ -94,6 +98,10 @@ export async function POST(request: Request) {
       await client.query(sqlCoverage);
       await client.query(sqlByFile);
 
+      // 5) Snapshot table + refresh function (expense/profit/revenue views)
+      await client.query(sqlSnapshot);
+      await client.query(sqlDmModels);
+
       await client.query('COMMIT');
       return NextResponse.json({
         success: true,
@@ -102,7 +110,10 @@ export async function POST(request: Request) {
           created: {
             ods_bank_txn: `${ods}.bank_txn`,
             dm_override: `${dm}.bank_txn_override`,
+            dm_snapshot_table: `${dm}.bank_txn_classified_snapshot`,
+            dm_refresh_fn: `${dm}.refresh_bank_txn_classified_snapshot`,
             dm_views: [`${dm}.v_bank_txn_classified`, `${dm}.v_unclassified_detail`, `${dm}.v_coverage_by_file`],
+            dm_profit_views: [`${dm}.expense_monthly`, `${dm}.profit_monthly`, `${dm}.revenue_monthly`, `${dm}.v_expense_lvl1_monthly`],
           },
         },
       });
