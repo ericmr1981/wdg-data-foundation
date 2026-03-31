@@ -367,10 +367,9 @@ def main() -> None:
     args = parser.parse_args()
     
     BRAND_CODE = args.brand
-    # Auto-generate display name if not provided
-    if args.dashboard_name:
-        BRAND_DISPLAY = args.dashboard_name
-    elif BRAND_CODE == "yufeng":
+    
+    # Auto-generate brand display name
+    if BRAND_CODE == "yufeng":
         BRAND_DISPLAY = "榆枫与山"
     elif BRAND_CODE == "bonjur":
         BRAND_DISPLAY = "本就"
@@ -378,6 +377,12 @@ def main() -> None:
         BRAND_DISPLAY = "蜜可诗"
     else:
         BRAND_DISPLAY = BRAND_CODE
+    
+    # Use custom dashboard name if provided, otherwise auto-generate
+    if args.dashboard_name:
+        dash_name = args.dashboard_name
+    else:
+        dash_name = f"{BRAND_DISPLAY}｜经营看板"
     
     print(f"Brand: {BRAND_CODE} ({BRAND_DISPLAY})")
     
@@ -490,7 +495,6 @@ SELECT
 FROM rows
 ORDER BY ord;"""
 
-    card40_name = "Yufeng｜收支总揽（表）"
     card40_id = upsert_card(
         name=card40_name,
         database_id=db_id,
@@ -822,7 +826,7 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
     # Dashboard
     # -----------------
 
-    dash_name = f"{BRAND_DISPLAY}｜经营看板"
+    # dash_name already set at the beginning of main()
     dash_desc = f"{BRAND_DISPLAY}：概览（收支总揽/支出一级/支出二级/收入二级/趋势）+ 明细下钻（支出/收入明细表）。筛选：月（按月）/门店（下拉）/支出一级/支出二级/收入一级/收入二级/关键词。"
 
     dash_params = [
