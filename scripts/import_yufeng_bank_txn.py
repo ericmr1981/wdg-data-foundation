@@ -378,6 +378,20 @@ def _validate_brand(brand_code: str) -> str:
     return brand_code
 
 
+# Schema 命名规则：与 TypeScript API（brand-server.ts / admin/brands/route.ts）保持一致
+# yufeng / bonjur → {brand}_ods / {brand}_dm；其他品牌 → brand_{brand}_ods / brand_{brand}_dm
+def get_ods_schema(brand_code: str) -> str:
+    if brand_code in ('yufeng', 'bonjur'):
+        return f'{brand_code}_ods'
+    return f'brand_{brand_code}_ods'
+
+
+def get_dm_schema(brand_code: str) -> str:
+    if brand_code in ('yufeng', 'bonjur'):
+        return f'{brand_code}_dm'
+    return f'brand_{brand_code}_dm'
+
+
 def assert_brand_exists(conn, brand_code: str):
     """Ensure brand exists in ops.brands and is enabled."""
     brand_code = _validate_brand(brand_code)
@@ -393,7 +407,7 @@ def assert_brand_exists(conn, brand_code: str):
 def delete_existing_data(brand_code: str, source_file_id: int, conn):
     """删除当次导入的旧数据（幂等核心）"""
     brand_code = _validate_brand(brand_code)
-    table = f"{brand_code}_ods.bank_txn"
+    table = f"{get_ods_schema(brand_code)}.bank_txn"
     with conn.cursor() as cur:
         cur.execute(
             f"DELETE FROM {table} WHERE source_file_id = %s",
@@ -407,7 +421,7 @@ def delete_existing_data(brand_code: str, source_file_id: int, conn):
 def insert_bank_txn(brand_code: str, df: pd.DataFrame, store_code: str, source_file_id: int, conn) -> int:
     """批量插入银行流水数据"""
     brand_code = _validate_brand(brand_code)
-    table = f"{brand_code}_ods.bank_txn"
+    table = f"{get_ods_schema(brand_code)}.bank_txn"
     records = []
     for _, row in df.iterrows():
         # 安全检查：确保金额字段不是 NaN/inf，转换为 None
@@ -557,7 +571,7 @@ def verify_import(file_path: str) -> dict:
 
         # 检查 bank_txn
         brand_code = _validate_brand(meta["brand_code"])
-        table = f"{brand_code}_ods.bank_txn"
+        table = f"{get_ods_schema(brand_code)}.bank_txn"
         with conn.cursor() as cur:
             cur.execute(
                 f"""
@@ -681,7 +695,7 @@ def do_import(file_path: str) -> dict:
             ops.step_start("insert_bank_txn", step_order=STEP_ORDER["insert_bank_txn"], detail={"rows_in": rows_parsed})
 
         row_count = insert_bank_txn(meta["brand_code"], df, meta["store_code"], source_file_id, conn)
-        print(f"Inserted {row_count} rows into {meta['brand_code']}_ods.bank_txn")
+        print(f"Inserted {row_count} rows into {get_ods_schema(meta['brand_code'])}.bank_txn")
 
         if ops:
             ops.step_end("insert_bank_txn", rows_out=row_count, rows_rejected=rows_parsed - row_count)
@@ -703,7 +717,7 @@ def do_import(file_path: str) -> dict:
 
             brand_code = _validate_brand(meta["brand_code"])
             with conn.cursor() as cur:
-                cur.execute(f"SELECT {brand_code}_dm.refresh_bank_txn_classified_snapshot(%s)", (source_file_id,))
+                cur.execute(f"SELECT {get_dm_schema(brand_code)}.refresh_bank_txn_classified_snapshot(%s)", (source_file_id,))
             conn.commit()
 
             if ops:
