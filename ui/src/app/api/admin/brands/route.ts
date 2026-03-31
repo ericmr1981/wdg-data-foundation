@@ -49,6 +49,23 @@ export async function POST(request: Request) {
         , [brand_code, brand_name, schema_prefix]
       );
 
+      // Register all schemas in allowed_schemas (required for API access control)
+      const schemaList = [
+        [schema_prefix, `${schema_prefix} shared`],
+        [ods, `${ods} ODS`],
+        [cfg, `${cfg} config/rules`],
+        [dm, `${dm} data mart`],
+        [ops, `${ops} ops`],
+      ];
+      for (const [sName, sDesc] of schemaList) {
+        await client.query(
+          `INSERT INTO ops.allowed_schemas (schema_name, brand_code, description)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (schema_name) DO UPDATE SET brand_code = EXCLUDED.brand_code, description = EXCLUDED.description`,
+          [sName, brand_code, sDesc]
+        );
+      }
+
       // Create schemas
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${ods}`);
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${cfg}`);
