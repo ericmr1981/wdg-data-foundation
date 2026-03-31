@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""Seed Metabase Questions + Dashboard for 榆枫与山 via API key (X-Api-Key).
+"""Seed Metabase Questions + Dashboard via API key (X-Api-Key).
 
 Usage:
   # Option A (recommended): API key
   export METABASE_URL=http://127.0.0.1:8082
   export METABASE_API_KEY='...'
+  
+  # For yufeng (default)
   python3 scripts/metabase_seed_dashboard.py
-
-  # Option B (local/dev): username + password (script will create a session)
-  export METABASE_URL=http://localhost:3001
-  export METABASE_USER='demo@metabase.com'
-  export METABASE_PASSWORD='demo123456'
-  python3 scripts/metabase_seed_dashboard.py
+  
+  # For other brands (e.g., gelatomiiix, bonjur)
+  python3 scripts/metabase_seed_dashboard.py --brand gelatomiiix --dashboard-name "蜜可诗｜经营看板"
 
 Design goals
 - Idempotent by *name* for Cards and Dashboard.
 - Keep LOCAL and VPS consistent by making Metabase artifacts reproducible.
 - Metabase v0.59+ compatible (dataset_query uses `stages` + `lib/type`).
+- Support multi-brand via --brand argument.
 
 Notes
 - Do NOT hardcode secrets; use env vars.
@@ -27,6 +27,7 @@ Notes
 import os
 import sys
 import json
+import argparse
 from typing import Optional, Any
 
 import requests
@@ -35,6 +36,10 @@ MB_URL = os.environ.get("METABASE_URL", "http://localhost:3000").rstrip("/")
 MB_KEY = os.environ.get("METABASE_API_KEY")
 MB_USER = os.environ.get("METABASE_USER")
 MB_PASSWORD = os.environ.get("METABASE_PASSWORD")
+
+# Brand configuration (set in main())
+BRAND_CODE = "yufeng"  # default
+BRAND_DISPLAY = "榆枫与山"  # default
 
 
 def build_headers() -> dict:
@@ -72,7 +77,8 @@ def build_headers() -> dict:
     return {**base, "X-Metabase-Session": sid}
 
 
-HEADERS = build_headers()
+# HEADERS will be initialized in main() after parsing arguments
+HEADERS = None
 
 
 def die(msg: str) -> "NoReturn":  # type: ignore[name-defined]
@@ -114,6 +120,18 @@ def find_database_id(name_hint: str = "dataplatform") -> int:
             return int(d["id"])
 
     return int(items[0]["id"])
+
+
+def sql_for_brand(sql_template: str) -> str:
+    """Replace yufeng_ schema references with the target brand."""
+    global BRAND_CODE
+    if BRAND_CODE == "yufeng":
+        return sql_template
+    # Replace schema names
+    result = sql_template.replace("yufeng_ods.", f"{BRAND_CODE}_ods.")
+    result = result.replace("yufeng_dm.", f"{BRAND_CODE}_dm.")
+    result = result.replace("yufeng_cfg.", f"{BRAND_CODE}_cfg.")
+    return result
 
 
 def search_one(model: str, name: str) -> Optional[dict]:
@@ -178,6 +196,9 @@ def card_payload(*, name: str, database_id: int, sql: str, description: str, dis
 
 def upsert_card(*, name: str, database_id: int, sql: str, description: str = "", display: str = "table", visualization_settings: Optional[dict] = None, template_tags: Optional[dict] = None, parameters: Optional[list[dict]] = None) -> int:
     existing = search_one("card", name)
+    
+    # Apply brand-specific schema replacement
+    sql = sql_for_brand(sql)
 
     payload = card_payload(
         name=name,
@@ -337,6 +358,33 @@ def mp(card_id: int, parameter_id: str, tag_name: str) -> dict:
 
 
 def main() -> None:
+    global BRAND_CODE, BRAND_DISPLAY
+    
+    # Parse arguments
+    parser = argparse.ArgumentParser(description="Seed Metabase dashboard for a brand")
+    parser.add_argument("--brand", default="yufeng", help="Brand code (e.g., yufeng, bonjur, gelatomiiix)")
+    parser.add_argument("--dashboard-name", default=None, help="Dashboard name (default: auto-generated from brand)")
+    args = parser.parse_args()
+    
+    BRAND_CODE = args.brand
+    # Auto-generate display name if not provided
+    if args.dashboard_name:
+        BRAND_DISPLAY = args.dashboard_name
+    elif BRAND_CODE == "yufeng":
+        BRAND_DISPLAY = "榆枫与山"
+    elif BRAND_CODE == "bonjur":
+        BRAND_DISPLAY = "本就"
+    elif BRAND_CODE == "gelatomiiix":
+        BRAND_DISPLAY = "蜜可诗"
+    else:
+        BRAND_DISPLAY = BRAND_CODE
+    
+    print(f"Brand: {BRAND_CODE} ({BRAND_DISPLAY})")
+    
+    # Initialize HEADERS now that we have all config
+    global HEADERS
+    HEADERS = build_headers()
+    
     me = mb_get("/api/user/current")
     if not me.get("is_superuser"):
         print("WARN: api key user is not superuser; may lack permissions")
@@ -348,6 +396,7 @@ def main() -> None:
     # -----------------
 
     # Card 40: 收支总揽（表） + 利润/利润率/毛利率 + 当月现金流
+    card40_name = f"{BRAND_DISPLAY}｜收支总揽（表）"
     sql_card40 = r"""WITH base AS (
   SELECT
     to_char(t.txn_time, 'YYYY-MM') AS month,
@@ -474,7 +523,7 @@ GROUP BY COALESCE(c.lvl1_name, c.lvl1)
 ORDER BY "金额(元)" DESC;"""
 
     card41_id = upsert_card(
-        name="Yufeng｜支出一级分类（饼图）",
+        name=f"{BRAND_DISPLAY}｜支出一级分类（饼图）",
         database_id=db_id,
         sql=sql_41,
         description="支出一级分类饼图（类别+金额）。",
@@ -507,7 +556,7 @@ GROUP BY COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）')
 ORDER BY "金额(元)" DESC;"""
 
     card42_id = upsert_card(
-        name="Yufeng｜支出二级分类（饼图）",
+        name=f"{BRAND_DISPLAY}｜支出二级分类（饼图）",
         database_id=db_id,
         sql=sql_42,
         description="支出二级分类饼图（类别+金额）；支持支出一级筛选。",
@@ -542,7 +591,7 @@ GROUP BY COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）')
 ORDER BY "金额(元)" DESC;"""
 
     card43_id = upsert_card(
-        name="Yufeng｜收入二级分类（柱状图）",
+        name=f"{BRAND_DISPLAY}｜收入二级分类（柱状图）",
         database_id=db_id,
         sql=sql_43,
         description="收入二级分类柱状图（类别+金额）；支持收入一级筛选。",
@@ -590,7 +639,7 @@ FROM base
 ORDER BY month;"""
 
     card45_id = upsert_card(
-        name="Yufeng｜营业收入 vs 支出（不含营建）",
+        name=f"{BRAND_DISPLAY}｜营业收入 vs 支出（不含营建）",
         database_id=db_id,
         sql=sql_45,
         description="按月对比：营业收入 vs 支出（剔除营建费用 BUILD）。支持 Month/Store Code 筛选。",
@@ -621,7 +670,7 @@ GROUP BY 1, 2
 ORDER BY 1, 2;"""
 
     card46_id = upsert_card(
-        name="Yufeng｜支出一级分类趋势（多线图）",
+        name=f"{BRAND_DISPLAY}｜支出一级分类趋势（多线图）",
         database_id=db_id,
         sql=sql_46,
         description="支出的一级分类按月趋势（多线图）；支持 Store 筛选。",
@@ -678,7 +727,7 @@ ORDER BY COALESCE(t.out_amt,0) DESC, t.txn_time DESC
 LIMIT 2000;"""
 
     card47_id = upsert_card(
-        name="Yufeng｜支出明细（下钻）",
+        name=f"{BRAND_DISPLAY}｜支出明细（下钻）",
         database_id=db_id,
         sql=sql_47,
         description="用于下钻查看支出明细：按月/门店/支出一级/支出二级/关键词筛选；按金额倒序。",
@@ -734,7 +783,7 @@ ORDER BY COALESCE(t.in_amt,0) DESC, t.txn_time DESC
 LIMIT 2000;"""
 
     card48_id = upsert_card(
-        name="Yufeng｜收入明细（下钻）",
+        name=f"{BRAND_DISPLAY}｜收入明细（下钻）",
         database_id=db_id,
         sql=sql_48,
         description="用于下钻查看收入明细：按月/门店/收入一级/收入二级/关键词筛选；按金额倒序。",
@@ -760,7 +809,7 @@ LIMIT 2000;"""
     # -----------------
 
     store_options_id = upsert_card(
-        name="Yufeng｜门店下拉选项",
+        name=f"{BRAND_DISPLAY}｜门店下拉选项",
         database_id=db_id,
         sql=r"""SELECT store_code, store_name
 FROM yufeng_cfg.dim_store
@@ -773,8 +822,8 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
     # Dashboard
     # -----------------
 
-    dash_name = "榆枫与山｜经营看板"
-    dash_desc = "榆枫与山：概览（收支总揽/支出一级/支出二级/收入二级/趋势）+ 明细下钻（支出/收入明细表）。筛选：月（按月）/门店（下拉）/支出一级/支出二级/收入一级/收入二级/关键词。"
+    dash_name = f"{BRAND_DISPLAY}｜经营看板"
+    dash_desc = f"{BRAND_DISPLAY}：概览（收支总揽/支出一级/支出二级/收入二级/趋势）+ 明细下钻（支出/收入明细表）。筛选：月（按月）/门店（下拉）/支出一级/支出二级/收入一级/收入二级/关键词。"
 
     dash_params = [
         # 1) Month: month-only picker
@@ -1049,13 +1098,13 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
     print(f"Dashboard: {dash_name} (id={dash_id}) -> {MB_URL}/dashboard/{dash_id}")
     for name, cid in [
         (card40_name, card40_id),
-        ("Yufeng｜支出一级分类（饼图）", card41_id),
-        ("Yufeng｜支出二级分类（饼图）", card42_id),
-        ("Yufeng｜收入二级分类（柱状图）", card43_id),
-        ("Yufeng｜营业收入 vs 支出（不含营建）", card45_id),
-        ("Yufeng｜支出一级分类趋势（多线图）", card46_id),
-        ("Yufeng｜支出明细（下钻）", card47_id),
-        ("Yufeng｜收入明细（下钻）", card48_id),
+        (f"{BRAND_DISPLAY}｜支出一级分类（饼图）", card41_id),
+        (f"{BRAND_DISPLAY}｜支出二级分类（饼图）", card42_id),
+        (f"{BRAND_DISPLAY}｜收入二级分类（柱状图）", card43_id),
+        (f"{BRAND_DISPLAY}｜营业收入 vs 支出（不含营建）", card45_id),
+        (f"{BRAND_DISPLAY}｜支出一级分类趋势（多线图）", card46_id),
+        (f"{BRAND_DISPLAY}｜支出明细（下钻）", card47_id),
+        (f"{BRAND_DISPLAY}｜收入明细（下钻）", card48_id),
     ]:
         print(f"Card: {name} (id={cid}) -> {MB_URL}/question/{cid}")
 
