@@ -14,7 +14,7 @@
 | P0 | 新品牌初始化完整性（init-bank-template 漏表/视图）| ✅ 已修复 | snapshot 表 + expense/profit 视图已补加，VPS 已部署 |
 | P0 | gelatomiiix 数据库补建（snapshot 表 + refresh 函数）| ✅ 已修复 | VPS 直接执行 |
 | P0 | import_yufeng_bank_txn.py schema 命名不一致 | ✅ 已修复 | get_ods_schema() / get_dm_schema() |
-| P1 | Metabase 报表 brand 过滤支持 gelatomiiix | 🔵 待验证 | 需在内网浏览器确认 |
+| P1 | Metabase 报表 brand 过滤支持 gelatomiiix | ✅ 已完成 | Dashboard (id=8) + DM 视图已创建；数据验证通过 |
 | P1 | 新品牌上传银行数据端到端测试 | 🔵 待测试 | UI 重新上传 gelatomiiix 数据 |
 | P2 | ops.brands init_vp 流程规范化 | 📋 待做 | 目前 VPS DDL 靠手动 apply |
 

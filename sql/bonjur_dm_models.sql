@@ -1,118 +1,121 @@
--- Bonjur｜DM 模型 v2（使用 lvl1_code/lvl2_code，共享 yufeng_cfg 字典）
+-- Bonjur｜DM 模型（三张主表）
+-- 用途：月度收入/费用/利润汇总
+-- 依赖：bonjur_ods.bank_txn, bonjur_dm.v_bank_txn_classified
 
 ------------------------------------------------------------
--- revenue_monthly（收入月报）
+-- T5.1 收入月报（revenue_monthly）
 ------------------------------------------------------------
-DROP VIEW IF EXISTS bonjur_dm.revenue_monthly CASCADE;
+drop view if exists bonjur_dm.revenue_monthly cascade;
 
-CREATE VIEW bonjur_dm.revenue_monthly AS
-WITH bank_revenue AS (
-    SELECT 
-        date_trunc('month', t.txn_time)::date AS month,
-        COALESCE(SUM(CASE WHEN c.lvl1_code = 'REV_BIZ' THEN COALESCE(t.in_amt, 0) ELSE 0 END), 0) AS bank_revenue_amt
-    FROM bonjur_ods.bank_txn t
-    LEFT JOIN bonjur_dm.v_bank_txn_classified_v2 c ON t.id = c.bank_txn_id
-    WHERE t.txn_time IS NOT NULL AND t.in_amt > 0
-    GROUP BY date_trunc('month', t.txn_time)::date
-),
-biz_revenue AS (
-    SELECT 
-        month,
-        COALESCE(SUM(revenue_amt), 0) AS biz_revenue_amt
-    FROM bonjur_ods.sales_monthly
-    WHERE month IS NOT NULL
-    GROUP BY month
-)
-SELECT 
-    COALESCE(b.month, s.month) AS month,
-    COALESCE(s.biz_revenue_amt, 0) AS biz_revenue_amt,
-    COALESCE(b.bank_revenue_amt, 0) AS bank_revenue_amt,
-    COALESCE(b.bank_revenue_amt, 0) - COALESCE(s.biz_revenue_amt, 0) AS diff_amt
-FROM bank_revenue b
-FULL OUTER JOIN biz_revenue s ON b.month = s.month
-ORDER BY COALESCE(b.month, s.month) DESC;
+create view bonjur_dm.revenue_monthly as
+select
+    date_trunc('month', t.txn_time)::date as month,
+    null::numeric as biz_revenue_amt,
+    coalesce(sum(case when c.lvl1_code = 'REV_BIZ' then coalesce(t.in_amt,0) else 0 end), 0) as bank_revenue_amt,
+    null::numeric as diff_amt
+from bonjur_ods.bank_txn t
+left join bonjur_dm.v_bank_txn_classified c on t.id = c.bank_txn_id
+where t.txn_time is not null
+group by date_trunc('month', t.txn_time)::date
+order by date_trunc('month', t.txn_time)::date desc;
+
 
 ------------------------------------------------------------
--- expense_monthly（费用月报）
+-- T5.2 费用月报（expense_monthly）
 ------------------------------------------------------------
-DROP VIEW IF EXISTS bonjur_dm.expense_monthly CASCADE;
+drop view if exists bonjur_dm.expense_monthly cascade;
 
-CREATE VIEW bonjur_dm.expense_monthly AS
-SELECT 
-    date_trunc('month', t.txn_time)::date AS month,
-    COALESCE(c.lvl1_name, '（未分类）') AS lvl1_name,
-    c.lvl1_code,
-    COALESCE(c.lvl2_name, NULL) AS lvl2_name,
-    c.lvl2_code,
-    SUM(COALESCE(t.out_amt, 0)) AS total_out_amt,
-    COUNT(*) AS txn_rows
-FROM bonjur_ods.bank_txn t
-INNER JOIN bonjur_dm.v_bank_txn_classified_v2 c ON t.id = c.bank_txn_id
-WHERE t.txn_time IS NOT NULL AND t.out_amt > 0
-GROUP BY date_trunc('month', t.txn_time)::date, c.lvl1_code, c.lvl1_name, c.lvl2_code, c.lvl2_name
-ORDER BY month DESC, total_out_amt DESC;
-
-------------------------------------------------------------
--- v_expense_lvl1_monthly（一级费用趋势）
-------------------------------------------------------------
-DROP VIEW IF EXISTS bonjur_dm.v_expense_lvl1_monthly CASCADE;
-
-CREATE VIEW bonjur_dm.v_expense_lvl1_monthly AS
-SELECT 
+create view bonjur_dm.expense_monthly as
+select
     month,
     lvl1_code,
-    lvl1_name,
-    SUM(total_out_amt) AS total_out_amt,
-    SUM(txn_rows) AS txn_rows
-FROM bonjur_dm.expense_monthly
-GROUP BY month, lvl1_code, lvl1_name
-ORDER BY month DESC, total_out_amt DESC;
+    lvl2_code,
+    sum(out_amt) as total_out_amt,
+    count(*) as txn_rows
+from (
+    select
+        date_trunc('month', t.txn_time)::date as month,
+        c.lvl1_code,
+        c.lvl2_code,
+        coalesce(t.out_amt, 0) as out_amt
+    from bonjur_ods.bank_txn t
+    inner join bonjur_dm.v_bank_txn_classified c on t.id = c.bank_txn_id
+    where t.txn_time is not null
+      and t.out_amt > 0
+) sub
+group by month, lvl1_code, lvl2_code
+order by month desc, total_out_amt desc;
+
 
 ------------------------------------------------------------
--- profit_monthly（利润月报）
+-- T5.2.1 一级费用趋势（v_expense_lvl1_monthly）
 ------------------------------------------------------------
-DROP VIEW IF EXISTS bonjur_dm.profit_monthly CASCADE;
+drop view if exists bonjur_dm.v_expense_lvl1_monthly cascade;
 
-CREATE VIEW bonjur_dm.profit_monthly AS
-WITH revenue AS (
-    SELECT month, biz_revenue_amt, bank_revenue_amt FROM bonjur_dm.revenue_monthly
+create view bonjur_dm.v_expense_lvl1_monthly as
+select
+    e.month,
+    e.lvl1_code,
+    coalesce(l1.lvl1_name, e.lvl1_code) as lvl1_name,
+    sum(e.total_out_amt) as total_out_amt,
+    sum(e.txn_rows) as txn_rows,
+    coalesce(l1.sort_order, 9999) as sort_order
+from bonjur_dm.expense_monthly e
+left join bonjur_cfg.dim_category_lvl1 l1
+  on e.lvl1_code = l1.lvl1_code
+where (l1.direction in ('out','any') or l1.direction is null)
+group by e.month, e.lvl1_code, coalesce(l1.lvl1_name, e.lvl1_code), coalesce(l1.sort_order, 9999)
+order by e.month desc, sort_order, total_out_amt desc;
+
+
+------------------------------------------------------------
+-- T5.3 利润月报（profit_monthly）
+-- 口径：
+--   profit_amt = bank_revenue_amt - expense_ex_build_amt
+--   cashflow_amt = 收入总金额 - 支出总金额
+--   gross_margin_rate = (营业收入 - 材料采购) / 营业收入
+------------------------------------------------------------
+drop view if exists bonjur_dm.profit_monthly cascade;
+
+create view bonjur_dm.profit_monthly as
+with revenue_agg as (
+    select
+        date_trunc('month', t.txn_time)::date as month,
+        t.store_code,
+        coalesce(sum(case when c.lvl1_code = 'REV_BIZ' then t.in_amt else 0 end), 0) as bank_revenue_amt,
+        coalesce(sum(t.in_amt), 0) as total_in_amt
+    from bonjur_ods.bank_txn t
+    left join bonjur_dm.v_bank_txn_classified c on t.id = c.bank_txn_id
+    where t.txn_time is not null
+    group by date_trunc('month', t.txn_time)::date, t.store_code
 ),
-expense AS (
-    SELECT 
-        month,
-        SUM(total_out_amt) AS total_expense_amt,
-        SUM(CASE WHEN lvl1_code = 'MATERIAL' THEN total_out_amt ELSE 0 END) AS material_purchase_amt
-    FROM bonjur_dm.expense_monthly
-    GROUP BY month
-),
-cashflow AS (
-    SELECT 
-        date_trunc('month', txn_time)::date AS month,
-        SUM(COALESCE(in_amt, 0)) AS total_in_amt,
-        SUM(COALESCE(out_amt, 0)) AS total_out_amt
-    FROM bonjur_ods.bank_txn
-    WHERE txn_time IS NOT NULL
-    GROUP BY date_trunc('month', txn_time)::date
+expense_agg as (
+    select
+        date_trunc('month', t.txn_time)::date as month,
+        t.store_code,
+        coalesce(sum(t.out_amt), 0) as expense_total_amt,
+        coalesce(sum(case when c.lvl1_code = 'EXP_BUILD' then t.out_amt else 0 end), 0) as expense_ex_build_amt,
+        coalesce(sum(case when c.lvl1_code = 'EXP_MATERIAL' then t.out_amt else 0 end), 0) as material_purchase_amt
+    from bonjur_ods.bank_txn t
+    left join bonjur_dm.v_bank_txn_classified c on t.id = c.bank_txn_id
+    where t.txn_time is not null
+      and t.out_amt > 0
+    group by date_trunc('month', t.txn_time)::date, t.store_code
 )
-SELECT 
-    COALESCE(r.month, e.month) AS month,
-    COALESCE(r.bank_revenue_amt, 0) AS bank_revenue_amt,
-    COALESCE(e.total_expense_amt, 0) AS total_expense_amt,
-    COALESCE(r.bank_revenue_amt, 0) - COALESCE(e.total_expense_amt, 0) AS profit_amt,
-    COALESCE(r.biz_revenue_amt, 0) AS biz_revenue_amt,
-    COALESCE(r.bank_revenue_amt, 0) - COALESCE(r.biz_revenue_amt, 0) AS diff_amt,
-    COALESCE(cf.total_in_amt, 0) - COALESCE(cf.total_out_amt, 0) AS cashflow_amt,
-    COALESCE(e.material_purchase_amt, 0) AS material_purchase_amt,
-    CASE WHEN COALESCE(r.bank_revenue_amt, 0) > 0 
-         THEN ROUND(100.0 * (COALESCE(r.bank_revenue_amt, 0) - COALESCE(e.material_purchase_amt, 0)) / COALESCE(r.bank_revenue_amt, 0), 2)
-         ELSE 0 
-    END AS gross_margin_rate
-FROM revenue r
-FULL OUTER JOIN expense e ON r.month = e.month
-LEFT JOIN cashflow cf ON COALESCE(r.month, e.month) = cf.month
-ORDER BY COALESCE(r.month, e.month) DESC;
-
-------------------------------------------------------------
--- 验证
-------------------------------------------------------------
-SELECT 'DM Views Created' AS status;
+select
+    r.month,
+    r.store_code,
+    r.bank_revenue_amt,
+    r.total_in_amt,
+    e.expense_total_amt,
+    e.expense_ex_build_amt,
+    e.material_purchase_amt,
+    (r.bank_revenue_amt - e.expense_ex_build_amt) as profit_amt,
+    (r.total_in_amt - e.expense_total_amt) as cashflow_amt,
+    case 
+        when r.bank_revenue_amt = 0 then 0 
+        else (r.bank_revenue_amt - e.material_purchase_amt) / r.bank_revenue_amt 
+    end as gross_margin_rate
+from revenue_agg r
+left join expense_agg e on r.month = e.month and r.store_code = e.store_code
+order by r.month desc, r.store_code;

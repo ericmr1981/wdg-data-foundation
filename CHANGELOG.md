@@ -1,5 +1,36 @@
 # Progress Log
 
+## 2026-03-31 18:35
+- goal: 方案 A — metabase_seed_dashboard.py 支持 --brand 参数，多品牌自动生成报表
+- bet: 改造脚本支持动态品牌参数（yufeng/bonjur/gelatomiiix 等）
+- changes:
+  - scripts/metabase_seed_dashboard.py: 新增 --brand 和 --dashboard-name 参数
+  - 新增 sql_for_brand() 函数，自动替换 schema 前缀（yufeng_* → {brand}_*）
+  - 所有 Card/Dashboard 名称改为动态生成（f"{BRAND_DISPLAY}｜..."）
+  - HEADERS 初始化移至 main()，支持 --help 不连接 Metabase
+  - 修复 dashboard 名称重复问题（移除重复的 dash_name 赋值）
+- commit: d1c2295 + 7df2336
+- verification:
+  - command: python3 -m py_compile scripts/metabase_seed_dashboard.py && python3 scripts/metabase_seed_dashboard.py --help
+  - result: pass (--help 正常显示，语法检查通过)
+  - L2: VPS 生成了 gelatomiiix dashboard (id=8) → http://112.124.18.246:8082/dashboard/8
+- decision: keep
+- guard: py_compile ✅ + VPS 验证 ✅
+- next: 在 VPS 浏览器验证 dashboard 数据正确性；支持 bonjur 品牌
+
+## 2026-03-31 19:15
+- goal: 修复 gelatomiiix Metabase dashboard 数据刷不出来
+- bug: dashboard 一直 loading（Waiting for results...）
+- root-cause: brand_gelatomiiix_dm 缺少 3 个关键视图（revenue_monthly, expense_monthly, profit_monthly）
+- fix:
+  - 创建 sql/gelatomiiix_dm_models.sql（从 yufeng_dm_models.sql 派生）
+  - VPS apply 成功：4 个视图创建完成
+  - 验证：profit_monthly 返回数据（2025-08: profit_amt=19653.92）
+- commit: pending
+- verification: SELECT * FROM brand_gelatomiiix_dm.profit_monthly → 2 rows ✅
+- decision: keep
+- next: 在 Metabase 刷新 dashboard 确认显示正常
+
 ## 2026-03-30 13:00
 - goal: WDG architecture refactoring to P2 (security + testability)
 - T-001: Login brute-force protection

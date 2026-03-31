@@ -127,10 +127,20 @@ def sql_for_brand(sql_template: str) -> str:
     global BRAND_CODE
     if BRAND_CODE == "yufeng":
         return sql_template
+    
+    # Determine target schema prefix
+    # yufeng/bonjur use "{brand}_*", but new brands (gelatomiiix) use "brand_{brand}_*"
+    if BRAND_CODE in ("bonjur",):
+        target_prefix = f"{BRAND_CODE}_"
+    else:
+        # Default to "brand_{brand}_" pattern for new brands
+        target_prefix = f"brand_{BRAND_CODE}_"
+    
     # Replace schema names
-    result = sql_template.replace("yufeng_ods.", f"{BRAND_CODE}_ods.")
-    result = result.replace("yufeng_dm.", f"{BRAND_CODE}_dm.")
-    result = result.replace("yufeng_cfg.", f"{BRAND_CODE}_cfg.")
+    result = sql_template.replace("yufeng_ods.", f"{target_prefix}ods.")
+    result = result.replace("yufeng_dm.", f"{target_prefix}dm.")
+    result = result.replace("yufeng_cfg.", f"{target_prefix}cfg.")
+    result = result.replace("yufeng_ops.", f"{target_prefix}ops.")
     return result
 
 
@@ -406,7 +416,7 @@ def main() -> None:
   SELECT
     to_char(t.txn_time, 'YYYY-MM') AS month,
     t.store_code,
-    COALESCE(c.lvl1_name, c.lvl1) AS lvl1_name,
+    c.lvl1_name AS lvl1_name,
     c.classified_source,
     COALESCE(t.in_amt, 0)  AS in_amt,
     COALESCE(t.out_amt, 0) AS out_amt
@@ -513,7 +523,7 @@ ORDER BY ord;"""
 
     # Card 41: 支出一级
     sql_41 = r"""SELECT
-  COALESCE(c.lvl1_name, c.lvl1) AS "类别",
+  c.lvl1_name AS "类别",
   SUM(COALESCE(t.out_amt,0)) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 JOIN yufeng_dm.v_bank_txn_classified c
@@ -523,7 +533,7 @@ WHERE t.txn_time IS NOT NULL
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   AND COALESCE(t.out_amt,0) > 0
   [[ AND t.store_code = {{store_code}} ]]
-GROUP BY COALESCE(c.lvl1_name, c.lvl1)
+GROUP BY c.lvl1_name
 ORDER BY "金额(元)" DESC;"""
 
     card41_id = upsert_card(
@@ -545,7 +555,7 @@ ORDER BY "金额(元)" DESC;"""
 
     # Card 42: 支出二级（含 一级/二级 筛选）
     sql_42 = r"""SELECT
-  COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') AS "类别",
+  COALESCE(NULLIF(c.lvl2_name,''), '（未填）') AS "类别",
   SUM(COALESCE(t.out_amt,0)) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 JOIN yufeng_dm.v_bank_txn_classified c
@@ -555,8 +565,8 @@ WHERE t.txn_time IS NOT NULL
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   AND COALESCE(t.out_amt,0) > 0
   [[ AND t.store_code = {{store_code}} ]]
-  [[ AND COALESCE(c.lvl1_name, c.lvl1) = {{expense_lvl1}} ]]
-GROUP BY COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）')
+  [[ AND c.lvl1_name = {{expense_lvl1}} ]]
+GROUP BY COALESCE(NULLIF(c.lvl2_name,''), '（未填）')
 ORDER BY "金额(元)" DESC;"""
 
     card42_id = upsert_card(
@@ -580,7 +590,7 @@ ORDER BY "金额(元)" DESC;"""
 
     # Card 43: 收入二级（含 一级/二级 筛选）
     sql_43 = r"""SELECT
-  COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') AS "类别",
+  COALESCE(NULLIF(c.lvl2_name,''), '（未填）') AS "类别",
   SUM(COALESCE(t.in_amt,0)) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 JOIN yufeng_dm.v_bank_txn_classified c
@@ -590,8 +600,8 @@ WHERE t.txn_time IS NOT NULL
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   AND COALESCE(t.in_amt,0) > 0
   [[ AND t.store_code = {{store_code}} ]]
-  [[ AND COALESCE(c.lvl1_name, c.lvl1) = {{income_lvl1}} ]]
-GROUP BY COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）')
+  [[ AND c.lvl1_name = {{income_lvl1}} ]]
+GROUP BY COALESCE(NULLIF(c.lvl2_name,''), '（未填）')
 ORDER BY "金额(元)" DESC;"""
 
     card43_id = upsert_card(
@@ -700,8 +710,8 @@ ORDER BY 1, 2;"""
     sql_47 = r"""SELECT
   t.txn_time AS "时间",
   t.store_code AS "门店",
-  COALESCE(c.lvl1_name, c.lvl1) AS "支出一级",
-  COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') AS "支出二级",
+  c.lvl1_name AS "支出一级",
+  COALESCE(NULLIF(c.lvl2_name,''), '（未填）') AS "支出二级",
   t.counterparty_name AS "对方单位",
   t.summary AS "摘要",
   t.memo AS "附言",
@@ -719,8 +729,8 @@ WHERE t.txn_time IS NOT NULL
   [[ AND extract(year from t.txn_time) = extract(year from {{month_date}})
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   [[ AND t.store_code = {{store_code}} ]]
-  [[ AND COALESCE(c.lvl1_name, c.lvl1) = {{expense_lvl1}} ]]
-  [[ AND COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') = {{expense_lvl2}} ]]
+  [[ AND c.lvl1_name = {{expense_lvl1}} ]]
+  [[ AND COALESCE(NULLIF(c.lvl2_name,''), '（未填）') = {{expense_lvl2}} ]]
   [[ AND (
         COALESCE(t.counterparty_name,'') ILIKE '%' || {{keyword}} || '%'
      OR COALESCE(t.summary,'') ILIKE '%' || {{keyword}} || '%'
@@ -756,8 +766,8 @@ LIMIT 2000;"""
     sql_48 = r"""SELECT
   t.txn_time AS "时间",
   t.store_code AS "门店",
-  COALESCE(c.lvl1_name, c.lvl1) AS "收入一级",
-  COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') AS "收入二级",
+  c.lvl1_name AS "收入一级",
+  COALESCE(NULLIF(c.lvl2_name,''), '（未填）') AS "收入二级",
   t.counterparty_name AS "对方单位",
   t.summary AS "摘要",
   t.memo AS "附言",
@@ -775,8 +785,8 @@ WHERE t.txn_time IS NOT NULL
   [[ AND extract(year from t.txn_time) = extract(year from {{month_date}})
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   [[ AND t.store_code = {{store_code}} ]]
-  [[ AND COALESCE(c.lvl1_name, c.lvl1) = {{income_lvl1}} ]]
-  [[ AND COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') = {{income_lvl2}} ]]
+  [[ AND c.lvl1_name = {{income_lvl1}} ]]
+  [[ AND COALESCE(NULLIF(c.lvl2_name,''), '（未填）') = {{income_lvl2}} ]]
   [[ AND (
         COALESCE(t.counterparty_name,'') ILIKE '%' || {{keyword}} || '%'
      OR COALESCE(t.summary,'') ILIKE '%' || {{keyword}} || '%'
