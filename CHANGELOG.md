@@ -31,6 +31,26 @@
 - decision: keep
 - next: 在 Metabase 刷新 dashboard 确认显示正常
 
+## 2026-03-31 19:25
+- goal: 修复所有品牌 Metabase dashboard 卡在"等待中"
+- root-causes:
+  1. gelatomiiix/bonjur 缺少 DM 视图（revenue_monthly, expense_monthly, profit_monthly）
+  2. sql_for_brand() 不支持 "brand_{brand}_*" schema 前缀模式
+  3. Card SQL 引用了 c.lvl1/c.lvl2 兼容列（gelatomiiix 视图没有这些列）
+- fixes:
+  - sql_for_brand(): 支持 "brand_{brand}_*" 模式（gelatomiiix 等）
+  - 移除所有 c.lvl1/c.lvl2 引用，改用 c.lvl1_name/c.lvl2_name
+  - 创建 sql/gelatomiiix_dm_models.sql + sql/bonjur_dm_models.sql
+  - VPS apply 成功：所有品牌 DM 视图创建完成
+- verification:
+  - yufeng Card 83: 17 rows ✅
+  - gelatomiiix Card 74: 17 rows ✅
+  - bonjur Card 92: 17 rows ✅
+- dashboards:
+  - yufeng: http://112.124.18.246:8082/dashboard/9
+  - gelatomiiix: http://112.124.18.246:8082/dashboard/8
+  - bonjur: http://112.124.18.246:8082/dashboard/10
+
 ## 2026-03-30 13:00
 - goal: WDG architecture refactoring to P2 (security + testability)
 - T-001: Login brute-force protection
