@@ -2,19 +2,31 @@
 
 ## 2026-03-30 13:00
 - goal: WDG architecture refactoring to P2 (security + testability)
-- bet: T-001 — Login brute-force protection
-  - ops.login_attempts table (IP, username, success, user_id)
-  - 5 failed / 5 min → 429 + Retry-After header
-  - No user-enumeration: same error for bad user or bad password
-  - 30-day cleanup function
-- commit: a14ba9c
-- verification:
-  - command: cd ui && npx tsc --noEmit
-  - result: pass
-  - command: bash scripts/run_change_guard.sh
-  - result: pass
+- T-001: Login brute-force protection
+  - ops.login_attempts table + IP lockout (5 failed / 5 min → 429)
+  - commit: a14ba9c
+  - verification: cd ui && npx tsc --noEmit → pass
+- T-002: Upload file-type whitelist (.xlsx/.csv only)
+  - commit: 2b66978
+  - verification: cd ui && npx tsc --noEmit → pass
+- T-003: ETL pipeline step rollback on exception
+  - ops_logger.py step_end(rollback=True) + _rollback_started_steps()
+  - commit: 201bd14
+  - verification: py_compile + compileall → pass
+- T-004: Schema whitelist validation
+  - ops.allowed_schemas table + isAllowedSchema() + getDmSchemaSafe()
+  - Integrated into /api/coverage routes
+  - commit: 42effc3
+  - verification: cd ui && npx tsc --noEmit → pass
+- T-005: Classification rules JSON-ized + pytest
+  - rules/yufeng_bank_rules.json (111 rules, version=v2)
+  - scripts/classify.py (pure-Python, mirrors SQL fn_classify_v2)
+  - tests/test_classify.py (16 pytest cases, 16/16 ✅)
+  - harness.json: testCommand now runs pytest
+  - commit: dd8ed86
 - decision: keep
-- next: T-002 — upload file-type validation
+- guard: compileall + pytest 16/16 ✅
+- next: deploy DDL changes to staging/prod (ops.login_attempts + ops.allowed_schemas)
 
 ## 2026-03-27 16:12
 - goal: Fix Metabase「支出一级分类趋势」图表轴识别错误（X/Y 对调）
@@ -25,18 +37,6 @@
   - result: pass
 - decision: keep
 
-## 2026-03-26 22:10
-- goal: Install repo-first harness (Trinity) and avoid record-root guard name collisions
-- bet: Move legacy record-root governance scripts under `scripts/record_root`; scaffold repo-first harness at repo root
-- commit: 18ced46
-- verification:
-  - command: bash init.sh
-  - result: pass (compileall excluding .venv)
-  - command: bash scripts/run_change_guard.sh
-  - result: pass
-- decision: keep
-- next: Define a real test oracle (pytest/integration) and set `harness.json:testCommand` accordingly
-
 ## 2026-03-26 22:15
 - goal: Merge harness branch into main
 - bet: Merge repo-first harness baseline
@@ -45,4 +45,3 @@
   - command: bash scripts/run_change_guard.sh
   - result: pass
 - decision: keep
-- next: Keep improving real test oracle beyond compileall
