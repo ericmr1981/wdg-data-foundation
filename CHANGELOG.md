@@ -51,6 +51,23 @@
   - gelatomiiix: http://112.124.18.246:8082/dashboard/8
   - bonjur: http://112.124.18.246:8082/dashboard/10
 
+## 2026-03-31 19:50
+- goal: 修复 Metabase dashboard 查询慢（数据计算量太大）
+- root-cause: `v_bank_txn_classified_v2` 视图定义错误 — `fn_classify_bank_txn_v2()` 函数被调用 7 次/每条记录
+  - 原始定义：在 SELECT 中调用 4 次 + JOIN 条件中调用 3 次
+  - 48 条流水 × 7 次 = 336 次函数执行，每次还要查规则表
+  - 性能：v_bank_txn_classified = 676ms, profit_monthly = 1457ms
+- fix: 用 LATERAL JOIN 重构视图（函数只调用 1 次/每条记录）
+  - sql/gelatomiiix_fix_classified_view.sql
+  - CROSS JOIN LATERAL (SELECT fn_classify_bank_txn_v2(t.id).*) c
+  - 性能：v_bank_txn_classified = 47ms (↓14x), profit_monthly = 75ms (↓19x)
+- verification:
+  - Card 74: 149ms (17 rows) ✅
+  - Card 75: 37ms (5 rows) ✅
+  - Card 78: 60ms (2 rows) ✅
+- decision: keep
+- next: bonjur 也需要同样修复
+
 ## 2026-03-30 13:00
 - goal: WDG architecture refactoring to P2 (security + testability)
 - T-001: Login brute-force protection
