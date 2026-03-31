@@ -144,6 +144,24 @@ def sql_for_brand(sql_template: str) -> str:
     return result
 
 
+def store_values_for_brand() -> list[list[str]]:
+    """Stable store dropdown options. Avoid Metabase card/field-id binding bugs."""
+    global BRAND_CODE
+    if BRAND_CODE == "gelatomiiix":
+        return [["sh_xtd", "上海新天地店"]]
+    if BRAND_CODE == "yufeng":
+        return [["yf_gh", "榆枫国华"]]
+    if BRAND_CODE == "bonjur":
+        return [
+            ["hz_in77", "杭州in77"],
+            ["sh_wdg", "上海旺鼎阁"],
+            ["sh_zb", "上海王鼎阁"],
+            ["wz_oh_wxc", "温州瓯海万象城店"],
+            ["wz_ra_wy", "温州瑞安吾悦广场店"],
+        ]
+    return []
+
+
 def search_one(model: str, name: str) -> Optional[dict]:
     raw = mb_get("/api/search", params={"q": name, "models": model})
     res = raw.get("data") if isinstance(raw, dict) else raw
@@ -819,20 +837,6 @@ LIMIT 2000;"""
     )
 
     # -----------------
-    # Options cards (for dropdown filters)
-    # -----------------
-
-    store_options_id = upsert_card(
-        name=f"{BRAND_DISPLAY}｜门店下拉选项",
-        database_id=db_id,
-        sql=r"""SELECT store_code, store_name
-FROM yufeng_cfg.dim_store
-ORDER BY COALESCE(sort_order, 9999), store_code;""",
-        description="Dashboard filter options: store_code + store_name",
-        display="table",
-    )
-
-    # -----------------
     # Dashboard
     # -----------------
 
@@ -843,7 +847,7 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
         # 1) Month: month-only picker
         {"id": PID_MONTH, "name": "Month", "slug": "month_date", "type": "date/month-year", "sectionId": "date", "required": False},
 
-        # 2) Store: dropdown with store names (static list for now)
+        # 2) Store: stable static list (avoid Metabase values_source/card field-id drift)
         {
             "id": PID_STORE,
             "name": "门店",
@@ -851,11 +855,9 @@ ORDER BY COALESCE(sort_order, 9999), store_code;""",
             "type": "category",
             "sectionId": "string",
             "required": False,
-            "values_source_type": "card",
+            "values_source_type": "static-list",
             "values_source_config": {
-                "card_id": store_options_id,
-                "value_field": ["field", 771, None],
-                "label_field": ["field", 772, None]
+                "values": store_values_for_brand()
             },
         },
 

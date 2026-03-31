@@ -93,6 +93,25 @@
   - Bonjur营业: http://112.124.18.246:8082/dashboard/4
   - Bonjur财务: http://112.124.18.246:8082/dashboard/5
 
+## 2026-03-31 20:20
+- goal: 继续排查“页面仍然转圈”而非仅 API 查询是否成功
+- root-cause (new): Dashboard 8/9/10 的 `store_code` 顶部筛选器配置不稳定
+  - Dashboard 8: `values_source_type = null`
+  - Dashboard 9/10: `values_source_type = card`，但绑定了硬编码 field id `771/772`
+  - 这类 Metabase 参数源漂移很容易导致前端筛选器加载异常/页面卡转圈
+- fix:
+  - VPS 上将 Dashboard 8/9/10 的 `store_code` 参数统一改为 `static-list`
+  - repo 脚本 `scripts/metabase_seed_dashboard.py` 同步改成 `store_values_for_brand()`，不再依赖 card_id + field id 绑定
+- verification:
+  - Dashboard 8 `store_code`: static-list ✅
+  - Dashboard 9 `store_code`: static-list ✅
+  - Dashboard 10 `store_code`: static-list ✅
+  - Card 74: completed 139ms ✅
+  - Card 83: completed 39ms ✅
+  - Card 92: completed 51ms ✅
+- decision: keep
+- note: 真实页面是否已恢复，还受登录态影响；当前无法在未接入你已登录标签页的情况下完成最终前端验收
+
 ## 2026-03-30 13:00
 - goal: WDG architecture refactoring to P2 (security + testability)
 - T-001: Login brute-force protection
