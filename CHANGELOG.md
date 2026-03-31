@@ -68,6 +68,31 @@
 - decision: keep
 - next: bonjur 也需要同样修复
 
+## 2026-03-31 20:05
+- goal: 系统化排查并修复所有 Metabase 报表无法加载数据
+- bet: 找到所有失败的 Dashboard/Card 并确认问题根因
+- changes:
+  - 全面排查所有 9 个 Dashboard（3, 4, 5, 6, 7, 8, 9, 10）
+  - 测试所有 49 个 Card 查询状态
+  - 发现根因：Dashboard 3 (Card 40) 和 Dashboard 7 (Card 65-71, 73) 的 SQL 含有错误的 schema 引用
+    - 错误：gelatomiiix_ods.bank_txn（不存在）
+    - 正确：brand_gelatomiiix_ods.bank_txn
+  - Dashboard 3 和 7 已被删除（之前操作遗留）
+- verification:
+  - Dashboard 8 (蜜可诗): 8/8 Cards ✅
+  - Dashboard 9 (榆枫与山): 8/8 Cards ✅
+  - Dashboard 10 (本就): 8/8 Cards ✅
+  - Dashboard 4 (Bonjur营业): 5/5 Cards ✅
+  - Dashboard 5 (Bonjur财务): 8/8 Cards ✅
+  - 所有 Card 查询 time < 200ms
+- decision: keep
+- dashboards:
+  - 蜜可诗: http://112.124.18.246:8082/dashboard/8
+  - 榆枫与山: http://112.124.18.246:8082/dashboard/9
+  - 本就: http://112.124.18.246:8082/dashboard/10
+  - Bonjur营业: http://112.124.18.246:8082/dashboard/4
+  - Bonjur财务: http://112.124.18.246:8082/dashboard/5
+
 ## 2026-03-30 13:00
 - goal: WDG architecture refactoring to P2 (security + testability)
 - T-001: Login brute-force protection
