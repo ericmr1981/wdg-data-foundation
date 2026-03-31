@@ -45,3 +45,23 @@
   - command: bash scripts/run_change_guard.sh
   - result: pass
 - decision: keep
+
+## 2026-03-31 13:00
+- goal: 新品牌 gelatomiiix（蜜可诗）上线后端到端验收 + 修复初始化完整性 bug
+- bug-1: ops.fn_log_bank_rule_map_change() 函数不存在 → 品牌创建时报错
+  - fix: VPS上手动创建 ops schema + 函数 + 触发器（sql/rules_history.sql 从未被 apply）
+  - commit: local only（VPS direct）
+- bug-2: import_yufeng_bank_txn.py 硬编码 `{brand_code}_ods` → 新品牌 schema 命名不一致
+  - fix: 新增 get_ods_schema() / get_dm_schema() 与 TypeScript API 对齐
+  - commit: 941f843
+- bug-3: init-bank-template API 漏掉 snapshot 表 + expense/profit 视图
+  - fix: 补充 yufeng_classification_snapshot.sql + yufeng_dm_models.sql
+  - fix: 补加 sqlSnapshot 变量声明（TypeScript 编译错误）
+  - commit: 011a958（forced push）
+  - VPS 已部署新镜像 wdg-ui:latest
+- gelatomiiix VPS 数据库补建:
+  - brand_gelatomiiix_dm.bank_txn_classified_snapshot 表（含主键约束）
+  - brand_gelatomiiix_dm.refresh_bank_txn_classified_snapshot() 函数
+- decision: keep
+- guard: docker build ✅ + tsc compile ✅
+- next: 在 UI 重新上传蜜可诗银行数据，验证完整链路（import → 分类 → BI 报表）
