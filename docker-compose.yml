@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: dataplatform-pg-dashboard
+    environment:
+      POSTGRES_DB: ${DB_NAME:-dataplatform}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - dataplatform_pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  metabase:
+    image: metabase/metabase:latest
+    container_name: dataplatform-metabase
+    depends_on:
+      - postgres
+    ports:
+      - "${METABASE_PORT:-8081}:3000"
+    environment:
+      # Metabase 自身的应用数据库（用 H2 内置最简单；要持久化可改成 Postgres）
+      MB_DB_TYPE: h2
+      MB_DB_FILE: /metabase-data/metabase.db
+      JAVA_TIMEZONE: Asia/Shanghai
+    volumes:
+      - metabase_data:/metabase-data
+    restart: unless-stopped
+
+  ui:
+    build:
+      context: ./ui
+    container_name: dataplatform-ui
+    depends_on:
+      - postgres
+    environment:
+      # 推荐：用 DB_*（与 UI 代码保持一致）
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-dataplatform}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+
+      # 让 /api/upload 触发导入脚本时用系统 python3（不要走 /.venv/bin/python）
+      PYTHON_BIN: python3
+
+      # 可选：也可用 DATABASE_URL
+      # DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-dataplatform}
+    volumes:
+      # 让上传文件与导入脚本落在宿主机目录（并与脚本内的 /inputs /scripts 路径对齐）
+      - ./inputs:/inputs
+      - ./scripts:/scripts
+      - ./sql:/sql:ro
+      - ./ops:/ops:ro
+      - ./outputs:/outputs
+    ports:
+      - "${UI_PORT:-3002}:3000"
+    restart: unless-stopped
+
+volumes:
+  dataplatform_pg_data:
+  metabase_data:
