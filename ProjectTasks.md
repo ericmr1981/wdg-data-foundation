@@ -3,6 +3,31 @@
 ## 目标
 将 WD Data Foundation 整改到 P2 安全+可测试基线。
 
+---
+
+## T-006 ✅ VPS Metabase Dashboard 全部卡在 "Waiting for results" — 已修复 (2026-04-01)
+
+### 根因
+1. `site-url` 设置为 `http://112.124.18.246:8081`，但 Metabase 实际运行在 **8082**。前端所有 API 调用 401 Unauthorized。
+2. Month 参数缺少 `values` 配置，导致查询时参数为空，返回空结果。
+
+### 修复操作
+1. 修正 `site-url` → `http://112.124.18.246:8082`（通过 API PUT）
+2. 为 Dashboard 8/9/10 的 Month 参数添加 `values_source_type=static-list` + 月份列表 + default 值
+
+### 修复后验证
+| Dashboard | 品牌 | Cards |
+|-----------|------|-------|
+| 8  | 蜜可诗 | 8/8 ✅ |
+| 9  | 榆枫与山 | 8/8 ✅ |
+| 10 | 本就 | 8/8 ✅ |
+| 5  | Bonjur财务 | 8/8 ✅ |
+| 4  | Bonjur营业 | 5/5 ✅ |
+
+### 待办
+- [ ] `ops.login_attempts` 和 `ops.allowed_schemas` DDL 还未在 VPS apply（T-001/T-004 前置条件）
+- [ ] 品牌（gelatomiiix/yufeng/bonjur）前端 UI 端到端验收
+
 ## 任务清单
 
 - [ ] **T-001** P0-1: Login 防暴力破解（加 login_attempts 表 + 限速逻辑）

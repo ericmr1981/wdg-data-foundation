@@ -1,5 +1,12 @@
 # Progress Log
 
+## 2026-04-01 12:46
+- Fixed: VPS Metabase 所有 Dashboard 卡在 "Waiting for results"
+  - Root cause: `site-url` 端口错误 (8081 vs 8082) + Month 参数无 values 来源
+  - Fix: 修正 site-url，为 Dashboard 8/9/10/5 的 Month 参数添加静态值列表
+  - Result: 5 个 Dashboard 全部正常加载（8+8+8+8+5 cards）
+- Note: 使用 Metabase API key 临时创建 admin 用户 polo_test@polo.ai 用于操作
+
 ## 2026-03-31 18:35
 - goal: 方案 A — metabase_seed_dashboard.py 支持 --brand 参数，多品牌自动生成报表
 - bet: 改造脚本支持动态品牌参数（yufeng/bonjur/gelatomiiix 等）
