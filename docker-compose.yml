@@ -18,7 +18,7 @@ services:
     depends_on:
       - postgres
     ports:
-      - "${METABASE_PORT:-8081}:3000"
+      - "${METABASE_PORT:-8082}:3000"
     environment:
       # Metabase 自身的应用数据库（用 H2 内置最简单；要持久化可改成 Postgres）
       MB_DB_TYPE: h2

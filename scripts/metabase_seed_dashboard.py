@@ -162,6 +162,57 @@ def store_values_for_brand() -> list[list[str]]:
     return []
 
 
+def month_values_for_brand() -> list[list[str]]:
+    """Populate Month filter with actual months from brand's bank_txn table.
+
+    Fixes the "waiting for results" dashboard hang: when Month has no values_source,
+    the [[ AND extract(year from t.txn_time) = extract(year from {{month_date}}) ]] clause
+    expands to all years, causing a full table scan on large datasets.
+
+    Returns list of [date_string, label] pairs suitable for Metabase
+    values_source_config (date/month-year type uses YYYY-MM-01 format).
+    """
+    global BRAND_CODE
+    try:
+        if BRAND_CODE == "yufeng":
+            ods_schema = "yufeng_ods"
+        elif BRAND_CODE == "bonjur":
+            ods_schema = "bonjur_ods"
+        else:
+            ods_schema = f"brand_{BRAND_CODE}_ods"
+
+        rows = mb_get(
+            "/api/dataset",
+            params={
+                "query": json.dumps({
+                    "database": find_database_id(),
+                    "native": {
+                        "query": f"SELECT DISTINCT date_trunc('month', txn_time)::date AS month "
+                                 f"FROM {ods_schema}.bank_txn "
+                                 f"WHERE txn_time IS NOT NULL "
+                                 f"ORDER BY month DESC "
+                                 f"LIMIT 24"
+                    }
+                })
+            },
+            timeout=30,
+        )
+
+        values = []
+        raw_data = rows.get("data", {}) if isinstance(rows, dict) else {}
+        rows_list = raw_data.get("rows", [])
+
+        for row in rows_list:
+            month_date = row[0] if row else None
+            if month_date:
+                label = month_date[:7]
+                values.append([month_date, label])
+
+        return values[:24]
+    except Exception:
+        return []
+
+
 def search_one(model: str, name: str) -> Optional[dict]:
     raw = mb_get("/api/search", params={"q": name, "models": model})
     res = raw.get("data") if isinstance(raw, dict) else raw
@@ -465,8 +516,12 @@ agg AS (
   SELECT
     COALESCE(SUM(in_amt)  FILTER (WHERE in_amt  > 0), 0) AS total_in,
 
-    -- 来自 profit_monthly（单行），这里用 MAX() 避免与 base 的聚合冲突
-    MAX(profit_agg.total_out)  AS total_out,
+    -- 来自 profit_monthly（单行），这里用 MAX() 避免与 base 的聚合冲突。
+    -- Fix: some brands (e.g., gelatomiiix) may have profit_monthly not populated yet.
+    -- Fallback to bank_txn-derived total out (excluding "营建费用") so totals + ratios don't become 0.
+    CASE WHEN MAX(profit_agg.total_out) > 0 THEN MAX(profit_agg.total_out)
+         ELSE COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1_name IS DISTINCT FROM '营建费用'), 0)
+    END AS total_out,
 
     -- 这里“营业收入”以 yufeng_dm.profit_monthly 口径为准（REV_BIZ）
     MAX(profit_agg.in_biz) AS in_biz,
@@ -843,9 +898,27 @@ LIMIT 2000;"""
     # dash_name already set at the beginning of main()
     dash_desc = f"{BRAND_DISPLAY}：概览（收支总揽/支出一级/支出二级/收入二级/趋势）+ 明细下钻（支出/收入明细表）。筛选：月（按月）/门店（下拉）/支出一级/支出二级/收入一级/收入二级/关键词。"
 
+    month_values = month_values_for_brand()
+    dash_month_param = {
+        # 1) Month: month-only picker — populated from brand's actual bank_txn months
+        #    (Fix: without this, the date/month-year filter expands to all years → full table scan → "waiting")
+        "id": PID_MONTH,
+        "name": "Month",
+        "slug": "month_date",
+        "type": "date/month-year",
+        "sectionId": "date",
+        "required": False,
+        "values_source_type": "static-list",
+        "values_source_config": {
+            "values": month_values
+        },
+    }
+    # Set a safe default (latest month) to avoid loading ALL months/years on first render.
+    if month_values:
+        dash_month_param["default"] = month_values[0][0]
+
     dash_params = [
-        # 1) Month: month-only picker
-        {"id": PID_MONTH, "name": "Month", "slug": "month_date", "type": "date/month-year", "sectionId": "date", "required": False},
+        dash_month_param,
 
         # 2) Store: stable static list (avoid Metabase values_source/card field-id drift)
         {

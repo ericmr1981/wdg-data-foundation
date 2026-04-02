@@ -1,0 +1,128 @@
+{
+  "project": {
+    "displayName": "workspace",
+    "repoPath": "/Users/ericmr/Documents/GitHub/wdg-data-foundation",
+    "source": "default"
+  },
+  "taskDescription": "WDG: 按方案A交付『门店看板一键初始化』：新增门店后不创建新dashboard，而是提供一键同步/初始化功能，将 Metabase 现有品牌经营看板/营业看板/财务看板中的 store_code 静态下拉列表（static-list）自动同步为 ops.stores 当前门店集合；并在 /admin/stores 页面提供按钮触发（按品牌或按门店）。要求：1) 不新增 dashboard；2) 同步后看板门店下拉立即包含新门店；3) 兼容多品牌（yufeng/bonjur/gelatomiiix 等）；4) 给出 README/验收步骤；5) 提供安全机制（dry-run/预览/二次确认/仅 admin 权限）。",
+  "llmResult": {
+    "taskProfile": {
+      "taskType": "multi",
+      "subTaskTypes": [],
+      "skillsNeeded": [],
+      "agentSuggestions": [],
+      "complexity": 3,
+      "riskLevel": "medium",
+      "scopeGuess": "multi-file"
+    },
+    "enhancedBrief": "代码库: Python / Python。主要文件: ui/src/app/match/page.tsx, ui/src/app/rules/page.tsx, ui/src/app/admin/config/category-dictionary/page.tsx, ui/.next/server/vendor-chunks/next.js, ui/src/app/api/rules/route.ts。",
+    "needsClarification": false,
+    "clarificationQuestions": [],
+    "isMultiAgent": false,
+    "agentPlan": null
+  },
+  "plan": {
+    "sprints": [
+      {
+        "sprintId": "sprint-1",
+        "role": "engineering-senior-developer",
+        "scope": "WDG: 按方案A交付『门店看板一键初始化』：新增门店后不创建新dashboard，而是提供一键同步/初始化功能，将 Metabase 现有品牌经营看板/营业看板/财务看板中的 store_code 静态下拉列表（static-list）自动同步为 ops.stores 当前门店集合；并在 /admin/stores 页面提供按钮触发（按品牌或按门店）。要求：1) 不新增 dashboard；2) 同步后看板门店下拉立即包含新门店；3) 兼容多品牌（yufeng/bonjur/gelatomiiix 等）；4) 给出 README/验收步骤；5) 提供安全机制（dry-run/预览/二次确认/仅 admin 权限）。",
+        "dependsOn": [],
+        "brief": "# Sprint Contract — sprint-1\n\n## 任务\nWDG: 按方案A交付『门店看板一键初始化』：新增门店后不创建新dashboard，而是提供一键同步/初始化功能，将 Metabase 现有品牌经营看板/营业看板/财务看板中的 store_code 静态下拉列表（static-list）自动同步为 ops.stores 当前门店集合；并在 /admin/stores 页面提供按钮触发（按品牌或按门店）。要求：1) 不新增 dashboard；2) 同步后看板门店下拉立即包含新门店；3) 兼容多品牌（yufeng/bonjur/gelatomiiix 等）；4) 给出 README/验收步骤；5) 提供安全机制（dry-run/预览/二次确认/仅 admin 权限）。\n\n## 项目\nworkspace | /Users/ericmr/Documents/GitHub/wdg-data-foundation\n\n## Agent\nengineering-senior-developer\n\n## Matrix Flags\n- **[COMPLEXITY_HIGH]** complexity=8 — PGE-sprint enforced\n- **[COMPLEXITY_MED]** complexity=8 — consider multi-sprint\n## Continue Gate (v5 preview)\n- **Final Oracle**: Live acceptance for \"WDG: 按方案A交付『门店看板一键初始化』：新增门店后不创建新dashboard，而是提供一键同步/初始化功能，将 Metabase 现有品牌经营看板/营业看板/财务看板中的 store_code 静态下拉列表（static-list）自动同步为 ops.stores 当前门店集合；并在 /admin/stores 页面提供按钮触发（按品牌或按门店）。要求：1) 不新增 dashboard；2) 同步后看板门店下拉立即包含新门店；3) 兼容多品牌（yufeng/bonjur/gelatomiiix 等）；4) 给出 README/验收步骤；5) 提供安全机制（dry-run/预览/二次确认/仅 admin 权限）。\" plus local oracle: bash scripts/run_change_guard.sh\n- **Current Blocker**: Not yet verified against final oracle. Replace with concrete blocker after the first failed live check.\n- **Round Outcome**: retry_with_new_bet\n- **Stop Allowed**: no\n- **Next Forced Bet**: Execute one bounded bet, then run bash scripts/run_change_guard.sh; if final oracle still fails, record evidence delta and launch the next repair step.\n- **Local Oracle**: bash scripts/run_change_guard.sh\n- **Evidence Delta**: new-branch\n- **No-Evidence Rounds**: 0\n- **Last Evidence**: none yet\n- **Pivot Trigger**: 2 no-evidence rounds on same branch\n\n\n## 依赖\n_无_\n\n## 验收\n```bash\ncd \"/Users/ericmr/Documents/GitHub/wdg-data-foundation\" && bash scripts/run_change_guard.sh\n```\n\n## 注意事项\n代码库: Python / Python。主要文件: ui/src/app/match/page.tsx, ui/src/app/rules/page.tsx, ui/src/app/admin/config/category-dictionary/page.tsx, ui/.next/server/vendor-chunks/next.js, ui/src/app/api/rules/route.ts。\n\n---\n*Generated: 2026-04-02T08:26:57.730Z*",
+        "agent": {
+          "id": "engineering-senior-developer",
+          "confidence": 70,
+          "category": "engineering",
+          "file": "skills/agency-agents-lib/agents/engineering/engineering-senior-developer.md"
+        },
+        "attachmentTier": "full"
+      }
+    ],
+    "masterBrief": "# Architectural Brief — workspace\n> harness.js v5-preview | 2026-04-02T08:26:57.730Z\n> Mode: llm-full | Complexity: 8/10 | Profile: PGE-sprint\n\n## 任务画像\n- **类型**: multi\n- **复杂度**: 8/10 → PGE-sprint\n- **风险**: medium\n- **范围**: multi-file\n- **Agent**: engineering-senior-developer (confidence: 70%)\n\n## Matrix Flags\n- **[COMPLEXITY_HIGH]** complexity=8 — PGE-sprint enforced\n- **[COMPLEXITY_MED]** complexity=8 — consider multi-sprint\n\n## Continue Gate (v5 preview)\n- **Final Oracle**: Live acceptance for \"WDG: 按方案A交付『门店看板一键初始化』：新增门店后不创建新dashboard，而是提供一键同步/初始化功能，将 Metabase 现有品牌经营看板/营业看板/财务看板中的 store_code 静态下拉列表（static-list）自动同步为 ops.stores 当前门店集合；并在 /admin/stores 页面提供按钮触发（按品牌或按门店）。要求：1) 不新增 dashboard；2) 同步后看板门店下拉立即包含新门店；3) 兼容多品牌（yufeng/bonjur/gelatomiiix 等）；4) 给出 README/验收步骤；5) 提供安全机制（dry-run/预览/二次确认/仅 admin 权限）。\" plus local oracle: bash scripts/run_change_guard.sh\n- **Current Blocker**: Not yet verified against final oracle. Replace with concrete blocker after the first failed live check.\n- **Round Outcome**: retry_with_new_bet\n- **Stop Allowed**: no\n- **Next Forced Bet**: Execute one bounded bet, then run bash scripts/run_change_guard.sh; if final oracle still fails, record evidence delta and launch the next repair step.\n- **Local Oracle**: bash scripts/run_change_guard.sh\n- **Evidence Delta**: new-branch\n- **Last Evidence**: none yet\n- **Pivot Trigger**: 2 no-evidence rounds on same branch\n\n\n## 架构要点\n代码库: Python / Python。主要文件: ui/src/app/match/page.tsx, ui/src/app/rules/page.tsx, ui/src/app/admin/config/category-dictionary/page.tsx, ui/.next/server/vendor-chunks/next.js, ui/src/app/api/rules/route.ts。\n\n## 代码库\n- **类型**: Python | **框架**: Python\n- **构建**: `unknown` | **测试**: `none` | **Guard**: `bash scripts/run_change_guard.sh`\n- **Local Oracle**: `bash scripts/run_change_guard.sh`\n\n## 主要文件\n- `ui/src/app/match/page.tsx` (1393L)\n- `ui/src/app/rules/page.tsx` (1150L)\n- `ui/src/app/admin/config/category-dictionary/page.tsx` (613L)\n- `ui/.next/server/vendor-chunks/next.js` (539L)\n- `ui/src/app/api/rules/route.ts` (445L)\n- `ui/src/app/api/match/route.ts` (440L)\n- `ui/src/app/api/rules/settle-batch/route.ts` (354L)\n- `ui/src/app/pipeline/page.tsx` (351L)\n- `ui/.next/types/app/api/auth/login/route.ts` (343L)\n- `ui/.next/types/app/api/coverage/route.ts` (343L)\n",
+    "matrixFlags": [
+      {
+        "flag": "COMPLEXITY_HIGH",
+        "note": "complexity=8 — PGE-sprint enforced"
+      },
+      {
+        "flag": "COMPLEXITY_MED",
+        "note": "complexity=8 — consider multi-sprint"
+      }
+    ],
+    "attachmentTier": "full",
+    "continueGate": {
+      "branchKey": "/Users/ericmr/Documents/GitHub/wdg-data-foundation::wdg: 按方案a交付『门店看板一键初始化』：新增门店后不创建新dashboard，而是提供一键同步/初始化功能，将 metabase 现有品牌经营看板/营业看板/财务看板中的 store_code 静态下拉列表（static-list）自动同步为 ops.stores 当前门店集合；并在 /admin/stores 页面提供按钮触发（按品牌或按门店）。要求：1) 不新增 dashboard；2) 同步后看板门店下拉立即包含新门店；3) 兼容多品牌（yufeng/bonjur/gelatomiiix 等）；4) 给出 readme/验收步骤；5) 提供安全机制（dry-run/预览/二次确认/仅 admin 权限）。",
+      "evidenceFingerprint": "{\"task\":\"wdg: 按方案a交付『门店看板一键初始化』：新增门店后不创建新dashboard，而是提供一键同步/初始化功能，将 metabase 现有品牌经营看板/营业看板/财务看板中的 store_code 静态下拉列表（static-list）自动同步为 ops.stores 当前门店集合；并在 /admin/stores 页面提供按钮触发（按品牌或按门店）。要求：1) 不新增 dashboard；2) 同步后看板门店下拉立即包含新门店；3) 兼容多品牌（yufeng/bonjur/gelatomiiix 等）；4) 给出 readme/验收步骤；5) 提供安全机制（dry-run/预览/二次确认/仅 admin 权限）。\",\"complexity\":8,\"taskType\":\"multi\",\"riskLevel\":\"medium\",\"scopeGuess\":\"multi-file\",\"buildCmd\":\"unknown\",\"guardCmd\":\"bash scripts/run_change_guard.sh\",\"localOracle\":\"bash scripts/run_change_guard.sh\",\"topFiles\":[\"ui/src/app/match/page.tsx\",\"ui/src/app/rules/page.tsx\",\"ui/src/app/admin/config/category-dictionary/page.tsx\",\"ui/.next/server/vendor-chunks/next.js\",\"ui/src/app/api/rules/route.ts\"]}",
+      "finalOracle": "Live acceptance for \"WDG: 按方案A交付『门店看板一键初始化』：新增门店后不创建新dashboard，而是提供一键同步/初始化功能，将 Metabase 现有品牌经营看板/营业看板/财务看板中的 store_code 静态下拉列表（static-list）自动同步为 ops.stores 当前门店集合；并在 /admin/stores 页面提供按钮触发（按品牌或按门店）。要求：1) 不新增 dashboard；2) 同步后看板门店下拉立即包含新门店；3) 兼容多品牌（yufeng/bonjur/gelatomiiix 等）；4) 给出 README/验收步骤；5) 提供安全机制（dry-run/预览/二次确认/仅 admin 权限）。\" plus local oracle: bash scripts/run_change_guard.sh",
+      "currentBlocker": "Not yet verified against final oracle. Replace with concrete blocker after the first failed live check.",
+      "roundOutcome": "retry_with_new_bet",
+      "stopAllowed": "no",
+      "nextForcedBet": "Execute one bounded bet, then run bash scripts/run_change_guard.sh; if final oracle still fails, record evidence delta and launch the next repair step.",
+      "evidenceDelta": "new-branch",
+      "noEvidenceRounds": 0,
+      "pivotAfterNoEvidenceRounds": 2,
+      "localOracle": "bash scripts/run_change_guard.sh",
+      "evidenceArtifact": "",
+      "resultStatus": "",
+      "failureType": "",
+      "lastEvidence": "",
+      "resultConsumedAt": "",
+      "explicitInputsApplied": false
+    },
+    "executionResult": {
+      "status": "",
+      "failureType": "",
+      "actualDurationMin": null,
+      "retryCount": null,
+      "whatWasDone": "",
+      "whatWasNotDone": "",
+      "verificationEvidence": "",
+      "consumedAt": "",
+      "consumedFrom": ""
+    }
+  },
+  "complexity": 8,
+  "tokenTrack": {
+    "mode": "llm-full",
+    "llmCalls": 1,
+    "estimatedTokens": 2660,
+    "subagentEstimate": 4
+  },
+  "continueGate": {
+    "branchKey": "/Users/ericmr/Documents/GitHub/wdg-data-foundation::wdg: 按方案a交付『门店看板一键初始化』：新增门店后不创建新dashboard，而是提供一键同步/初始化功能，将 metabase 现有品牌经营看板/营业看板/财务看板中的 store_code 静态下拉列表（static-list）自动同步为 ops.stores 当前门店集合；并在 /admin/stores 页面提供按钮触发（按品牌或按门店）。要求：1) 不新增 dashboard；2) 同步后看板门店下拉立即包含新门店；3) 兼容多品牌（yufeng/bonjur/gelatomiiix 等）；4) 给出 readme/验收步骤；5) 提供安全机制（dry-run/预览/二次确认/仅 admin 权限）。",
+    "evidenceFingerprint": "{\"task\":\"wdg: 按方案a交付『门店看板一键初始化』：新增门店后不创建新dashboard，而是提供一键同步/初始化功能，将 metabase 现有品牌经营看板/营业看板/财务看板中的 store_code 静态下拉列表（static-list）自动同步为 ops.stores 当前门店集合；并在 /admin/stores 页面提供按钮触发（按品牌或按门店）。要求：1) 不新增 dashboard；2) 同步后看板门店下拉立即包含新门店；3) 兼容多品牌（yufeng/bonjur/gelatomiiix 等）；4) 给出 readme/验收步骤；5) 提供安全机制（dry-run/预览/二次确认/仅 admin 权限）。\",\"complexity\":8,\"taskType\":\"multi\",\"riskLevel\":\"medium\",\"scopeGuess\":\"multi-file\",\"buildCmd\":\"unknown\",\"guardCmd\":\"bash scripts/run_change_guard.sh\",\"localOracle\":\"bash scripts/run_change_guard.sh\",\"topFiles\":[\"ui/src/app/match/page.tsx\",\"ui/src/app/rules/page.tsx\",\"ui/src/app/admin/config/category-dictionary/page.tsx\",\"ui/.next/server/vendor-chunks/next.js\",\"ui/src/app/api/rules/route.ts\"]}",
+    "finalOracle": "Live acceptance for \"WDG: 按方案A交付『门店看板一键初始化』：新增门店后不创建新dashboard，而是提供一键同步/初始化功能，将 Metabase 现有品牌经营看板/营业看板/财务看板中的 store_code 静态下拉列表（static-list）自动同步为 ops.stores 当前门店集合；并在 /admin/stores 页面提供按钮触发（按品牌或按门店）。要求：1) 不新增 dashboard；2) 同步后看板门店下拉立即包含新门店；3) 兼容多品牌（yufeng/bonjur/gelatomiiix 等）；4) 给出 README/验收步骤；5) 提供安全机制（dry-run/预览/二次确认/仅 admin 权限）。\" plus local oracle: bash scripts/run_change_guard.sh",
+    "currentBlocker": "Not yet verified against final oracle. Replace with concrete blocker after the first failed live check.",
+    "roundOutcome": "retry_with_new_bet",
+    "stopAllowed": "no",
+    "nextForcedBet": "Execute one bounded bet, then run bash scripts/run_change_guard.sh; if final oracle still fails, record evidence delta and launch the next repair step.",
+    "evidenceDelta": "new-branch",
+    "noEvidenceRounds": 0,
+    "pivotAfterNoEvidenceRounds": 2,
+    "localOracle": "bash scripts/run_change_guard.sh",
+    "evidenceArtifact": "",
+    "resultStatus": "",
+    "failureType": "",
+    "lastEvidence": "",
+    "resultConsumedAt": "",
+    "explicitInputsApplied": false
+  },
+  "executionResult": {
+    "status": "",
+    "failureType": "",
+    "actualDurationMin": null,
+    "retryCount": null,
+    "whatWasDone": "",
+    "whatWasNotDone": "",
+    "verificationEvidence": "",
+    "consumedAt": "",
+    "consumedFrom": ""
+  },
+  "dispatchTime": "2026-04-02T08:26:57.731Z",
+  "lifecycle": {
+    "mode": "dispatch",
+    "consumedResult": false,
+    "goalClosed": false
+  },
+  "version": "harness.js v5-preview"
+}

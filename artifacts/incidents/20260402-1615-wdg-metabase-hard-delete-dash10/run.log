@@ -1,0 +1,15 @@
+dash10_name= 本就｜经营看板
+dash10_archived= True
+dash10_cards= [92, 93, 94, 95, 96, 97, 98, 99]
+cards_used_elsewhere_count= 0
+DELETE dashboard/10 http_code=204
+
+DELETE card/92 http_code=204
+DELETE card/93 http_code=204
+DELETE card/94 http_code=204
+DELETE card/95 http_code=204
+DELETE card/96 http_code=204
+DELETE card/97 http_code=204
+DELETE card/98 http_code=204
+DELETE card/99 http_code=204
+GET dashboard/10 after delete http_code=404

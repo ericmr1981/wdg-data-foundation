@@ -1,0 +1,67 @@
+=== store_code ===
+{
+  "slug": "store_code",
+  "type": "category",
+  "values_source_type": "static-list",
+  "values_source_config": {
+    "values": [
+      [
+        "sh_xtd",
+        "上海新天地店"
+      ]
+    ]
+  }
+}
+=== expense_lvl1 ===
+{
+  "slug": "expense_lvl1",
+  "type": "category",
+  "values_source_type": "static-list",
+  "values_source_config": {
+    "values": [
+      [
+        "人力",
+        "人力"
+      ],
+      [
+        "租金物业",
+        "租金物业"
+      ],
+      [
+        "运费",
+        "运费"
+      ],
+      [
+        "管理费用",
+        "管理费用"
+      ],
+      [
+        "材料采购",
+        "材料采购"
+      ],
+      [
+        "营销费用",
+        "营销费用"
+      ],
+      [
+        "其他费用",
+        "其他费用"
+      ],
+      [
+        "营建费用",
+        "营建费用"
+      ],
+      [
+        "（未分类）",
+        "（未分类）"
+      ]
+    ]
+  }
+}
+=== month_date ===
+{
+  "slug": "month_date",
+  "type": "date/month-year",
+  "values_source_type": "static-list",
+  "values_source_config": {}
+}

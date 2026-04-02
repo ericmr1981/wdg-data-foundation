@@ -439,8 +439,26 @@ LIMIT 2000;"""
     # -----------------
 
     # Reuse the same dashboard filter schema as the Yufeng dashboard.
+    # Month filter uses mb.month_values_for_brand() — dynamically populated from bonjur_ods.bank_txn.
+    month_values = mb.month_values_for_brand()
+    dash_month_param = {
+        "id": mb.PID_MONTH,
+        "name": "Month",
+        "slug": "month_date",
+        "type": "date/month-year",
+        "sectionId": "date",
+        "required": False,
+        "values_source_type": "static-list",
+        "values_source_config": {
+            "values": month_values
+        },
+    }
+    # Safe default to prevent first render from scanning all history.
+    if month_values:
+        dash_month_param["default"] = month_values[0][0]
+
     dash_params = [
-        {"id": mb.PID_MONTH, "name": "Month", "slug": "month_date", "type": "date/month-year", "sectionId": "date", "required": False},
+        dash_month_param,
         {"id": mb.PID_STORE, "name": "Store Code", "slug": "store_code", "type": "string/=", "sectionId": "string", "required": False},
         {
             "id": mb.PID_EXP_LVL1,

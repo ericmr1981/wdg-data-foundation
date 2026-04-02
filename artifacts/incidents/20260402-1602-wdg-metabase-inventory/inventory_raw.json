@@ -1,0 +1,539 @@
+{
+  "metabase_url": "http://localhost:8082",
+  "dashboards_total": 7,
+  "dashboards": [
+    {
+      "id": 1,
+      "name": "E-commerce Insights",
+      "archived": false,
+      "card_count": 22,
+      "display_breakdown": {
+        "row": 1,
+        "line": 1,
+        "gauge": 1,
+        "map": 1,
+        "bar": 3,
+        "combo": 1,
+        "smartscalar": 1,
+        "progress": 1,
+        "pivot": 1,
+        "pie": 2,
+        "scatter": 1,
+        "table": 1,
+        "funnel": 1,
+        "area": 1,
+        "object": 1,
+        "sankey": 1,
+        "waterfall": 1,
+        "boxplot": 1,
+        "scalar": 1
+      },
+      "cards": [
+        {
+          "id": 21,
+          "name": "Best selling products",
+          "display": "row"
+        },
+        {
+          "id": 24,
+          "name": "Orders by product category",
+          "display": "line"
+        },
+        {
+          "id": 22,
+          "name": "Average product rating",
+          "display": "gauge"
+        },
+        {
+          "id": 2,
+          "name": "Revenue by state",
+          "display": "map"
+        },
+        {
+          "id": 18,
+          "name": "Product category orders per age",
+          "display": "bar"
+        },
+        {
+          "id": 12,
+          "name": "Revenue and orders over time",
+          "display": "combo"
+        },
+        {
+          "id": 15,
+          "name": "Revenue per quarter",
+          "display": "smartscalar"
+        },
+        {
+          "id": 17,
+          "name": "Revenue goal for this quarter",
+          "display": "progress"
+        },
+        {
+          "id": 13,
+          "name": "Revenue by product category",
+          "display": "bar"
+        },
+        {
+          "id": 10,
+          "name": "Orders according to sources per quarter",
+          "display": "pivot"
+        },
+        {
+          "id": 20,
+          "name": "Total orders by product category",
+          "display": "pie"
+        },
+        {
+          "id": 7,
+          "name": "Product breakdown",
+          "display": "pie"
+        },
+        {
+          "id": 8,
+          "name": "Total order amount vs. discount given",
+          "display": "scatter"
+        },
+        {
+          "id": 3,
+          "name": "Customer satisfaction per category",
+          "display": "bar"
+        },
+        {
+          "id": 5,
+          "name": "Customer survey responses",
+          "display": "table"
+        },
+        {
+          "id": 6,
+          "name": "Checkout funnel",
+          "display": "funnel"
+        },
+        {
+          "id": 16,
+          "name": "Number of subscriptions",
+          "display": "area"
+        },
+        {
+          "id": 23,
+          "name": "Most recent subscription",
+          "display": "object"
+        },
+        {
+          "id": 11,
+          "name": "User flow diagram",
+          "display": "sankey"
+        },
+        {
+          "id": 14,
+          "name": "Subscription seats over time",
+          "display": "waterfall"
+        },
+        {
+          "id": 38,
+          "name": "Order value distribution by category",
+          "display": "boxplot"
+        },
+        {
+          "id": 39,
+          "name": "Total orders this quarter",
+          "display": "scalar"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Bonjur｜营业看板",
+      "archived": false,
+      "card_count": 5,
+      "display_breakdown": {
+        "table": 2,
+        "line": 1,
+        "pie": 1,
+        "bar": 1
+      },
+      "cards": [
+        {
+          "id": 50,
+          "name": "Bonjur｜营业日报（近31天）",
+          "display": "table"
+        },
+        {
+          "id": 52,
+          "name": "Bonjur｜月趋势：营业额 vs 营业收入",
+          "display": "line"
+        },
+        {
+          "id": 51,
+          "name": "Bonjur｜营业收入拆分（月/渠道）",
+          "display": "pie"
+        },
+        {
+          "id": 53,
+          "name": "Bonjur｜实收率按渠道（收入/营业额）",
+          "display": "bar"
+        },
+        {
+          "id": 54,
+          "name": "Bonjur｜服务费校验差值（月汇总）",
+          "display": "table"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Bonjur｜财务看板",
+      "archived": false,
+      "card_count": 8,
+      "display_breakdown": {
+        "table": 3,
+        "pie": 2,
+        "bar": 2,
+        "line": 1
+      },
+      "cards": [
+        {
+          "id": 57,
+          "name": "Bonjur｜收支总揽（表）",
+          "display": "table"
+        },
+        {
+          "id": 58,
+          "name": "Bonjur｜支出一级分类（饼图）",
+          "display": "pie"
+        },
+        {
+          "id": 59,
+          "name": "Bonjur｜支出二级分类（饼图）",
+          "display": "pie"
+        },
+        {
+          "id": 60,
+          "name": "Bonjur｜收入二级分类（柱状图）",
+          "display": "bar"
+        },
+        {
+          "id": 61,
+          "name": "Bonjur｜营业收入 vs 支出（不含营建）",
+          "display": "bar"
+        },
+        {
+          "id": 62,
+          "name": "Bonjur｜支出一级分类趋势（多线图）",
+          "display": "line"
+        },
+        {
+          "id": 63,
+          "name": "Bonjur｜支出明细（下钻）",
+          "display": "table"
+        },
+        {
+          "id": 64,
+          "name": "Bonjur｜收入明细（下钻）",
+          "display": "table"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Dashboard",
+      "archived": false,
+      "card_count": 0,
+      "display_breakdown": {},
+      "cards": []
+    },
+    {
+      "id": 8,
+      "name": "蜜可诗｜经营看板",
+      "archived": false,
+      "card_count": 8,
+      "display_breakdown": {
+        "table": 3,
+        "pie": 2,
+        "bar": 2,
+        "line": 1
+      },
+      "cards": [
+        {
+          "id": 74,
+          "name": "蜜可诗｜收支总揽（表）",
+          "display": "table"
+        },
+        {
+          "id": 75,
+          "name": "蜜可诗｜支出一级分类（饼图）",
+          "display": "pie"
+        },
+        {
+          "id": 76,
+          "name": "蜜可诗｜支出二级分类（饼图）",
+          "display": "pie"
+        },
+        {
+          "id": 77,
+          "name": "蜜可诗｜收入二级分类（柱状图）",
+          "display": "bar"
+        },
+        {
+          "id": 78,
+          "name": "蜜可诗｜营业收入 vs 支出（不含营建）",
+          "display": "bar"
+        },
+        {
+          "id": 79,
+          "name": "蜜可诗｜支出一级分类趋势（多线图）",
+          "display": "line"
+        },
+        {
+          "id": 80,
+          "name": "蜜可诗｜支出明细（下钻）",
+          "display": "table"
+        },
+        {
+          "id": 81,
+          "name": "蜜可诗｜收入明细（下钻）",
+          "display": "table"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "榆枫与山｜经营看板",
+      "archived": false,
+      "card_count": 8,
+      "display_breakdown": {
+        "table": 3,
+        "pie": 2,
+        "bar": 2,
+        "line": 1
+      },
+      "cards": [
+        {
+          "id": 83,
+          "name": "榆枫与山｜收支总揽（表）",
+          "display": "table"
+        },
+        {
+          "id": 84,
+          "name": "榆枫与山｜支出一级分类（饼图）",
+          "display": "pie"
+        },
+        {
+          "id": 85,
+          "name": "榆枫与山｜支出二级分类（饼图）",
+          "display": "pie"
+        },
+        {
+          "id": 86,
+          "name": "榆枫与山｜收入二级分类（柱状图）",
+          "display": "bar"
+        },
+        {
+          "id": 87,
+          "name": "榆枫与山｜营业收入 vs 支出（不含营建）",
+          "display": "bar"
+        },
+        {
+          "id": 88,
+          "name": "榆枫与山｜支出一级分类趋势（多线图）",
+          "display": "line"
+        },
+        {
+          "id": 89,
+          "name": "榆枫与山｜支出明细（下钻）",
+          "display": "table"
+        },
+        {
+          "id": 90,
+          "name": "榆枫与山｜收入明细（下钻）",
+          "display": "table"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "本就｜经营看板",
+      "archived": false,
+      "card_count": 8,
+      "display_breakdown": {
+        "table": 3,
+        "pie": 2,
+        "bar": 2,
+        "line": 1
+      },
+      "cards": [
+        {
+          "id": 92,
+          "name": "本就｜收支总揽（表）",
+          "display": "table"
+        },
+        {
+          "id": 93,
+          "name": "本就｜支出一级分类（饼图）",
+          "display": "pie"
+        },
+        {
+          "id": 94,
+          "name": "本就｜支出二级分类（饼图）",
+          "display": "pie"
+        },
+        {
+          "id": 95,
+          "name": "本就｜收入二级分类（柱状图）",
+          "display": "bar"
+        },
+        {
+          "id": 96,
+          "name": "本就｜营业收入 vs 支出（不含营建）",
+          "display": "bar"
+        },
+        {
+          "id": 97,
+          "name": "本就｜支出一级分类趋势（多线图）",
+          "display": "line"
+        },
+        {
+          "id": 98,
+          "name": "本就｜支出明细（下钻）",
+          "display": "table"
+        },
+        {
+          "id": 99,
+          "name": "本就｜收入明细（下钻）",
+          "display": "table"
+        }
+      ]
+    }
+  ],
+  "cards_total": 99,
+  "relevant_cards_total": 58,
+  "orphan_relevant_cards_total": 21,
+  "orphan_relevant_cards": [
+    {
+      "id": 40,
+      "name": "Yufeng｜收支总揽（表）",
+      "display": "table",
+      "archived": false
+    },
+    {
+      "id": 41,
+      "name": "Yufeng｜支出一级分类（饼图）",
+      "display": "pie",
+      "archived": false
+    },
+    {
+      "id": 42,
+      "name": "Yufeng｜支出二级分类（饼图）",
+      "display": "pie",
+      "archived": false
+    },
+    {
+      "id": 43,
+      "name": "Yufeng｜收入二级分类（柱状图）",
+      "display": "bar",
+      "archived": false
+    },
+    {
+      "id": 45,
+      "name": "Yufeng｜营业收入 vs 支出（不含营建）",
+      "display": "bar",
+      "archived": false
+    },
+    {
+      "id": 46,
+      "name": "Yufeng｜支出一级分类趋势（多线图）",
+      "display": "line",
+      "archived": false
+    },
+    {
+      "id": 47,
+      "name": "Yufeng｜门店下拉选项",
+      "display": "table",
+      "archived": false
+    },
+    {
+      "id": 48,
+      "name": "Yufeng｜支出明细（下钻）",
+      "display": "table",
+      "archived": false
+    },
+    {
+      "id": 49,
+      "name": "Yufeng｜收入明细（下钻）",
+      "display": "table",
+      "archived": false
+    },
+    {
+      "id": 65,
+      "name": "蜜可诗｜经营看板｜支出一级分类（饼图）",
+      "display": "pie",
+      "archived": false
+    },
+    {
+      "id": 66,
+      "name": "蜜可诗｜经营看板｜支出二级分类（饼图）",
+      "display": "pie",
+      "archived": false
+    },
+    {
+      "id": 67,
+      "name": "蜜可诗｜经营看板｜收入二级分类（柱状图）",
+      "display": "bar",
+      "archived": false
+    },
+    {
+      "id": 68,
+      "name": "蜜可诗｜经营看板｜营业收入 vs 支出（不含营建）",
+      "display": "bar",
+      "archived": false
+    },
+    {
+      "id": 69,
+      "name": "蜜可诗｜经营看板｜支出一级分类趋势（多线图）",
+      "display": "line",
+      "archived": false
+    },
+    {
+      "id": 70,
+      "name": "蜜可诗｜经营看板｜支出明细（下钻）",
+      "display": "table",
+      "archived": false
+    },
+    {
+      "id": 71,
+      "name": "蜜可诗｜经营看板｜收入明细（下钻）",
+      "display": "table",
+      "archived": false
+    },
+    {
+      "id": 72,
+      "name": "蜜可诗｜经营看板｜门店下拉选项",
+      "display": "table",
+      "archived": false
+    },
+    {
+      "id": 73,
+      "name": "蜜可诗｜经营看板｜收支总揽（表）",
+      "display": "table",
+      "archived": false
+    },
+    {
+      "id": 82,
+      "name": "蜜可诗｜门店下拉选项",
+      "display": "table",
+      "archived": false
+    },
+    {
+      "id": 91,
+      "name": "榆枫与山｜门店下拉选项",
+      "display": "table",
+      "archived": false
+    },
+    {
+      "id": 100,
+      "name": "本就｜门店下拉选项",
+      "display": "table",
+      "archived": false
+    }
+  ]
+}

@@ -1,5 +1,18 @@
 # Progress Log
 
+## 2026-04-02 (4402a46 + delta)
+- Fixed (repo): docker-compose.yml port 8081→8082 for Metabase (regression prevention)
+  - Previous fix (4f8ee61) was applied via direct API on VPS but NOT captured in compose
+  - Compose still defaulted to METABASE_PORT=8081 (wrong); ops/health.sh already used 8082
+- Fixed (repo): metabase_seed_dashboard.py — added `month_values_for_brand()` function
+  - Month filter (date/month-year) now populated from actual brand_ods.bank_txn months
+  - Without this: [[ AND extract(year from t.txn_time) = extract(year from {{month_date}}) ]]
+    expands to ALL years → full table scan → "waiting for results"
+  - Wrapped in try/except — returns [] gracefully if DB has no data yet
+- Fixed (repo): metabase_seed_bonjur_ops_dashboard.py — added same Month values_source_config
+- commit: 4402a46 (ops: solidify WDG VPS compose + ops scripts)
+- verification: bash scripts/run_change_guard.sh → 16/16 pytest PASS ✅
+
 ## 2026-04-01 12:46
 - Fixed: VPS Metabase 所有 Dashboard 卡在 "Waiting for results"
   - Root cause: `site-url` 端口错误 (8081 vs 8082) + Month 参数无 values 来源

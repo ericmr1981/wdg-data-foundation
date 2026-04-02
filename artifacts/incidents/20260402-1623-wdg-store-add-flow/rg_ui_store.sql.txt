@@ -1,0 +1,14 @@
+ui/src/app/api/stores/route.ts:20:      FROM ops.stores
+ui/src/app/api/admin/stores/route.ts:22:      `SELECT * FROM ops.stores WHERE brand_code=$1 ORDER BY sort_order NULLS LAST, store_code`,
+ui/src/app/api/admin/stores/route.ts:54:        INSERT INTO ops.stores (brand_code, store_code, store_name)
+ui/src/app/api/admin/stores/reorder/route.ts:27:        UPDATE ops.stores s
+ui/src/app/api/admin/brands/route.ts:11:// GET /api/admin/brands
+ui/src/app/api/admin/brands/route.ts:24:// POST /api/admin/brands
+ui/src/app/api/admin/brands/init-bank-template/route.ts:38:// POST /api/admin/brands/init-bank-template
+ui/src/app/api/admin/brands/reorder/route.ts:5:// POST /api/admin/brands/reorder
+ui/src/app/admin/brands/page.tsx:68:    const res = await fetch('/api/admin/brands');
+ui/src/app/admin/brands/page.tsx:83:    const res = await fetch('/api/admin/brands', {
+ui/src/app/admin/brands/page.tsx:103:      await fetch('/api/admin/brands/reorder', {
+ui/src/app/admin/brands/page.tsx:170:                      const res = await fetch('/api/admin/brands/init-bank-template', {
+ui/src/app/admin/config/page.tsx:28:          href="/admin/brands"
+ui/src/app/admin/config/category-dictionary/page.tsx:101:    const res = await fetch('/api/admin/brands');

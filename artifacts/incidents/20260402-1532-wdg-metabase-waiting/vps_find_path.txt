@@ -1,0 +1,24 @@
+/root
+total 104
+drwx------ 11 root root 4096 Mar 30 20:57 .
+drwxr-xr-x 23 root root 4096 Apr  1 20:54 ..
+-rw-r--r--  1 root root 7632 Mar  2 23:34 app.js.corrected
+-rw-r--r--  1 root root 7632 Mar  2 23:32 app.js.new
+-rw-r--r--  1 root root 7632 Mar  2 23:33 app.js.optimized
+-rw-r--r--  1 root root 7489 Mar  2 23:50 app.js.updated
+-rw-------  1 root root  830 Apr  2 02:36 .bash_history
+-rw-r--r--  1 root root 3106 Apr 22  2024 .bashrc
+drwx------  6 root root 4096 Mar 21 12:06 .cache
+drwxr-xr-x  2 root root 4096 Mar 21 12:09 .dbt
+drwx------  3 root root 4096 Mar 25 12:20 .docker
+-rw-r--r--  1 root root   76 Mar 30 20:57 .gitconfig
+drwxr-xr-x  4 root root 4096 Mar  1 23:28 .local
+drwxr-xr-x  4 root root 4096 Mar 12 18:58 .nexus
+drwxr-xr-x  5 root root 4096 Mar  3 00:05 .npm
+-rw-------  1 root root   40 Mar  3 20:01 .npmrc
+drwxr-xr-x  2 root root 4096 Feb 13 15:09 .pip
+-rw-r--r--  1 root root 3298 Mar  2 23:35 planets.json.updated
+-rw-r--r--  1 root root  161 Apr 22  2024 .profile
+-rw-r--r--  1 root root   72 Feb 13 15:09 .pydistutils.cfg
+drwx------  2 root root 4096 Apr  1 23:17 .secrets
+drwx------  2 root root 4096 Apr  1 21:02 .ssh

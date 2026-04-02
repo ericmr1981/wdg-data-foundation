@@ -1,0 +1,7 @@
+top_keys: ['archived', 'archived_directly', 'auto_apply_filters', 'cache_ttl', 'can_delete', 'can_restore', 'can_set_cache_policy', 'can_write', 'caveats', 'collection', 'collection_authority_level', 'collection_id', 'collection_position', 'created_at', 'creator_id', 'dashcards', 'dependency_analysis_version', 'description', 'embedding_params', 'embedding_type', 'enable_embedding', 'entity_id', 'id', 'initially_published_at', 'is_remote_synced', 'last-edit-info', 'last_used_param_values', 'last_viewed_at', 'made_public_by_id', 'moderation_reviews', 'name', 'param_fields', 'parameters', 'points_of_interest', 'position', 'public_uuid', 'show_in_getting_started', 'tabs', 'updated_at', 'view_count']
+has_ordered_cards False
+has_dashcards True
+dashcards_len 8
+dashcard_keys ['size_x', 'dashboard_tab_id', 'series', 'inline_parameters', 'action_id', 'collection_authority_level', 'card', 'updated_at', 'col', 'id', 'parameter_mappings', 'card_id', 'entity_id', 'visualization_settings', 'size_y', 'dashboard_id', 'created_at', 'row']
+dashcard_has_card True
+sample_card_id 74 name 蜜可诗｜收支总揽（表）
