@@ -82,16 +82,15 @@ Metabase 看板下拉自动更新
 
 品牌 → Dashboard ID 通过以下方式确定（按优先级）：
 
-1. **环境变量**：`METABASE_DASHBOARD_<BRAND>`（推荐，VPS 上配置）
+1. **环境变量（多个看板，推荐）**：`METABASE_DASHBOARDS_<BRAND>`（VPS 上配置）
    ```bash
-   METABASE_DASHBOARD_YUFENG=8
-   METABASE_DASHBOARD_BONJUR=11
-   METABASE_DASHBOARD_GELATOMIIIX=12
+   # 逗号分隔，同步该品牌所有相关看板（例如：营业看板+财务看板+经营看板）
+   METABASE_DASHBOARDS_YUFENG="9"
+   METABASE_DASHBOARDS_BONJUR="4,5"
+   METABASE_DASHBOARDS_GELATOMIIIX="8"
    ```
-2. **代码默认映射**（`ui/src/lib/metabase.ts` 中的 `getBrandDashboardId`）：
-   ```ts
-   const MAP = { yufeng: 8, bonjur: 11, gelatomiiix: 12 }
-   ```
+2. **环境变量（单个看板）**：`METABASE_DASHBOARD_<BRAND>`
+3. **代码默认映射**（`ui/src/lib/metabase.ts` 中的 `getBrandDashboardIds`，best-effort）
 
 **如何确认 Dashboard ID：**
 ```bash

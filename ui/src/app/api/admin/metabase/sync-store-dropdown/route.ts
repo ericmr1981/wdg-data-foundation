@@ -35,7 +35,7 @@ import pool from '@/lib/db';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { normalizeBrand } from '@/lib/brand-server';
 import {
-  getBrandDashboardId,
+  getBrandDashboardIds,
   getDashboard,
   updateDashboardParameters,
   buildStoreValues,
@@ -86,77 +86,81 @@ async function fetchDbStores(brand: string): Promise<[string, string][]> {
 
 // ── Dry-run: compute diff ─────────────────────────────────────────────────────
 async function computeSync(brand: string, logFile: string) {
-  const dashboardId = getBrandDashboardId(brand);
+  const dashboardIds = getBrandDashboardIds(brand);
 
-  if (!dashboardId) {
-    // Try brand-name search as fallback
-    appendLog(logFile, `[${isoTs()}] WARN: no dashboard ID for brand=${brand}, skipping search`);
+  if (!dashboardIds.length) {
     return {
       success: false,
       brand,
-      error: `No dashboard ID known for brand "${brand}". ` +
-        `Set METABASE_DASHBOARD_${brand.toUpperCase()} env var or update BRAND_DASHBOARD_MAP in metabase.ts.`,
+      error:
+        `No dashboard IDs known for brand "${brand}". ` +
+        `Set METABASE_DASHBOARDS_${brand.toUpperCase()}="4,5" (or METABASE_DASHBOARD_${brand.toUpperCase()}="9").`,
     };
   }
 
-  appendLog(logFile, `[${isoTs()}] Fetching dashboard ${dashboardId}…`);
-  const dash = await getDashboard(dashboardId);
-  const dashName: string = dash?.name ?? `dashboard-${dashboardId}`;
-  const params: any[] = dash?.parameters ?? [];
-
-  appendLog(logFile, `[${isoTs()}] Dashboard params: ${JSON.stringify(params.map((p) => ({ id: p.id, slug: p.slug, name: p.name })))}`);
-
-  const found = findStoreCodeParam(params);
-  if (!found) {
-    appendLog(logFile, `[${isoTs()}] ERROR: store_code parameter not found in dashboard ${dashboardId}`);
-    return {
-      success: false,
-      brand,
-      dashboard_id: dashboardId,
-      dashboard_name: dashName,
-      error: `Dashboard "${dashName}" (id=${dashboardId}) has no store_code filter parameter.`,
-    };
-  }
-
-  const currentValues: [string, string][] = found.param.values_source_config?.values ?? [];
   const targetValues = await fetchDbStores(brand);
 
-  const currentCodes = new Set(currentValues.map((v) => String(v[0])));
-  const targetCodes = new Set(targetValues.map((v) => String(v[0])));
+  const dashboards: any[] = [];
 
-  const adds = targetValues.filter((v) => !currentCodes.has(String(v[0])));
-  const removes = currentValues.filter((v) => !targetCodes.has(String(v[0])));
+  for (const dashboardId of dashboardIds) {
+    appendLog(logFile, `[${isoTs()}] Fetching dashboard ${dashboardId}…`);
+    const dash = await getDashboard(dashboardId);
+    const dashName: string = dash?.name ?? `dashboard-${dashboardId}`;
+    const params: any[] = dash?.parameters ?? [];
 
-  appendLog(logFile, `[${isoTs()}] Current dropdown: ${JSON.stringify(currentValues)}`);
-  appendLog(logFile, `[${isoTs()}] Target stores:   ${JSON.stringify(targetValues)}`);
-  appendLog(logFile, `[${isoTs()}] Adds: ${adds.length}, Removes: ${removes.length}`);
+    const found = findStoreCodeParam(params);
+    if (!found) {
+      appendLog(logFile, `[${isoTs()}] WARN: store_code parameter not found in dashboard ${dashboardId} (${dashName})`);
+      dashboards.push({
+        dashboard_id: dashboardId,
+        dashboard_name: dashName,
+        skipped: true,
+        reason: 'store_code parameter not found',
+      });
+      continue;
+    }
 
-  return {
-    success: true,
-    brand,
-    dashboard_id: dashboardId,
-    dashboard_name: dashName,
-    param_id: found.param.id,
-    param_slug: found.param.slug,
-    changes: {
-      adds,
-      removes,
-      current: currentValues,
-      target: targetValues,
-    },
-  };
+    const currentValues: [string, string][] = found.param.values_source_config?.values ?? [];
+
+    const currentCodes = new Set(currentValues.map((v) => String(v[0])));
+    const targetCodes = new Set(targetValues.map((v) => String(v[0])));
+
+    const adds = targetValues.filter((v) => !currentCodes.has(String(v[0])));
+    const removes = currentValues.filter((v) => !targetCodes.has(String(v[0])));
+
+    appendLog(logFile, `[${isoTs()}] Dashboard ${dashboardId} current=${currentValues.length} target=${targetValues.length} adds=${adds.length} removes=${removes.length}`);
+
+    dashboards.push({
+      dashboard_id: dashboardId,
+      dashboard_name: dashName,
+      param_index: found.index,
+      changes: { adds, removes, current: currentValues, target: targetValues },
+    });
+  }
+
+  const active = dashboards.filter((d) => !d.skipped);
+  if (!active.length) {
+    return {
+      success: false,
+      brand,
+      error: `All dashboards for brand "${brand}" were skipped (no store_code parameter found).`,
+      dashboards,
+    };
+  }
+
+  return { success: true, brand, dashboards };
 }
 
 // ── Apply: write to Metabase ──────────────────────────────────────────────────
-async function applySync(brand: string, dashboardId: number, targetValues: [string, string][], logFile: string) {
+async function applySync(dashboardId: number, targetValues: [string, string][], logFile: string) {
   appendLog(logFile, `[${isoTs()}] Fetching dashboard ${dashboardId} for apply…`);
   const dash = await getDashboard(dashboardId);
   const params: any[] = dash?.parameters ?? [];
 
   const found = findStoreCodeParam(params);
   if (!found) {
-    appendLog(logFile, `[${isoTs()}] ERROR: store_code param not found on apply`);
-    throw new Error('store_code parameter not found');
+    appendLog(logFile, `[${isoTs()}] WARN: store_code param not found on apply, skip dashboard ${dashboardId}`);
+    return { dashboard_id: dashboardId, skipped: true, reason: 'store_code parameter not found' };
   }
 
   const updatedParam = {
@@ -168,11 +172,15 @@ async function applySync(brand: string, dashboardId: number, targetValues: [stri
   const nextParams = [...params];
   nextParams[found.index] = updatedParam;
 
-  appendLog(logFile, `[${isoTs()}] PUT /api/dashboard/${dashboardId}/parameters …`);
-  appendLog(logFile, `[${isoTs()}] Updated param: ${JSON.stringify({ id: updatedParam.id, slug: updatedParam.slug, values_source_type: updatedParam.values_source_type, value_count: targetValues.length })}`);
+  appendLog(logFile, `[${isoTs()}] PUT /api/dashboard/${dashboardId} …`);
+  appendLog(
+    logFile,
+    `[${isoTs()}] Updated param: ${JSON.stringify({ id: updatedParam.id, slug: updatedParam.slug, value_count: targetValues.length })}`
+  );
 
   await updateDashboardParameters(dashboardId, nextParams);
   appendLog(logFile, `[${isoTs()}] Done — ${targetValues.length} store values written.`);
+  return { dashboard_id: dashboardId, applied: true, value_count: targetValues.length };
 }
 
 // ── POST handler ───────────────────────────────────────────────────────────────
@@ -206,8 +214,10 @@ export async function POST(request: Request) {
     const result = await computeSync(brand, logFile);
 
     if (!result.success) {
-      return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+      return NextResponse.json({ success: false, error: (result as any).error }, { status: 400 });
     }
+
+    const ok = result as { success: true; dashboards: any[] };
 
     if (dryRun) {
       appendLog(logFile, `[${isoTs()}] Dry-run complete — returning diff without applying.`);
@@ -215,25 +225,25 @@ export async function POST(request: Request) {
         success: true,
         dry_run: true,
         brand,
-        dashboard_id: (result as any).dashboard_id,
-        dashboard_name: (result as any).dashboard_name,
-        changes: (result as any).changes,
+        dashboards: ok.dashboards,
         message: 'Dry-run complete. POST with dry_run=false to apply.',
       });
     }
 
-    // Apply — result.success is true here so dashboard_id and changes are guaranteed
-    const ok = result as { success: true; dashboard_id: number; dashboard_name: string; changes: { target: [string, string][] } };
-    await applySync(brand, ok.dashboard_id, ok.changes.target, logFile);
+    // Apply all dashboards
+    const applied = [];
+    for (const d of ok.dashboards) {
+      if (d.skipped) continue;
+      applied.push(await applySync(d.dashboard_id, d.changes.target, logFile));
+    }
 
     return NextResponse.json({
       success: true,
       dry_run: false,
       brand,
-      dashboard_id: ok.dashboard_id,
-      dashboard_name: ok.dashboard_name,
-      changes: ok.changes,
+      dashboards: ok.dashboards,
       applied: true,
+      applied_dashboards: applied,
       log_file: logFile,
     });
   } catch (err: any) {
@@ -264,15 +274,13 @@ export async function GET(request: Request) {
   try {
     const result = await computeSync(brand, logFile);
     if (!result.success) {
-      return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+      return NextResponse.json({ success: false, error: (result as any).error }, { status: 400 });
     }
-    const ok = result as { success: true; dashboard_id: number; dashboard_name: string; changes: SyncChanges };
+    const ok = result as { success: true; dashboards: any[] };
     return NextResponse.json({
       success: true,
       brand,
-      dashboard_id: ok.dashboard_id,
-      dashboard_name: ok.dashboard_name,
-      changes: ok.changes,
+      dashboards: ok.dashboards,
     });
   } catch (err: any) {
     appendLog(logFile, `[${isoTs()}] ERROR: ${err.message}`);
