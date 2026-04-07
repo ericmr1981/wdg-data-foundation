@@ -1,5 +1,17 @@
 # Progress Log
 
+## 2026-04-07
+- Fixed (repo): 将“配送明细”并入原有 `/upload` 数据源体系，而不是继续走独立 `xintiandi` 上传入口
+  - `ui/src/app/upload/page.tsx`: 数据源下拉新增 `delivery / 配送明细`
+  - `ui/src/app/api/upload/route.ts`: 新增 `source === 'delivery'` → `import_xintiandi_delivery.py`
+  - 后端文件类型白名单补齐 `.xls`
+- Improved (UI): 收口上传页交互
+  - `ui/src/app/upload/page.tsx`: 默认开启“触发导入”
+  - 新增数据源说明卡、配送明细预期字段提示、上传成功后的导入摘要卡片
+  - 对 `delivery` 增加“打开新天地看板”下一步入口
+- verification (local): `cd ui && npx tsc --noEmit` + `bash scripts/run_change_guard.sh`
+- next: VPS 同步 upload 入口改动并验证 `/upload` 页面可选择“配送明细”
+
 ## 2026-04-02 (4402a46 + delta)
 - Fixed (repo): docker-compose.yml port 8081→8082 for Metabase (regression prevention)
   - Previous fix (4f8ee61) was applied via direct API on VPS but NOT captured in compose

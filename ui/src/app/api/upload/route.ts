@@ -29,8 +29,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
     }
 
-    // ── File type validation (whitelist: .xlsx, .csv) ──
-    const ALLOWED_EXTENSIONS = ['.xlsx', '.csv'] as const;
+    // ── File type validation (whitelist: .xlsx, .xls, .csv) ──
+    const ALLOWED_EXTENSIONS = ['.xlsx', '.xls', '.csv'] as const;
     const fileExt = '.' + file.name.toLowerCase().split('.').pop()!;
     if (!ALLOWED_EXTENSIONS.includes(fileExt as typeof ALLOWED_EXTENSIONS[number])) {
       return NextResponse.json(
@@ -70,6 +70,8 @@ export async function POST(request: Request) {
           scriptName = 'import_yufeng_bank_txn.py';
         } else if (source === 'sales') {
           scriptName = 'import_bonjur_sales_daily.py';
+        } else if (source === 'delivery') {
+          scriptName = 'import_xintiandi_delivery.py';
         } else {
           return NextResponse.json({ success: false, error: 'Unknown source type' }, { status: 400 });
         }
