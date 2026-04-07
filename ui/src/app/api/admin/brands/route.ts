@@ -22,7 +22,9 @@ export async function GET() {
 }
 
 // POST /api/admin/brands
-// body: { brand_code, brand_name }
+// body: { brand_code, brand_name, has_delivery?: boolean, modules?: string[] }
+//   has_delivery: if true, also provision the delivery schema/tables
+//   modules: alternative to has_delivery, array of module names e.g. ['delivery', 'bank']
 export async function POST(request: Request) {
   const user = await getSessionUser();
   try {
@@ -32,11 +34,16 @@ export async function POST(request: Request) {
     const brand_code = normalizeBrandCode(body.brand_code);
     const brand_name = String(body.brand_name || '').trim() || brand_code;
 
+    // Check if delivery module should be provisioned
+    const modules: string[] = body.modules || [];
+    const hasDelivery = body.has_delivery || modules.includes('delivery');
+
     const schema_prefix = ['yufeng', 'bonjur'].includes(brand_code) ? brand_code : `brand_${brand_code}`;
     const ods = `${schema_prefix}_ods`;
     const cfg = `${schema_prefix}_cfg`;
     const dm = `${schema_prefix}_dm`;
     const ops = `${schema_prefix}_ops`;
+    const delivery = `${schema_prefix}_delivery`;
 
     const client = await pool.connect();
     try {
@@ -50,13 +57,17 @@ export async function POST(request: Request) {
       );
 
       // Register all schemas in allowed_schemas (required for API access control)
-      const schemaList = [
+      const schemaList: [string, string][] = [
         [schema_prefix, `${schema_prefix} shared`],
         [ods, `${ods} ODS`],
         [cfg, `${cfg} config/rules`],
         [dm, `${dm} data mart`],
         [ops, `${ops} ops`],
       ];
+      // Add delivery schema if requested
+      if (hasDelivery) {
+        schemaList.push([delivery, `${delivery} delivery data`]);
+      }
       for (const [sName, sDesc] of schemaList) {
         await client.query(
           `INSERT INTO ops.allowed_schemas (schema_name, brand_code, description)
@@ -71,6 +82,9 @@ export async function POST(request: Request) {
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${cfg}`);
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${dm}`);
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${ops}`);
+      if (hasDelivery) {
+        await client.query(`CREATE SCHEMA IF NOT EXISTS ${delivery}`);
+      }
 
       // Create dictionary tables by cloning from yufeng_cfg
       await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.dim_category_lvl1 (LIKE yufeng_cfg.dim_category_lvl1 INCLUDING ALL)`);
@@ -94,8 +108,69 @@ export async function POST(request: Request) {
          FOR EACH ROW EXECUTE FUNCTION ops.fn_log_bank_rule_map_change('${brand_code}')`
       );
 
+      // Provision delivery module if requested
+      let deliveryResult: any = null;
+      if (hasDelivery) {
+        await client.query(`CREATE TABLE IF NOT EXISTS ${delivery}.delivery_detail (LIKE xintiandi.delivery_detail INCLUDING ALL)`);
+        await client.query(`CREATE TABLE IF NOT EXISTS ${delivery}.monthly_summary (LIKE xintiandi.monthly_summary INCLUDING ALL)`);
+        await client.query(`CREATE TABLE IF NOT EXISTS ${delivery}.import_batch (LIKE xintiandi.import_batch INCLUDING ALL)`);
+
+        // Create indexes
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_delivery_store ON ${delivery}.delivery_detail(store_code)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_delivery_created ON ${delivery}.delivery_detail(created_time)`);
+        await client.query(`CREATE INDEX IF NOT EXISTS idx_delivery_item ON ${delivery}.delivery_detail(item_code)`);
+
+        // Create refresh function
+        await client.query(`
+          CREATE OR REPLACE FUNCTION ${delivery}.refresh_monthly_summary(p_year_month TEXT, p_batch_id UUID DEFAULT NULL)
+          RETURNS void AS $$
+          BEGIN
+              INSERT INTO ${delivery}.monthly_summary (
+                  year_month, store_code, store_name, item_category,
+                  total_order_qty, total_audit_qty, total_ship_qty, total_deliver_qty,
+                  total_order_amt, delivery_count, source_batch, updated_at
+              )
+              SELECT 
+                  TO_CHAR(created_time, 'YYYY-MM') AS year_month,
+                  store_code,
+                  store_name,
+                  item_category,
+                  SUM(order_qty), SUM(audit_qty), SUM(ship_qty), SUM(deliver_qty),
+                  SUM(order_amt), COUNT(DISTINCT delivery_no), p_batch_id, NOW()
+              FROM ${delivery}.delivery_detail
+              WHERE TO_CHAR(created_time, 'YYYY-MM') = p_year_month
+              GROUP BY 1, 2, 3, 4
+              ON CONFLICT (year_month, store_code, item_category) DO UPDATE SET
+                  total_order_qty = EXCLUDED.total_order_qty,
+                  total_audit_qty = EXCLUDED.total_audit_qty,
+                  total_ship_qty = EXCLUDED.total_ship_qty,
+                  total_deliver_qty = EXCLUDED.total_deliver_qty,
+                  total_order_amt = EXCLUDED.total_order_amt,
+                  delivery_count = EXCLUDED.delivery_count,
+                  source_batch = EXCLUDED.source_batch,
+                  updated_at = NOW();
+          END;
+          $$ LANGUAGE plpgsql;
+        `);
+
+        deliveryResult = {
+          schema: delivery,
+          tables: [`${delivery}.delivery_detail`, `${delivery}.monthly_summary`, `${delivery}.import_batch`],
+          functions: [`${delivery}.refresh_monthly_summary`],
+        };
+      }
+
       await client.query('COMMIT');
-      return NextResponse.json({ success: true, data: { brand_code, brand_name, schema_prefix } });
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          brand_code,
+          brand_name,
+          schema_prefix,
+          delivery_module: deliveryResult,
+        },
+      });
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;

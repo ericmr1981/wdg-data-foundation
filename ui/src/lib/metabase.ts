@@ -1,43 +1,106 @@
 /**
- * Server-side Metabase API client (uses X-Api-Key auth).
+ * Server-side Metabase API client.
  * Used by Next.js API routes.
  *
- * Env vars required (next.config.js must pass them through):
- *   METABASE_URL  – e.g. http://127.0.0.1:8082  (or http://host.docker.internal:8082 in Docker)
- *   METABASE_API_KEY
+ * Auth priority:
+ * 1) X-Api-Key via METABASE_API_KEY
+ * 2) Session login via METABASE_USER / METABASE_PASSWORD
+ * 3) Fallback demo credentials documented in docs/METABASE_SETUP.md
  */
 
 import { BrandCode } from '@/lib/brand-server';
 
-function requireMetabaseEnv() {
-  const MB_URL = process.env.METABASE_URL;
-  const MB_KEY = process.env.METABASE_API_KEY;
-  if (!MB_URL || !MB_KEY) {
-    throw new Error(
-      'METABASE_URL and METABASE_API_KEY environment variables are required. ' +
-        'Add them to .env.local (UI) or docker-compose environment section (VPS).'
-    );
-  }
-  return { MB_URL, MB_KEY };
+let cachedSessionId: string | null = null;
+let cachedSessionAt = 0;
+
+function getMetabaseUrl() {
+  return (
+    process.env.METABASE_URL ||
+    process.env.NEXT_PUBLIC_METABASE_URL ||
+    'http://127.0.0.1:8082'
+  ).replace(/\/$/, '');
 }
 
-function baseHeaders() {
-  const { MB_KEY } = requireMetabaseEnv();
+function getApiKey() {
+  return process.env.METABASE_API_KEY || '';
+}
+
+function getLoginCreds() {
+  return {
+    username: process.env.METABASE_USER || 'demo@metabase.com',
+    password: process.env.METABASE_PASSWORD || 'demo123456',
+  };
+}
+
+async function getSessionId() {
+  const now = Date.now();
+  if (cachedSessionId && now - cachedSessionAt < 30 * 60 * 1000) {
+    return cachedSessionId;
+  }
+
+  const MB_URL = getMetabaseUrl();
+  const { username, password } = getLoginCreds();
+  // Metabase < 0.40 used "username" field; >= 0.40 uses "email"
+  const res = await fetch(`${MB_URL}/api/session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+
+  if (res.status >= 400) {
+    const text = await res.text();
+    throw new Error(
+      'Metabase auth failed. Configure METABASE_API_KEY or valid METABASE_USER/METABASE_PASSWORD. ' +
+      `POST /api/session → ${res.status}: ${text.slice(0, 300)}`
+    );
+  }
+
+  const data = await res.json();
+  if (!data?.id) {
+    throw new Error('Metabase /api/session did not return session id');
+  }
+
+  cachedSessionId = data.id;
+  cachedSessionAt = now;
+  return cachedSessionId;
+}
+
+async function buildHeaders(): Promise<Record<string, string>> {
+  const apiKey = getApiKey();
+  if (apiKey) {
+    return {
+      'Content-Type': 'application/json',
+      'X-Api-Key': apiKey,
+    };
+  }
+
+  const sessionId = await getSessionId();
   return {
     'Content-Type': 'application/json',
-    'X-Api-Key': MB_KEY,
+    'X-Metabase-Session': sessionId as string,
   };
 }
 
 async function mbReq(method: 'GET' | 'PUT', path: string, body?: unknown) {
-  const { MB_URL } = requireMetabaseEnv();
+  const MB_URL = getMetabaseUrl();
   const url = `${MB_URL}${path}`;
   const opts: RequestInit = {
     method,
-    headers: baseHeaders(),
+    headers: await buildHeaders(),
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   };
-  const res = await fetch(url, opts);
+  let res = await fetch(url, opts);
+
+  // Retry once if session expired
+  if (res.status === 401 && !getApiKey()) {
+    cachedSessionId = null;
+    cachedSessionAt = 0;
+    res = await fetch(url, {
+      ...opts,
+      headers: await buildHeaders(),
+    });
+  }
+
   if (res.status >= 400) {
     const text = await res.text();
     throw new Error(`Metabase ${method} ${path} → ${res.status}: ${text.slice(0, 500)}`);

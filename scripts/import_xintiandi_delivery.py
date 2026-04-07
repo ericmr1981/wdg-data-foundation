@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Xintiandi 配送明细 Excel 导入脚本
-用途：将新天地门店的配送/库存 Excel 文件导入到 xintiandi.delivery_detail 表
+用途：将新天地门店的配送/库存 Excel 文件导入到 delivery_schema.delivery_detail 表
 
 输入：
   - Excel 文件（.xlsx）
@@ -15,13 +15,20 @@ Xintiandi 配送明细 Excel 导入脚本
   - 幂等导入（按 delivery_no + item_code 去重）
   - 自动刷新月度汇总表
   - 记录导入批次
+  - 支持 brand-specific schema（通过 --schema 参数或路径自动推断）
 
 Usage:
-  # 从标准路径导入（自动解析门店和月份）
+  # 从标准路径导入（自动解析门店和月份，使用 xintiandi schema）
   python3 scripts/import_xintiandi_delivery.py inputs/xintiandi/sh_xtd_nano/delivery/2026-03/配送明细.xlsx
   
   # 指定门店覆盖（兼容旧方式）
   python3 scripts/import_xintiandi_delivery.py inputs/xintiandi/sh_xtd_nano/delivery/2026-03/配送明细.xlsx --store-code xtd_002 --store-name "新天地二期店"
+  
+  # 指定 schema（用于 brand-specific delivery）
+  python3 scripts/import_xintiandi_delivery.py inputs/brand_xxx/store_001/delivery/2026-04/file.xlsx --schema brand_xxx_delivery
+  
+  # 自动推断 schema（brand_xxx -> brand_xxx_delivery）
+  python3 scripts/import_xintiandi_delivery.py inputs/brand_xxx/store_001/delivery/2026-04/file.xlsx --schema auto
   
   # 目录批量导入
   python3 scripts/import_xintiandi_delivery.py inputs/xintiandi/sh_xtd_nano/delivery/2026-03/
@@ -55,6 +62,9 @@ DB_CONFIG = {
     "password": os.getenv("DB_PASSWORD", "postgres"),
 }
 
+# 默认 delivery schema（用于向后兼容 xintiandi）
+DEFAULT_DELIVERY_SCHEMA = "xintiandi"
+
 # Excel 列名映射
 COLUMN_MAPPING = {
     "配送单号": "delivery_no",
@@ -70,6 +80,21 @@ COLUMN_MAPPING = {
     "送达数量": "deliver_qty",
     "订货金额": "order_amt",
 }
+
+
+def get_schema_from_brand(brand_code: str) -> str:
+    """
+    从 brand_code 推断 delivery schema 名称
+    遵循 brand-server.ts 的命名规则：
+      - yufeng, bonjur -> {brand}_delivery
+      - 其他 -> brand_{code}_delivery
+    """
+    if brand_code in ("xintiandi",):
+        return "xintiandi"
+    elif brand_code in ("yufeng", "bonjur"):
+        return f"{brand_code}_delivery"
+    else:
+        return f"brand_{brand_code}_delivery"
 
 
 def parse_path(file_path: str) -> dict:
@@ -188,12 +213,13 @@ def find_delivery_files(input_path: str) -> list[str]:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Xintiandi 配送明细导入")
+    parser = argparse.ArgumentParser(description="配送明细导入")
     parser.add_argument("file", help="Excel 文件路径或目录路径")
     parser.add_argument("--dry-run", action="store_true", help="仅解析不导入")
     parser.add_argument("--batch-id", help="指定批次ID（可选，自动生成）")
     parser.add_argument("--store-code", default=None, help="门店编码（可选，从路径解析，优先级高于路径）")
     parser.add_argument("--store-name", default=None, help="门店名称（可选，从路径解析，优先级高于路径）")
+    parser.add_argument("--schema", default=None, help=f"目标 schema（默认: 从路径推断，xintiandi 兼容模式）")
     return parser.parse_args()
 
 
@@ -249,20 +275,20 @@ def get_connection():
     return psycopg2.connect(**DB_CONFIG)
 
 
-def delete_existing_batch(conn, batch_id: uuid.UUID):
+def delete_existing_batch(conn, batch_id: uuid.UUID, schema: str):
     """删除指定批次的数据（幂等用）"""
     with conn.cursor() as cur:
         cur.execute(
-            "DELETE FROM xintiandi.delivery_detail WHERE import_batch = %s",
+            f"DELETE FROM {schema}.delivery_detail WHERE import_batch = %s",
             (batch_id,)
         )
         return cur.rowcount
 
 
-def import_data(conn, df: pd.DataFrame, batch_id: uuid.UUID, file_name: str, dry_run: bool = False):
+def import_data(conn, df: pd.DataFrame, batch_id: uuid.UUID, file_name: str, schema: str, dry_run: bool = False):
     """导入数据到数据库"""
     if dry_run:
-        print(f"[DRY-RUN] 将导入 {len(df)} 行数据")
+        print(f"[DRY-RUN] 将导入 {len(df)} 行数据到 {schema}.delivery_detail")
         print(df.head(5).to_string())
         return 0, 0
     
@@ -305,8 +331,8 @@ def import_data(conn, df: pd.DataFrame, batch_id: uuid.UUID, file_name: str, dry
         with conn.cursor() as cur:
             execute_values(
                 cur,
-                """
-                INSERT INTO xintiandi.delivery_detail (
+                f"""
+                INSERT INTO {schema}.delivery_detail (
                     delivery_no, store_code, store_name, created_time,
                     item_name, item_code, item_category,
                     order_qty, audit_qty, ship_qty, deliver_qty, order_amt,
@@ -336,23 +362,23 @@ def import_data(conn, df: pd.DataFrame, batch_id: uuid.UUID, file_name: str, dry
     return rows_imported, rows_error
 
 
-def refresh_monthly_summary(conn, year_month: str, batch_id: uuid.UUID | str):
+def refresh_monthly_summary(conn, year_month: str, batch_id: uuid.UUID | str, schema: str):
     """刷新月度汇总表"""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT xintiandi.refresh_monthly_summary(%s, %s::uuid)",
+            f"SELECT {schema}.refresh_monthly_summary(%s, %s::uuid)",
             (year_month, str(batch_id))
         )
 
 
-def update_batch_status(conn, batch_id: uuid.UUID | str, status: str, 
+def update_batch_status(conn, batch_id: uuid.UUID | str, status: str, schema: str,
                         total_rows: int = None, success_rows: int = None, 
                         error_rows: int = None, error_message: str = None):
     """更新批次状态"""
     with conn.cursor() as cur:
         finished_at = "NOW()" if status in ("completed", "failed") else "NULL"
         cur.execute(f"""
-            UPDATE xintiandi.import_batch SET
+            UPDATE {schema}.import_batch SET
                 status = %s,
                 total_rows = COALESCE(%s, total_rows),
                 success_rows = COALESCE(%s, success_rows),
@@ -361,6 +387,20 @@ def update_batch_status(conn, batch_id: uuid.UUID | str, status: str,
                 finished_at = {finished_at}
             WHERE batch_id = %s::uuid
         """, (status, total_rows, success_rows, error_rows, error_message, str(batch_id)))
+
+
+def resolve_schema(args, path_meta) -> str:
+    """
+    解析目标 schema
+    优先级：命令行参数 > 从路径推断
+    """
+    if args.schema:
+        if args.schema.lower() == "auto":
+            return get_schema_from_brand(path_meta.get("brand_code"))
+        return args.schema
+    
+    # 默认从路径推断
+    return get_schema_from_brand(path_meta.get("brand_code"))
 
 
 def process_file(file_path: str, args) -> dict:
@@ -381,6 +421,9 @@ def process_file(file_path: str, args) -> dict:
     store_name = args.store_name if args.store_name else path_meta.get("store_name")
     year_month = path_meta.get("month")
     
+    # 解析 schema
+    schema = resolve_schema(args, path_meta)
+    
     batch_id = uuid.UUID(args.batch_id) if args.batch_id else uuid.uuid4()
     batch_id_str = str(batch_id)
     file_name = file_path.name
@@ -391,6 +434,7 @@ def process_file(file_path: str, args) -> dict:
     print(f"  品牌: {path_meta.get('brand_code')}")
     print(f"  门店: {store_code}")
     print(f"  月份: {year_month}")
+    print(f"  Schema: {schema}")
     
     # 解析 Excel
     try:
@@ -402,16 +446,16 @@ def process_file(file_path: str, args) -> dict:
     
     if args.dry_run:
         print("\n=== DRY RUN ===")
-        import_data(None, df, batch_id, file_name, dry_run=True)
-        return {"file": str(file_path), "dry_run": True, "rows": len(df)}
+        import_data(None, df, batch_id, file_name, schema, dry_run=True)
+        return {"file": str(file_path), "dry_run": True, "rows": len(df), "schema": schema}
     
     # 数据库导入
     conn = get_connection()
     try:
         # 创建批次记录
         with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO xintiandi.import_batch (batch_id, file_name, file_size, total_rows, status)
+            cur.execute(f"""
+                INSERT INTO {schema}.import_batch (batch_id, file_name, file_size, total_rows, status)
                 VALUES (%s::uuid, %s, %s, %s, 'processing')
                 ON CONFLICT (batch_id) DO UPDATE SET
                     file_name = EXCLUDED.file_name,
@@ -422,16 +466,16 @@ def process_file(file_path: str, args) -> dict:
         conn.commit()
         
         # 导入数据
-        success_rows, error_rows = import_data(conn, df, batch_id_str, file_name)
+        success_rows, error_rows = import_data(conn, df, batch_id_str, file_name, schema)
         conn.commit()
         
         # 刷新月度汇总
         if success_rows > 0 and year_month:
-            refresh_monthly_summary(conn, year_month, batch_id_str)
+            refresh_monthly_summary(conn, year_month, batch_id_str, schema)
             conn.commit()
         
         # 更新批次状态
-        update_batch_status(conn, batch_id_str, "completed", len(df), success_rows, error_rows)
+        update_batch_status(conn, batch_id_str, "completed", schema, len(df), success_rows, error_rows)
         conn.commit()
         
         result = {
@@ -442,6 +486,7 @@ def process_file(file_path: str, args) -> dict:
             "error_rows": error_rows,
             "year_month": year_month,
             "store_code": store_code,
+            "schema": schema,
         }
         
         print(f"\n  导入完成!")
@@ -449,11 +494,12 @@ def process_file(file_path: str, args) -> dict:
         print(f"    成功: {success_rows}")
         print(f"    错误: {error_rows}")
         print(f"    月度汇总已刷新: {year_month}")
+        print(f"    Schema: {schema}")
         
         return result
         
     except Exception as e:
-        update_batch_status(conn, batch_id_str, "failed", error_message=str(e))
+        update_batch_status(conn, batch_id_str, "failed", schema, error_message=str(e))
         conn.commit()
         print(f"  导入失败: {e}", file=sys.stderr)
         return {"file": str(file_path), "error": str(e)}
@@ -507,3 +553,4 @@ if __name__ == "__main__":
             print(f"  成功: {result.get('success_rows')}")
             print(f"  错误: {result.get('error_rows')}")
             print(f"  月度汇总已刷新: {result.get('year_month')}")
+            print(f"  Schema: {result.get('schema')}")
