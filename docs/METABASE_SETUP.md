@@ -1,11 +1,11 @@
 # Metabase Dashboard 配置指南
 
 > 本文档记录 Pipeline Health Dashboard 的配置步骤。
-> Metabase 已部署在 `http://localhost:3001`（用户名/密码：demo@metabase.com / demo123456）
+> Metabase 默认端口：`http://localhost:8082`（用户名/密码以你本地环境为准）
 
 ## 0) 前置条件
 
-- [x] Metabase 已启动（localhost:3001）
+- [x] Metabase 已启动（localhost:8082）
 - [x] 数据库已连接（PostgreSQL dataplatform）
 - [x] 数据已导入（参考 `docs/ACCEPTANCE_RUNBOOK.md`）
 
@@ -13,8 +13,8 @@
 
 ### 操作步骤
 
-1. **进入 Metabase** → 访问 `http://localhost:3001`
-2. **登录** → 用户名 `demo@metabase.com`，密码 `demo123456`
+1. **进入 Metabase** → 访问 `http://localhost:8082`
+2. **登录** → 使用你本地环境的账号登录
 3. **进入设置** → 点击右上角 ⚙️ 图标 → `Admin settings`
 4. **添加数据库** → 点击左侧 `Databases` → 点击右上角 `Add database`
 5. **填写连接信息**：

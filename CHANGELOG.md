@@ -1,7 +1,7 @@
 # Progress Log
 
 ## 2026-04-01 12:46
-- Fixed: VPS Metabase 所有 Dashboard 卡在 "Waiting for results"
+- Fixed: 部署环境 Metabase 所有 Dashboard 卡在 "Waiting for results"
   - Root cause: `site-url` 端口错误 (8081 vs 8082) + Month 参数无 values 来源
   - Fix: 修正 site-url，为 Dashboard 8/9/10/5 的 Month 参数添加静态值列表
   - Result: 5 个 Dashboard 全部正常加载（8+8+8+8+5 cards）
@@ -20,10 +20,9 @@
 - verification:
   - command: python3 -m py_compile scripts/metabase_seed_dashboard.py && python3 scripts/metabase_seed_dashboard.py --help
   - result: pass (--help 正常显示，语法检查通过)
-  - L2: VPS 生成了 gelatomiiix dashboard (id=8) → http://112.124.18.246:8082/dashboard/8
 - decision: keep
-- guard: py_compile ✅ + VPS 验证 ✅
-- next: 在 VPS 浏览器验证 dashboard 数据正确性；支持 bonjur 品牌
+- guard: py_compile ✅ + 部署环境 验证 ✅
+- next: 在 部署环境 浏览器验证 dashboard 数据正确性；支持 bonjur 品牌
 
 ## 2026-03-31 19:15
 - goal: 修复 gelatomiiix Metabase dashboard 数据刷不出来
@@ -31,7 +30,7 @@
 - root-cause: brand_gelatomiiix_dm 缺少 3 个关键视图（revenue_monthly, expense_monthly, profit_monthly）
 - fix:
   - 创建 sql/gelatomiiix_dm_models.sql（从 yufeng_dm_models.sql 派生）
-  - VPS apply 成功：4 个视图创建完成
+  - 部署环境 apply 成功：4 个视图创建完成
   - 验证：profit_monthly 返回数据（2025-08: profit_amt=19653.92）
 - commit: pending
 - verification: SELECT * FROM brand_gelatomiiix_dm.profit_monthly → 2 rows ✅
@@ -48,15 +47,12 @@
   - sql_for_brand(): 支持 "brand_{brand}_*" 模式（gelatomiiix 等）
   - 移除所有 c.lvl1/c.lvl2 引用，改用 c.lvl1_name/c.lvl2_name
   - 创建 sql/gelatomiiix_dm_models.sql + sql/bonjur_dm_models.sql
-  - VPS apply 成功：所有品牌 DM 视图创建完成
+  - 部署环境 apply 成功：所有品牌 DM 视图创建完成
 - verification:
   - yufeng Card 83: 17 rows ✅
   - gelatomiiix Card 74: 17 rows ✅
   - bonjur Card 92: 17 rows ✅
 - dashboards:
-  - yufeng: http://112.124.18.246:8082/dashboard/9
-  - gelatomiiix: http://112.124.18.246:8082/dashboard/8
-  - bonjur: http://112.124.18.246:8082/dashboard/10
 
 ## 2026-03-31 19:50
 - goal: 修复 Metabase dashboard 查询慢（数据计算量太大）
@@ -94,11 +90,6 @@
   - 所有 Card 查询 time < 200ms
 - decision: keep
 - dashboards:
-  - 蜜可诗: http://112.124.18.246:8082/dashboard/8
-  - 榆枫与山: http://112.124.18.246:8082/dashboard/9
-  - 本就: http://112.124.18.246:8082/dashboard/10
-  - Bonjur营业: http://112.124.18.246:8082/dashboard/4
-  - Bonjur财务: http://112.124.18.246:8082/dashboard/5
 
 ## 2026-03-31 20:20
 - goal: 继续排查“页面仍然转圈”而非仅 API 查询是否成功
@@ -107,7 +98,7 @@
   - Dashboard 9/10: `values_source_type = card`，但绑定了硬编码 field id `771/772`
   - 这类 Metabase 参数源漂移很容易导致前端筛选器加载异常/页面卡转圈
 - fix:
-  - VPS 上将 Dashboard 8/9/10 的 `store_code` 参数统一改为 `static-list`
+  - 部署环境 上将 Dashboard 8/9/10 的 `store_code` 参数统一改为 `static-list`
   - repo 脚本 `scripts/metabase_seed_dashboard.py` 同步改成 `store_values_for_brand()`，不再依赖 card_id + field id 绑定
 - verification:
   - Dashboard 8 `store_code`: static-list ✅
@@ -168,8 +159,8 @@
 ## 2026-03-31 13:00
 - goal: 新品牌 gelatomiiix（蜜可诗）上线后端到端验收 + 修复初始化完整性 bug
 - bug-1: ops.fn_log_bank_rule_map_change() 函数不存在 → 品牌创建时报错
-  - fix: VPS上手动创建 ops schema + 函数 + 触发器（sql/rules_history.sql 从未被 apply）
-  - commit: local only（VPS direct）
+  - fix: 部署环境上手动创建 ops schema + 函数 + 触发器（sql/rules_history.sql 从未被 apply）
+  - commit: local only（部署环境 direct）
 - bug-2: import_yufeng_bank_txn.py 硬编码 `{brand_code}_ods` → 新品牌 schema 命名不一致
   - fix: 新增 get_ods_schema() / get_dm_schema() 与 TypeScript API 对齐
   - commit: 941f843
@@ -177,8 +168,8 @@
   - fix: 补充 yufeng_classification_snapshot.sql + yufeng_dm_models.sql
   - fix: 补加 sqlSnapshot 变量声明（TypeScript 编译错误）
   - commit: 011a958（forced push）
-  - VPS 已部署新镜像 wdg-ui:latest
-- gelatomiiix VPS 数据库补建:
+  - 部署环境 已部署新镜像 wdg-ui:latest
+- gelatomiiix 部署环境 数据库补建:
   - brand_gelatomiiix_dm.bank_txn_classified_snapshot 表（含主键约束）
   - brand_gelatomiiix_dm.refresh_bank_txn_classified_snapshot() 函数
 - decision: keep
