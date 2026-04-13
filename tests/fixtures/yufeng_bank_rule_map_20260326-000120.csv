@@ -1,0 +1,112 @@
+enabled,priority,direction,match_field,match_type,match_value,match_field2,match_value2,lvl1_code,lvl2_code,note
+t,1019,out,summary,contains,报销,,,ADMIN,ADMIN_OTHER,UI 人工沉淀
+t,1039,out,summary,contains,绿植,,,BUILD,BUILD_OTHER,UI 批量沉淀: 2016
+t,1049,in,summary,contains,开业营销推广补贴,,,REV_BIZ,OTHER_CH,UI 批量沉淀: 2030
+t,1079,out,summary,contains,奶皮子,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 2045
+t,1089,out,summary,contains,弱电款,,,BUILD,CONST_FEE,UI 批量沉淀: 2074
+t,1109,in,summary,contains,利息,,,REV_OTHER,INTEREST_IN,UI 批量沉淀: 2095
+t,1149,out,summary,contains,饿了么充值,,,MKT,MKT_FEE,UI 批量沉淀: 2128
+t,1169,out,summary,contains,开通发票功能,,,ADMIN,SAAS,UI 批量沉淀: 2138
+t,1189,out,summary,contains,端午节粽子,,,ADMIN,ADMIN_OTHER,UI 批量沉淀: 2141
+t,1209,out,summary,contains,订货,,,MATERIAL,RAW,UI 批量沉淀: 2146
+t,1219,out,summary,contains,垃圾清运费,,,RENT_UTIL,PROP,UI 批量沉淀: 2156
+t,1239,out,summary,contains,发光字,,,BUILD,CONST_FEE,UI 批量沉淀: 2163
+t,1249,out,summary,contains,设备款,,,BUILD,CONST_FEE,UI 批量沉淀: 2176
+t,1259,out,summary,contains,花箱,,,BUILD,CONST_FEE,UI 批量沉淀: 2175
+t,1269,out,summary,contains,办理费,,,ADMIN,SAAS,UI 批量沉淀: 2172
+t,1279,out,summary,contains,杯贴小卡,,,MATERIAL,PACK,UI 批量沉淀: 20
+t,1299,out,summary,contains,爆珠,,,MATERIAL,RAW,UI 批量沉淀: 31
+t,1309,in,summary,contains,上海国华-SP活动-懒山,,,REV_BIZ,OTHER_CH,UI 批量沉淀: 32
+t,1329,out,summary,contains,还款,,,ADMIN,ADMIN_OTHER,UI 批量沉淀: 40
+t,1349,out,summary,contains,代发,,,HR,SALARY,UI 批量沉淀: 88
+t,1359,in,summary,contains,转账,,,REV_OTHER,BORROW_IN,UI 批量沉淀: 89
+t,1369,out,summary,contains,充值,,,ADMIN,SAAS,UI 批量沉淀: 136
+t,1399,in,summary,contains,垫款,,,REV_OTHER,BORROW_IN,UI 批量沉淀: 653
+t,1419,out,summary,contains,补货,,,MATERIAL,RAW,UI 批量沉淀: 660
+t,1429,in,summary,contains,网转,,,REV_OTHER,BORROW_IN,UI 批量沉淀: 688
+t,1439,out,summary,contains,洗手液,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 689
+t,1449,out,summary,contains,跑腿,,,SHIP,CITY,UI 批量沉淀: 691
+t,1459,out,summary,contains,采买,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 719
+t,1499,out,summary,contains,国华碎银子,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 782
+t,1509,out,summary,contains,消杀,,,ADMIN,ADMIN_OTHER,UI 批量沉淀: 799
+t,1519,out,summary,contains,国华酸奶,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 821
+t,1529,out,summary,contains,打蛋器,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 827
+t,1539,out,summary,contains,运费,,,SHIP,SHIP_OTHER,UI 批量沉淀: 828
+t,1549,out,summary,contains,国华达人费,,,MKT,MKT_OTHER,UI 批量沉淀: 829
+t,1569,out,summary,contains,爆米花,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 849
+t,1579,out,summary,contains,设计费,,,BUILD,BUILD_OTHER,UI 批量沉淀: 850
+t,1589,out,summary,contains,客诉,,,ADMIN,ADMIN_OTHER,UI 批量沉淀: 878
+t,1599,out,summary,contains,kt板,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 879
+t,1609,out,summary,contains,清洁工具,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 881
+t,1629,out,summary,contains,机票,,,ADMIN,TRAVEL,UI 批量沉淀: 1017
+t,1649,out,summary,contains,酸奶,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 903
+t,1659,out,summary,contains,粘纸,,,MATERIAL,PACK,UI 批量沉淀: 914
+t,1669,out,summary,contains,万圣节糖果,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 904
+t,1679,out,summary,contains,榆枫与山代发,,,HR,SALARY,UI 批量沉淀: 949
+t,1689,out,summary,contains,刷单,,,MKT,MKT_OTHER,UI 批量沉淀: 969
+t,1699,out,summary,contains,水电物管费,,,RENT_UTIL,WATER_ELEC,UI 批量沉淀: 998
+t,1709,out,summary,contains,补单,,,MKT,MKT_OTHER,UI 批量沉淀: 1004
+t,1719,out,summary,contains,打印活动券,,,MKT,MKT_FEE,UI 批量沉淀: 1013
+t,1729,out,summary,contains,沙发罩桌子,,,ADMIN,ADMIN_OTHER,UI 批量沉淀: 1014
+t,1749,out,summary,contains,打车,,,ADMIN,TRAVEL,UI 批量沉淀: 1016
+t,1759,out,summary,contains,工具,,,ADMIN,ADMIN_OTHER,UI 批量沉淀: 1018
+t,1769,out,summary,contains,水管,,,ADMIN,ADMIN_OTHER,UI 批量沉淀: 1019
+t,1779,out,summary,contains,巧克力粉,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 1028
+t,1789,out,summary,contains,上海榆枫与山牛奶,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 1091
+t,1799,out,summary,contains,dior口红,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 1044
+t,1809,out,summary,contains,国华不干胶,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 1029
+t,1819,out,summary,contains,国华提拉米苏,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 1033
+t,1829,out,summary,contains,国华蛋黄粉,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 1034
+t,1839,out,summary,contains,水果,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 1046
+t,1849,out,summary,contains,达人礼物,,,MKT,MKT_OTHER,UI 批量沉淀: 1047
+t,1869,out,summary,contains,订纸巾,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 1058
+t,1889,out,summary,contains,美团pos,,,ADMIN,SAAS,UI 批量沉淀: 1098
+t,1919,out,summary,contains,上海榆枫与山,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 1108
+t,1929,out,summary,contains,延住一日,,,ADMIN,TRAVEL,UI 批量沉淀: 1122
+t,1939,out,summary,contains,住宿,,,ADMIN,TRAVEL,UI 批量沉淀: 1148
+t,1949,out,summary,contains,懒山碗9月物广推,,,MKT,MKT_OTHER,UI 批量沉淀: 1155
+t,1959,out,summary,contains,团建费,,,ADMIN,ADMIN_OTHER,UI 批量沉淀: 1196
+t,1999,out,summary,contains,国华山野周边,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 1298
+t,2029,in,summary,contains,榆枫与山款,,,REV_OTHER,BORROW_IN,UI 批量沉淀: 1100
+t,2039,in,summary,contains,营业款结算,,,REV_BIZ,OTHER_CH,UI 批量沉淀: 1042
+t,2059,in,summary,contains,存现金收入,,,REV_BIZ,OTHER_CH,UI 批量沉淀: 708
+t,2069,in,summary,contains,保证金退回,,,REV_OTHER,REFUND_IN,UI 批量沉淀: 1071
+t,2109,out,summary,contains,11 及 12 月研发分摊,,,ADMIN,SAAS,UI 批量沉淀: 1323
+t,2119,in,summary,contains,榆枫与山营收,,,REV_BIZ,OTHER_CH,UI 批量沉淀: 1325
+t,2169,out,summary,contains,跨行汇款手续费,,,ADMIN,SAAS,UI 批量沉淀: 1343
+t,2179,in,summary,contains,贷记,,,REV_BIZ,DOUYIN,UI 批量沉淀: 636
+t,2209,out,summary,contains,快递,,,SHIP,EXPRESS,UI 人工沉淀（摘要）
+t,2219,out,summary,contains,730杯奶茶退款,,,ADMIN,OFFICE,e2e-after-delete
+t,2229,in,counterparty_name,exact,北京钱袋宝支付技术有限公司,,,REV_BIZ,ELEME,UI 人工沉淀（对方单位）
+t,2239,in,counterparty_name,exact,抖音支付科技有限公司,,,REV_BIZ,DOUYIN,UI 人工沉淀（对方单位）
+t,2249,in,counterparty_name,exact,浙江网商银行,,,REV_BIZ,ELEME,UI 人工沉淀（对方单位）
+t,2259,in,counterparty_name,exact,上海富友支付服务股份有限公司,,,REV_BIZ,MEITUAN,UI 人工沉淀（对方单位）
+t,2269,out,summary,contains,货款,,,MATERIAL,RAW,UI 人工沉淀（摘要）
+t,2279,out,summary,contains,月租金,,,RENT_UTIL,RENT,UI 人工沉淀（摘要）
+t,2289,in,counterparty_name,exact,李凤珍,,,REV_OTHER,BORROW_IN,UI 人工沉淀（对方单位）
+t,2299,out,summary,contains,空调冷风机,,,ADMIN,OFFICE,UI 批量沉淀: 1523
+t,2309,out,summary,contains,营销费退,,,MKT,MKT_FEE,UI 批量沉淀: 1525
+t,2319,in,counterparty_name,exact,林吉,,,REV_OTHER,BORROW_IN,UI 人工沉淀（对方单位）
+t,2329,in,summary,contains,物料费,,,REV_BIZ,OTHER_CH,UI 批量沉淀: 1584
+t,2339,out,summary,contains,网银注册账户服务费,,,ADMIN,SAAS,UI 批量沉淀: 1594
+t,2349,in,counterparty_name,exact,上海拉扎斯信息科技有限公司,,,REV_BIZ,ELEME,UI 人工沉淀（对方单位）
+t,2359,out,summary,contains,施工增项及提前完工,,,BUILD,CONST_FEE,UI 人工沉淀（摘要）
+t,2369,out,summary,contains,拖把,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 1637
+t,2379,out,summary,contains,台卡打印,,,MATERIAL,BUY_OTHER,UI 批量沉淀: 1639
+t,2389,out,counterparty_name,exact,太平财产保险有限公司上海分公司,,,BUILD,BUILD_OTHER,UI 人工沉淀（对方单位）
+t,2409,out,summary,contains,物料,,,MATERIAL,RAW,UI 人工沉淀（摘要）
+t,2419,out,summary,contains,装修,,,BUILD,CONST_FEE,UI 人工沉淀（摘要）
+t,2429,out,summary,contains,惠享服务,,,ADMIN,ADMIN_OTHER,UI 人工沉淀（摘要）
+t,2439,in,summary,contains,拨款,,,REV_OTHER,INVEST_IN,UI 人工沉淀（摘要）
+t,2449,out,summary,contains,空调,,,BUILD,CONST_FEE,UI 人工沉淀（摘要）
+t,2459,out,summary,contains,懒山碗保证金系统营销,,,BUILD,BUILD_OTHER,UI 人工沉淀（摘要）
+t,2469,in,summary,contains,DGFY2025061010519,,,REV_OTHER,REFUND_IN,UI 人工沉淀（摘要）
+t,2479,out,summary,contains,水电,,,RENT_UTIL,WATER_ELEC,UI 人工沉淀（摘要）
+t,2489,in,summary,contains,跨行,,,REV_OTHER,REFUND_IN,UI 人工沉淀（摘要）
+t,2499,out,summary,contains,10月研发运营费用,,,ADMIN,SAAS,UI 人工沉淀（摘要）
+t,2509,out,summary,contains,采购,,,MATERIAL,RAW,UI 人工沉淀（摘要）
+t,2519,out,summary,contains,租金,,,RENT_UTIL,RENT,UI 人工沉淀（摘要）
+t,2529,any,summary,contains,纸巾,,,MATERIAL,PACK,UI 人工沉淀（摘要）
+t,2539,out,summary,contains,团建,,,ADMIN,TRAVEL,UI 人工沉淀（摘要）
+t,2549,out,summary,contains,物流费,,,SHIP,EXPRESS,UI 人工沉淀（摘要）
+t,2559,in,summary,contains,借款,,,REV_OTHER,BORROW_IN,UI 人工沉淀（摘要）

@@ -103,7 +103,7 @@
 - 规则匹配/分类函数实现：`sql/yufeng_apply_classification.sql`
 - 覆盖率/未分类：`sql/yufeng_coverage_and_unclassified.sql`、`sql/yufeng_coverage_by_file.sql`
 - DM 月报模型：`sql/yufeng_dm_models.sql`
-- Metabase 配置：`docs/METABASE_SETUP.md`、`docs/DASHBOARD_DEPLOY_PLAN.md`
+- Metabase 配置：`docs/METABASE_SETUP.md`、`docs/metabase-store-sync.md`
 - 初始化：`scripts/init_local_env.sh`
 
 ---

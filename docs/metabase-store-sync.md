@@ -82,7 +82,7 @@ Metabase 看板下拉自动更新
 
 品牌 → Dashboard ID 通过以下方式确定（按优先级）：
 
-1. **环境变量（多个看板，推荐）**：`METABASE_DASHBOARDS_<BRAND>`（VPS 上配置）
+1. **环境变量（多个看板，推荐）**：`METABASE_DASHBOARDS_<BRAND>`（本地 compose 可配置）
    ```bash
    # 逗号分隔，同步该品牌所有相关看板（例如：营业看板+财务看板+经营看板）
    METABASE_DASHBOARDS_YUFENG="9"
@@ -102,9 +102,9 @@ curl -H "X-Api-Key: $METABASE_API_KEY" \
   "$METABASE_URL/api/search?q=yufeng+经营看板&models=dashboard"
 ```
 
-## VPS / Docker 环境变量配置
+## Docker 环境变量配置（本地 compose）
 
-在 `docker-compose.yml` 的 `ui` 服务中补充：
+在 `docker-compose.local.yml` 的 `ui` 服务中补充：
 
 ```yaml
 ui:

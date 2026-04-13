@@ -15,7 +15,7 @@
 ## 2026-04-02 (4402a46 + delta)
 - Fixed (repo): docker-compose.yml port 8081→8082 for Metabase (regression prevention)
   - Previous fix (4f8ee61) was applied via direct API on VPS but NOT captured in compose
-  - Compose still defaulted to METABASE_PORT=8081 (wrong); ops/health.sh already used 8082
+  - Compose still defaulted to METABASE_PORT=8081 (wrong); health check script (archived) already used 8082
 - Fixed (repo): metabase_seed_dashboard.py — added `month_values_for_brand()` function
   - Month filter (date/month-year) now populated from actual brand_ods.bank_txn months
   - Without this: [[ AND extract(year from t.txn_time) = extract(year from {{month_date}}) ]]
@@ -45,7 +45,7 @@
 - verification:
   - command: python3 -m py_compile scripts/metabase_seed_dashboard.py && python3 scripts/metabase_seed_dashboard.py --help
   - result: pass (--help 正常显示，语法检查通过)
-  - L2: VPS 生成了 gelatomiiix dashboard (id=8) → http://112.124.18.246:8082/dashboard/8
+  - L2: VPS 生成了 gelatomiiix dashboard (id=8) → http://<VPS_HOST>:8082/dashboard/8
 - decision: keep
 - guard: py_compile ✅ + VPS 验证 ✅
 - next: 在 VPS 浏览器验证 dashboard 数据正确性；支持 bonjur 品牌
@@ -79,9 +79,9 @@
   - gelatomiiix Card 74: 17 rows ✅
   - bonjur Card 92: 17 rows ✅
 - dashboards:
-  - yufeng: http://112.124.18.246:8082/dashboard/9
-  - gelatomiiix: http://112.124.18.246:8082/dashboard/8
-  - bonjur: http://112.124.18.246:8082/dashboard/10
+  - yufeng: http://<VPS_HOST>:8082/dashboard/9
+  - gelatomiiix: http://<VPS_HOST>:8082/dashboard/8
+  - bonjur: http://<VPS_HOST>:8082/dashboard/10
 
 ## 2026-03-31 19:50
 - goal: 修复 Metabase dashboard 查询慢（数据计算量太大）
@@ -119,11 +119,11 @@
   - 所有 Card 查询 time < 200ms
 - decision: keep
 - dashboards:
-  - 蜜可诗: http://112.124.18.246:8082/dashboard/8
-  - 榆枫与山: http://112.124.18.246:8082/dashboard/9
-  - 本就: http://112.124.18.246:8082/dashboard/10
-  - Bonjur营业: http://112.124.18.246:8082/dashboard/4
-  - Bonjur财务: http://112.124.18.246:8082/dashboard/5
+  - 蜜可诗: http://<VPS_HOST>:8082/dashboard/8
+  - 榆枫与山: http://<VPS_HOST>:8082/dashboard/9
+  - 本就: http://<VPS_HOST>:8082/dashboard/10
+  - Bonjur营业: http://<VPS_HOST>:8082/dashboard/4
+  - Bonjur财务: http://<VPS_HOST>:8082/dashboard/5
 
 ## 2026-03-31 20:20
 - goal: 继续排查“页面仍然转圈”而非仅 API 查询是否成功
