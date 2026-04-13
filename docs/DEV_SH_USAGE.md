@@ -21,18 +21,18 @@
 
 **功能**：
 - 启动 Postgres（容器：`dataplatform-pg`，端口：`5432`）
-- 启动 Metabase（容器：`dataplatform-metabase`，端口：`3001`）
+- 启动 Metabase（容器：`dataplatform-metabase`，端口：`8082`）
 - 执行健康检查（Postgres 可连接、Metabase HTTP 可访问）
 
 **输出示例**：
 ```
 [INFO] 启动 Postgres（容器：dataplatform-pg，端口：5432）
 [INFO] Postgres 健康检查通过
-[INFO] 启动 Metabase（容器：dataplatform-metabase，端口：3001）
-[INFO] Metabase 健康检查通过：http://localhost:3001
+[INFO] 启动 Metabase（容器：dataplatform-metabase，端口：8082）
+[INFO] Metabase 健康检查通过：http://localhost:8082
 [INFO] 完成。常用入口：
 - Postgres: localhost:5432（容器：dataplatform-pg）
-- Metabase: http://localhost:3001（容器：dataplatform-metabase）
+- Metabase: http://localhost:8082（容器：dataplatform-metabase）
 - 初始化（如需）：./scripts/init_local_env.sh
 ```
 
@@ -71,7 +71,7 @@
 Containers:
 NAMES                       STATUS        PORTS
 dataplatform-pg-dashboard   Up 11 hours   0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
-dataplatform-metabase       Up 11 hours   0.0.0.0:3001->3000/tcp, [::]:3001->3000/tcp
+dataplatform-metabase       Up 11 hours   0.0.0.0:8082->3000/tcp, [::]:8082->3000/tcp
 dataplatform-pg             Up 11 hours   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
 
 Volumes (attached):
@@ -222,7 +222,7 @@ DB_NAME=dataplatform
 DB_USER=postgres
 DB_PASSWORD=postgres
 DB_PORT=5432
-METABASE_PORT=3001
+METABASE_PORT=8082
 ```
 
 ---

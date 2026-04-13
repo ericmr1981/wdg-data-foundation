@@ -26,7 +26,7 @@
      const dmSchema = getDmSchema(brand);
      const bankTxnTable = getOdsBankTxnTable(brand);
 
-     // 注意：v_coverage_by_file / v_bank_txn_classified 视图会触发全量分类，在 VPS 上极慢（60s+）。
+     // 注意：v_coverage_by_file / v_bank_txn_classified 视图可能触发全量分类，在大数据量环境会变慢（60s+）。
      // 临时方案：直接从 ods.bank_txn 读总额（秒级），未分类 KPI 先返回 0（保证页面秒开）。
      const totalResult = await pool.query(
        `

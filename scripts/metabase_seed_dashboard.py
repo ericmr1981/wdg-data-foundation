@@ -15,7 +15,7 @@ Usage:
 
 Design goals
 - Idempotent by *name* for Cards and Dashboard.
-- Keep LOCAL and VPS consistent by making Metabase artifacts reproducible.
+- Keep environments consistent by making Metabase artifacts reproducible.
 - Metabase v0.59+ compatible (dataset_query uses `stages` + `lib/type`).
 
 Notes
