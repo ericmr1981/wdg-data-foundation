@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     if (!brand) return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
 
     const res = await pool.query(
-      `SELECT * FROM ops.stores WHERE brand_code=$1 ORDER BY sort_order NULLS LAST, store_code`,
+      `SELECT * FROM ops.stores WHERE brand_code=$1 AND enabled=true ORDER BY sort_order NULLS LAST, store_code`,
       [brand]
     );
     return NextResponse.json({ success: true, data: res.rows });
@@ -76,6 +76,30 @@ export async function POST(request: Request) {
     } finally {
       client.release();
     }
+  } catch (err: any) {
+    const status = err?.status || 500;
+    return NextResponse.json({ success: false, error: err.message || 'Failed' }, { status });
+  }
+}
+
+// DELETE /api/admin/stores
+// body: { brand, store_code }
+export async function DELETE(request: Request) {
+  const user = await getSessionUser();
+  try {
+    assertRole(user, ['admin']);
+    const body = await request.json();
+    const brand = normalizeBrand(body.brand || '');
+    const store_code = normStoreCode(body.store_code);
+    if (!brand || !store_code) {
+      return NextResponse.json({ success: false, error: 'Missing brand or store_code' }, { status: 400 });
+    }
+
+    await pool.query(
+      `UPDATE ops.stores SET enabled=false, updated_at=NOW() WHERE brand_code=$1 AND store_code=$2`,
+      [brand, store_code]
+    );
+    return NextResponse.json({ success: true });
   } catch (err: any) {
     const status = err?.status || 500;
     return NextResponse.json({ success: false, error: err.message || 'Failed' }, { status });

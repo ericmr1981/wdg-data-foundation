@@ -42,11 +42,11 @@ type SyncResult = {
 };
 
 // ── Sortable row ──────────────────────────────────────────────────────────────
-function SortableItem({ id, store }: { id: string; store: StoreRow }) {
+function SortableItem({ id, store, onDelete }: { id: string; store: StoreRow; onDelete: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
   const style: React.CSSProperties = { transform: CSS.Transform.toString(transform), transition };
   return (
-    <div ref={setNodeRef} style={style} className="grid grid-cols-5 gap-2 py-2 border-b items-center">
+    <div ref={setNodeRef} style={style} className="grid grid-cols-6 gap-2 py-2 border-b items-center">
       <div className="flex items-center gap-2">
         <span className="cursor-grab select-none text-gray-400" {...attributes} {...listeners}>⋮⋮</span>
         <span>{store.store_code}</span>
@@ -55,6 +55,12 @@ function SortableItem({ id, store }: { id: string; store: StoreRow }) {
       <div>{store.brand_code}</div>
       <div>{String(store.enabled)}</div>
       <div className="text-xs text-gray-500">order: {store.sort_order ?? 9999}</div>
+      <button
+        className="text-xs text-red-600 border border-red-300 rounded px-2 py-0.5 hover:bg-red-50"
+        onClick={onDelete}
+      >
+        删除
+      </button>
     </div>
   );
 }
@@ -203,7 +209,7 @@ export default function AdminStoresPage() {
 
   async function load() {
     setError(null);
-    const res = await fetch(`/api/admin/stores?brand=${brand}`);
+    const res = await fetch(`/api/admin/stores?brand=${brand}`, { credentials: 'include' });
     const data = await res.json();
     if (!data.success) {
       setError(data.error || 'Failed');
@@ -217,6 +223,7 @@ export default function AdminStoresPage() {
     const res = await fetch('/api/admin/stores', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ brand, store_code, store_name }),
     });
     const data = await res.json();
@@ -231,12 +238,28 @@ export default function AdminStoresPage() {
 
   const ids = useMemo(() => stores.map((s) => s.store_code), [stores]);
 
+  async function deleteStore(store: StoreRow) {
+    if (!confirm(`确认删除门店 ${store.store_name} (${store.store_code})？`)) return;
+    const res = await fetch('/api/admin/stores', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ brand: store.brand_code, store_code: store.store_code }),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      setError(data.error || 'Delete failed');
+      return;
+    }
+    await load();
+  }
   async function saveOrder(nextIds: string[]) {
     setSaving(true);
     try {
       await fetch('/api/admin/stores/reorder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ brand, ordered_store_codes: nextIds }),
       });
       await load();
@@ -334,8 +357,8 @@ export default function AdminStoresPage() {
       <div className="bg-white border rounded p-4">
         <div className="font-medium mb-2">门店列表（拖拽排序）</div>
         <div className="text-xs text-gray-500 mb-2">拖拽行来调整顺序，松开自动保存。</div>
-        <div className="grid grid-cols-5 gap-2 font-semibold border-b pb-2 text-sm">
-          <div>store_code</div><div>store_name</div><div>brand</div><div>enabled</div><div>sort_order</div>
+        <div className="grid grid-cols-6 gap-2 font-semibold border-b pb-2 text-sm">
+          <div>store_code</div><div>store_name</div><div>brand</div><div>enabled</div><div>sort_order</div><div></div>
         </div>
         <DndContext
           collisionDetection={closestCenter}
@@ -347,13 +370,13 @@ export default function AdminStoresPage() {
             const newIndex = ids.indexOf(String(over.id));
             const next = arrayMove(ids, oldIndex, newIndex);
             setStores(next.map((code) => stores.find((s) => s.store_code === code)!));
-            saveOrder(next.map(String));
+            saveOrder(next);
           }}
         >
           <SortableContext items={ids} strategy={verticalListSortingStrategy}>
             <div>
               {stores.map((s) => (
-                <SortableItem key={s.store_code} id={s.store_code} store={s} />
+                <SortableItem key={s.store_code} id={s.store_code} store={s} onDelete={() => deleteStore(s)} />
               ))}
             </div>
           </SortableContext>
