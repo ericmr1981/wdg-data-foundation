@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { BrandProvider, BRAND_OPTIONS, useBrand } from '@/lib/brand-context';
 import { fetchBrands } from '@/lib/brands-client';
 
@@ -35,6 +36,7 @@ function BrandSelector() {
 
 function NavBar() {
   const [me, setMe] = useState<{ username: string; role: string } | null>(null);
+  const pathname = usePathname();
 
   useEffect(() => {
     fetch('/api/auth/me', { cache: 'no-store' })
@@ -43,7 +45,7 @@ function NavBar() {
         if (d?.success) setMe(d.data);
       })
       .catch(() => {});
-  }, []);
+  }, [pathname]);
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
