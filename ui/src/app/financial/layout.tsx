@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useBrand } from '@/lib/brand-context';
-import ProfitStatement from './profit/page';
-import CashflowStatement from './cashflow/page';
-import BalanceSheet from './balance-sheet/page';
+import ProfitStatement from './profit/profit-tab';
+import CashflowStatement from './cashflow/cashflow-tab';
+import BalanceSheet from './balance-sheet/balance-sheet-tab';
 
 type TabId = 'profit' | 'cashflow' | 'balance-sheet';
 type SpanId = 'month' | 'quarter' | 'year';
