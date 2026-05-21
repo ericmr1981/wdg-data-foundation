@@ -1,0 +1,172 @@
+import { NextResponse } from 'next/server';
+import pool from '@/lib/db';
+import { normalizeBrand, getDmSchemaSafe } from '@/lib/brand-server';
+import { getSessionUser, assertRole } from '@/lib/auth-server';
+
+interface LineItem {
+  section: string;
+  label: string;
+  amount: number;
+  indent: number;
+  is_subtotal: boolean;
+  is_highlight: boolean;
+}
+
+// Validates period format and returns [startDate, endDate) boundary strings
+// Returns null on invalid input
+function parsePeriod(period: string, span: string): [string, string] | null {
+  if (span === 'month') {
+    if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(period)) return null;
+    const [y, m] = period.split('-');
+    const nextM = Number(m) + 1;
+    return [`${period}-01`, nextM > 12 ? `${Number(y) + 1}-01-01` : `${y}-${String(nextM).padStart(2, '0')}-01`];
+  }
+  if (span === 'quarter') {
+    if (!/^\d{4}-Q[1-4]$/.test(period)) return null;
+    const [year, q] = period.split('-Q');
+    const startM = (Number(q) - 1) * 3 + 1;
+    return [
+      `${year}-${String(startM).padStart(2, '0')}-01`,
+      `${year}-${String(startM + 3).padStart(2, '0')}-01`,
+    ];
+  }
+  if (span === 'year') {
+    if (!/^\d{4}$/.test(period)) return null;
+    return [`${period}-01-01`, `${Number(period) + 1}-01-01`];
+  }
+  return null;
+}
+
+function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: string; lvl2_name: string; amount: string }[]): LineItem[] {
+  const lines: LineItem[] = [];
+
+  const revenue = raw.filter(r => r.section === 'revenue' && r.lvl1_code === 'REV_BIZ');
+  const otherIncome = raw.filter(r => r.section === 'revenue' && r.lvl1_code === 'REV_OTHER');
+  const material = raw.filter(r => r.lvl1_code === 'MATERIAL');
+  const shipping = raw.filter(r => r.lvl1_code === 'SHIP');
+  const hr = raw.filter(r => r.lvl1_code === 'HR');
+  const rentUtil = raw.filter(r => r.lvl1_code === 'RENT_UTIL');
+  const mkt = raw.filter(r => r.lvl1_code === 'MKT');
+  const admin = raw.filter(r => r.lvl1_code === 'ADMIN');
+  const build = raw.filter(r => r.lvl1_code === 'BUILD');
+  const expOther = raw.filter(r => r.lvl1_code === 'EXP_OTHER');
+  const otherExpense = [...hr, ...rentUtil, ...mkt, ...admin, ...build, ...expOther];
+
+  const sumAmount = (items: typeof raw) => items.reduce((s, r) => s + Number(r.amount), 0);
+
+  const revenueAmt = sumAmount(revenue);
+  const otherIncomeAmt = sumAmount(otherIncome);
+  const costAmt = sumAmount(material) + sumAmount(shipping);
+  const totalExpenseAmt = sumAmount(otherExpense);
+
+  lines.push({ section: 'revenue', label: '一、营业收入', amount: revenueAmt, indent: 0, is_subtotal: false, is_highlight: false });
+  for (const r of revenue) {
+    lines.push({ section: 'revenue_detail', label: `  ${r.lvl2_name}`, amount: Number(r.amount), indent: 1, is_subtotal: false, is_highlight: false });
+  }
+  if (otherIncome.length > 0) {
+    lines.push({ section: 'revenue', label: '二、其他收入', amount: otherIncomeAmt, indent: 0, is_subtotal: false, is_highlight: false });
+    for (const r of otherIncome) {
+      lines.push({ section: 'revenue_detail', label: `  ${r.lvl2_name}`, amount: Number(r.amount), indent: 1, is_subtotal: false, is_highlight: false });
+    }
+  }
+  lines.push({ section: 'revenue', label: '收入合计', amount: revenueAmt + otherIncomeAmt, indent: 0, is_subtotal: true, is_highlight: false });
+
+  lines.push({ section: 'cost', label: '三、营业成本', amount: costAmt, indent: 0, is_subtotal: false, is_highlight: false });
+  for (const r of material) {
+    lines.push({ section: 'cost_detail', label: `  材料采购 - ${r.lvl2_name}`, amount: Number(r.amount), indent: 1, is_subtotal: false, is_highlight: false });
+  }
+  for (const r of shipping) {
+    lines.push({ section: 'cost_detail', label: `  运费 - ${r.lvl2_name}`, amount: Number(r.amount), indent: 1, is_subtotal: false, is_highlight: false });
+  }
+  lines.push({ section: 'cost', label: '营业成本合计', amount: costAmt, indent: 0, is_subtotal: true, is_highlight: false });
+
+  const grossProfit = (revenueAmt + otherIncomeAmt) - costAmt;
+  lines.push({ section: 'gross_profit', label: '毛利', amount: grossProfit, indent: 0, is_subtotal: false, is_highlight: true });
+
+  lines.push({ section: 'expense', label: '四、期间费用', amount: totalExpenseAmt, indent: 0, is_subtotal: false, is_highlight: false });
+  for (const r of otherExpense) {
+    lines.push({ section: 'expense_detail', label: `  ${r.lvl1_name} - ${r.lvl2_name}`, amount: Number(r.amount), indent: 1, is_subtotal: false, is_highlight: false });
+  }
+  lines.push({ section: 'expense', label: '期间费用合计', amount: totalExpenseAmt, indent: 0, is_subtotal: true, is_highlight: false });
+
+  const netProfit = grossProfit - totalExpenseAmt;
+  const netProfitLabel = netProfit >= 0 ? '净利润' : '净亏损';
+  lines.push({ section: 'net_profit', label: `五、${netProfitLabel}`, amount: netProfit, indent: 0, is_subtotal: false, is_highlight: true });
+
+  return lines;
+}
+
+// GET /api/financial/profit?brand=gelatomiiix&period=2026-01&span=month&store=all
+export async function GET(request: Request) {
+  const user = await getSessionUser();
+  try {
+    assertRole(user, ['admin', 'operator']);
+
+    const { searchParams } = new URL(request.url);
+    const brandParam = searchParams.get('brand') || 'gelatomiiix';
+    const period = searchParams.get('period') || '';
+    const span = searchParams.get('span') || 'month';
+    const store = searchParams.get('store') || 'all';
+
+    const brand = normalizeBrand(brandParam);
+    if (!brand) {
+      return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
+    }
+
+    // Validate span
+    if (!['month', 'quarter', 'year'].includes(span)) {
+      return NextResponse.json({ success: false, error: 'Invalid span' }, { status: 400 });
+    }
+
+    // Validate period format
+    const boundaries = parsePeriod(period, span);
+    if (!boundaries) {
+      return NextResponse.json({ success: false, error: 'Invalid period format' }, { status: 400 });
+    }
+    const [startDate, endDate] = boundaries;
+
+    let dmSchema: string;
+    try {
+      dmSchema = await getDmSchemaSafe(brand);
+    } catch (err: any) {
+      if (err?.status === 400) {
+        return NextResponse.json({ success: false, error: err.message }, { status: 400 });
+      }
+      throw err;
+    }
+    const viewName = `${dmSchema}.v_profit_statement`;
+
+    // Use parameterized query for store filter to prevent SQL injection
+    const params: (string | number)[] = [startDate, endDate];
+    let storeClause = '';
+    if (store !== 'all') {
+      storeClause = `AND store_code = $3`;
+      params.push(store);
+    }
+
+    const query = `
+      SELECT section, lvl1_code, lvl1_name, lvl2_name,
+             sum(amount) as amount
+      FROM ${viewName}
+      WHERE month >= $1::date AND month < $2::date ${storeClause}
+      GROUP BY section, lvl1_code, lvl1_name, lvl2_name
+      ORDER BY min(sort_order), lvl1_code, lvl2_code
+    `;
+
+    const result = await pool.query(query, params);
+    const lines = buildProfitLines(result.rows);
+
+    return NextResponse.json({
+      success: true,
+      data: { brand, period, span, store, lines }
+    });
+
+  } catch (error: any) {
+    if (error?.code === '42P01') {
+      return NextResponse.json({ success: true, data: { brand: '', period, span, store: '', lines: [] }, note: 'view not ready' });
+    }
+    console.error('Error in profit route:', error);
+    const status = error?.status || 500;
+    return NextResponse.json({ success: false, error: error.message || 'Failed to load profit statement' }, { status });
+  }
+}
