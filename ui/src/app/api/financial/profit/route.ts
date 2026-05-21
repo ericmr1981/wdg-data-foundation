@@ -121,11 +121,11 @@ export async function GET(request: Request) {
     }
 
     const query = `
-      SELECT section, lvl1_code, lvl1_name, lvl2_name,
+      SELECT section, lvl1_code, lvl1_name, lvl2_code, lvl2_name,
              sum(amount) as amount
       FROM ${viewName}
       WHERE month >= $1::date AND month < $2::date ${storeClause}
-      GROUP BY section, lvl1_code, lvl1_name, lvl2_name
+      GROUP BY section, lvl1_code, lvl1_name, lvl2_code, lvl2_name
       ORDER BY min(sort_order), lvl1_code, lvl2_code
     `;
 

@@ -39,7 +39,7 @@ function buildCashflowLines(raw: CashflowRow[]): LineItem[] {
 
   lines.push({ section: 'operating_header', label: '一、经营活动产生的现金流量', amount: 0, indent: 0, is_subtotal: false, is_highlight: false });
   for (const r of opInflows) {
-    lines.push({ section: 'operating_in_detail', label: `  ${r.lvl1_code === 'REV_BIZ' ? '销售商品收到的现金' : r.lvl1_code + '/' + (r.lvl2_code || '')}`, amount: toNum(r.total_in), indent: 1, is_subtotal: false, is_highlight: false });
+    lines.push({ section: 'operating_in_detail', label: `  销售商品 - ${r.lvl2_code || ''}`, amount: toNum(r.total_in), indent: 1, is_subtotal: false, is_highlight: false });
   }
   if (opInflows.length > 0) {
     lines.push({ section: 'operating_in', label: '  经营活动现金流入小计', amount: opInflowTotal, indent: 1, is_subtotal: true, is_highlight: false });
