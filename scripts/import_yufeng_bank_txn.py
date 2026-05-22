@@ -52,6 +52,7 @@ COLUMN_MAPPING = {
     "本方账号": "self_acct",
     "交易时间": "txn_time",
     "对方单位": "counterparty_name",
+    "对方单位名称": "counterparty_name",
     "对方账号": "counterparty_acct",
     "转入金额": "in_amt",
     "转出金额": "out_amt",
