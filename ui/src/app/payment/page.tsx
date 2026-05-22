@@ -24,6 +24,17 @@ interface TxnDetail {
   lvl2_name: string | null;
 }
 
+interface PaymentLvl1 {
+  lvl1_code: string;
+  lvl1_name: string;
+  amount: number;
+}
+
+interface PaymentTrend {
+  month: string;
+  amount: number;
+}
+
 export default function PaymentPage() {
   const { brand } = useBrand();
   const [counterparties, setCounterparties] = useState<CounterpartySummary[]>([]);
@@ -35,10 +46,14 @@ export default function PaymentPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [span, setSpan] = useState<'month' | 'quarter' | 'year'>('month');
-  const [period, setPeriod] = useState('2026-01');
+  const [period, setPeriod] = useState('all');
   const [store, setStore] = useState('all');
   const [stores, setStores] = useState<{ code: string; name: string }[]>([]);
   const [search, setSearch] = useState('');
+
+  // Payment metrics
+  const [metrics, setMetrics] = useState<{ total_out: number; by_lvl1: PaymentLvl1[]; monthly_trend: PaymentTrend[] } | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
 
   const periodOptions = useMemo(() => {
     const base = ['all'] as string[];
@@ -59,6 +74,17 @@ export default function PaymentPage() {
       .then(json => { if (json.success) setStores(json.data.map((s: any) => ({ code: s.store_code, name: s.store_name }))); })
       .catch(() => {});
   }, [brand]);
+
+  // Fetch payment metrics
+  useEffect(() => {
+    if (!brand) return;
+    setMetricsLoading(true);
+    fetch(`/api/financial/payment-metrics?brand=${brand}&period=${period}&span=${span}&store=${store}`)
+      .then(r => r.json())
+      .then(json => { if (json.success) setMetrics(json.data); })
+      .catch(() => {})
+      .finally(() => setMetricsLoading(false));
+  }, [brand, period, span, store]);
 
   // Fetch counterparty list
   useEffect(() => {
@@ -145,6 +171,74 @@ export default function PaymentPage() {
           </select>
         </div>
       </div>
+
+      {/* Payment Metrics */}
+      {metrics && !metricsLoading && (
+        <div className="space-y-4">
+          {/* KPI Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="text-xs text-gray-500 uppercase tracking-wider">付款总金额</div>
+              <div className="text-2xl font-bold text-gray-900 mt-1">
+                {metrics.total_out.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">元</div>
+            </div>
+            {/* Lvl1 Top 2 */}
+            {metrics.by_lvl1.slice(0, 2).map(item => {
+              const pct = metrics.total_out > 0 ? ((item.amount / metrics.total_out) * 100).toFixed(1) : '0';
+              return (
+                <div key={item.lvl1_code} className="bg-white border border-gray-200 rounded-lg p-4">
+                  <div className="text-xs text-gray-500 uppercase tracking-wider">{item.lvl1_name}</div>
+                  <div className="text-xl font-bold text-gray-900 mt-1">
+                    {item.amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5">占比 {pct}%</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Lvl1 Breakdown Table */}
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">按一级分类</h3>
+            <div className="space-y-2">
+              {metrics.by_lvl1.map(item => {
+                const pct = metrics.total_out > 0 ? (item.amount / metrics.total_out) * 100 : 0;
+                return (
+                  <div key={item.lvl1_code} className="flex items-center gap-3">
+                    <span className="text-xs text-gray-600 w-24 truncate">{item.lvl1_name}</span>
+                    <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                      <div className="bg-blue-500 h-full rounded-full transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-xs text-gray-500 w-20 text-right">
+                      {item.amount.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}
+                    </span>
+                    <span className="text-xs text-gray-400 w-12 text-right">{pct.toFixed(0)}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Monthly Trend Bar Chart */}
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">付款趋势（近12个月）</h3>
+            <div className="flex items-end gap-1 h-32">
+              {metrics.monthly_trend.map(p => {
+                const maxAmt = Math.max(...metrics.monthly_trend.map(x => x.amount), 1);
+                const h = (p.amount / maxAmt) * 100;
+                return (
+                  <div key={p.month} className="flex-1 flex flex-col items-center gap-1 min-w-0" title={`${p.month}: ${p.amount.toLocaleString()}`}>
+                    <div className="w-full bg-blue-100 rounded-t hover:bg-blue-400 transition-colors" style={{ height: `${h}%` }} />
+                    <span className="text-[9px] text-gray-400 truncate w-full text-center">{p.month.substring(5)}月</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-6">
         {/* Left: counterparty list */}

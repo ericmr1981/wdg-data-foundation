@@ -3,6 +3,7 @@ import pool from '@/lib/db';
 import { normalizeBrand, getDmSchemaSafe, getOdsBankTxnTable } from '@/lib/brand-server';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { parsePeriod } from '../period-utils';
+import { getErrorMessage } from '@/lib/query-types';
 
 // GET /api/financial/counterparty?brand=gelatomiiix
 // GET /api/financial/counterparty?brand=gelatomiiix&counterparty=xxx&period=2026-01&span=month&store=all
@@ -126,8 +127,6 @@ export async function GET(request: Request) {
     `;
     const totalRes = await pool.query(totalQuery, params);
 
-    const isIn = direction === 'in';
-    const totalField = isIn ? 'period_received' : 'period_total';
     const dataTotal = Number(totalRes.rows[0]?.[totalField] || 0);
 
     return NextResponse.json({
@@ -141,12 +140,13 @@ export async function GET(request: Request) {
       }
     });
 
-  } catch (error: any) {
-    if (error?.code === '42P01') {
+  } catch (error: unknown) {
+    const errRecord = error as Record<string, unknown>;
+    if (errRecord?.code === '42P01') {
       return NextResponse.json({ success: true, data: { counterparties: [] } });
     }
     console.error('Error in counterparty route:', error);
-    const status = error?.status || 500;
-    return NextResponse.json({ success: false, error: error.message || 'Failed' }, { status });
+    const status = (errRecord?.status as number) || 500;
+    return NextResponse.json({ success: false, error: getErrorMessage(error) || 'Failed' }, { status });
   }
 }

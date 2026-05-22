@@ -35,7 +35,7 @@ export default function PaymentPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [span, setSpan] = useState<'month' | 'quarter' | 'year'>('month');
-  const [period, setPeriod] = useState('2026-01');
+  const [period, setPeriod] = useState('all');
   const [store, setStore] = useState('all');
   const [stores, setStores] = useState<{ code: string; name: string }[]>([]);
   const [search, setSearch] = useState('');

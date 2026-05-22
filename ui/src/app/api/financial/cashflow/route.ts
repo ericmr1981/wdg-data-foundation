@@ -3,6 +3,7 @@ import pool from '@/lib/db';
 import { normalizeBrand, getDmSchemaSafe } from '@/lib/brand-server';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { parsePeriod } from '../period-utils';
+import { getErrorMessage } from '@/lib/query-types';
 
 interface LineItem {
   section: string;
@@ -27,6 +28,7 @@ function buildCashflowLines(raw: CashflowRow[]): LineItem[] {
   const operating = raw.filter(r => r.activity === 'operating');
   const investing = raw.filter(r => r.activity === 'investing');
   const financing = raw.filter(r => r.activity === 'financing');
+  const unclassified = raw.filter(r => r.activity === 'unclassified' || r.activity === null);
 
   const toNum = (v: string) => Number(v);
 
@@ -37,6 +39,14 @@ function buildCashflowLines(raw: CashflowRow[]): LineItem[] {
   const opOutflowTotal = opOutflows.reduce((s, r) => s + toNum(r.total_out), 0);
   const opNet = opInflowTotal - opOutflowTotal;
 
+  const labelForOpOutflow = (r: CashflowRow) => {
+    if (r.lvl1_code === 'HR') return '支付给职工的现金';
+    if (r.lvl1_code === 'MATERIAL') return '购买商品支付的现金';
+    if (r.lvl1_code === 'TAX_SURCHARGE') return '支付的税金及附加';
+    if (r.lvl1_code === 'EXP_OTHER' && r.lvl2_code === 'TAX') return '支付的各项税费';
+    return r.lvl1_code;
+  };
+
   lines.push({ section: 'operating_header', label: '一、经营活动产生的现金流量', amount: 0, indent: 0, is_subtotal: false, is_highlight: false });
   for (const r of opInflows) {
     lines.push({ section: 'operating_in_detail', label: `  销售商品 - ${r.lvl2_code || ''}`, amount: toNum(r.total_in), indent: 1, is_subtotal: false, is_highlight: false });
@@ -45,7 +55,7 @@ function buildCashflowLines(raw: CashflowRow[]): LineItem[] {
     lines.push({ section: 'operating_in', label: '  经营活动现金流入小计', amount: opInflowTotal, indent: 1, is_subtotal: true, is_highlight: false });
   }
   for (const r of opOutflows) {
-    lines.push({ section: 'operating_out_detail', label: `  ${r.lvl1_code === 'HR' ? '支付给职工的现金' : r.lvl1_code === 'MATERIAL' ? '购买商品支付的现金' : (r.lvl1_code === 'EXP_OTHER' && r.lvl2_code === 'TAX') ? '支付的各项税费' : r.lvl1_code}`, amount: -toNum(r.total_out), indent: 1, is_subtotal: false, is_highlight: false });
+    lines.push({ section: 'operating_out_detail', label: `  ${labelForOpOutflow(r)}`, amount: -toNum(r.total_out), indent: 1, is_subtotal: false, is_highlight: false });
   }
   if (opOutflows.length > 0) {
     lines.push({ section: 'operating_out', label: '  经营活动现金流出小计', amount: -opOutflowTotal, indent: 1, is_subtotal: true, is_highlight: false });
@@ -70,9 +80,18 @@ function buildCashflowLines(raw: CashflowRow[]): LineItem[] {
   }
   lines.push({ section: 'financing_net', label: '筹资活动产生的现金流量净额', amount: finNet, indent: 0, is_subtotal: false, is_highlight: true });
 
-  // Net increase
+  // Net increase (only from classified activities)
   const totalNet = opNet + invNet + finNet;
   lines.push({ section: 'total_net', label: '四、现金净增加额', amount: totalNet, indent: 0, is_subtotal: false, is_highlight: true });
+
+  // Unclassified items display
+  if (unclassified.length > 0) {
+    const ucNet = unclassified.reduce((s, r) => s + toNum(r.net_amount), 0);
+    lines.push({ section: 'unclassified', label: '五、未分类流水', amount: ucNet, indent: 0, is_subtotal: false, is_highlight: false });
+    for (const r of unclassified) {
+      lines.push({ section: 'unclassified_detail', label: `  ${r.lvl1_code}${r.lvl2_code ? '/' + r.lvl2_code : ''}`, amount: toNum(r.net_amount), indent: 1, is_subtotal: false, is_highlight: false });
+    }
+  }
 
   return lines;
 }
@@ -107,9 +126,9 @@ export async function GET(request: Request) {
     let dmSchema: string;
     try {
       dmSchema = await getDmSchemaSafe(brand);
-    } catch (err: any) {
-      if (err?.status === 400) {
-        return NextResponse.json({ success: false, error: err.message }, { status: 400 });
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'status' in err && (err as Record<string, unknown>).status === 400) {
+        return NextResponse.json({ success: false, error: getErrorMessage(err) }, { status: 400 });
       }
       throw err;
     }
@@ -141,12 +160,13 @@ export async function GET(request: Request) {
       data: { brand, period, span, store, lines }
     });
 
-  } catch (error: any) {
-    if (error?.code === '42P01') {
+  } catch (error: unknown) {
+    const errRecord = error as Record<string, unknown>;
+    if (errRecord?.code === '42P01') {
       return NextResponse.json({ success: true, data: { brand: '', period, span, store: '', lines: [] }, note: 'view not ready' });
     }
     console.error('Error in cashflow route:', error);
-    const status = error?.status || 500;
-    return NextResponse.json({ success: false, error: error.message || 'Failed to load cashflow statement' }, { status });
+    const status = (errRecord?.status as number) || 500;
+    return NextResponse.json({ success: false, error: getErrorMessage(error) || 'Failed to load cashflow statement' }, { status });
   }
 }

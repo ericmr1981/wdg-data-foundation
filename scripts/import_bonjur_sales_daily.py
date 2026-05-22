@@ -44,7 +44,7 @@ DB_CONFIG = {
     "port": os.getenv("DB_PORT", "5432"),
     "database": os.getenv("DB_NAME", "dataplatform"),
     "user": os.getenv("DB_USER", "postgres"),
-    "password": os.getenv("DB_PASSWORD", "postgres"),
+    "password": os.environ["DB_PASSWORD"],
 }
 
 # 门店名 → store_code 映射（来自 Bonjur_T1_字段映射与清洗规则.md）
@@ -801,8 +801,9 @@ def main():
     )
     parser.add_argument(
         "--db-password",
-        default=os.getenv("DB_PASSWORD", "postgres"),
-        help="数据库密码",
+        default=os.environ.get("DB_PASSWORD"),
+        required=not bool(os.environ.get("DB_PASSWORD")),
+        help="数据库密码 (required unless DB_PASSWORD env var is set)",
     )
 
     args = parser.parse_args()

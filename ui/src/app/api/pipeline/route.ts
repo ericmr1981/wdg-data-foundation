@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
+import type { PipelineRunRow, PipelineStepRow } from '@/lib/query-types';
 
 // GET /api/pipeline - 获取 pipeline 运行记录和步骤
 export async function GET() {
@@ -28,16 +29,16 @@ export async function GET() {
         ORDER BY run_id, step_order
       `, [runIds]);
 
-      const stepsByRun: Record<string, any[]> = {};
-      stepsResult.rows.forEach((step: any) => {
+      const stepsByRun: Record<string, PipelineStepRow[]> = {};
+      (stepsResult.rows as PipelineStepRow[]).forEach((step) => {
         if (!stepsByRun[step.run_id]) {
           stepsByRun[step.run_id] = [];
         }
         stepsByRun[step.run_id].push(step);
       });
 
-      runs.forEach((run: any) => {
-        run.steps = stepsByRun[run.run_id] || [];
+      (runs as PipelineRunRow[]).forEach((run) => {
+        (run as PipelineRunRow & { steps?: PipelineStepRow[] }).steps = stepsByRun[run.run_id] || [];
       });
     }
 

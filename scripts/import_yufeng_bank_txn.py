@@ -44,7 +44,7 @@ DB_CONFIG = {
     "port": os.getenv("DB_PORT", "5432"),
     "database": os.getenv("DB_NAME", "dataplatform"),
     "user": os.getenv("DB_USER", "postgres"),
-    "password": os.getenv("DB_PASSWORD", "postgres"),
+    "password": os.environ["DB_PASSWORD"],
 }
 
 # Excel 列名映射（工行流水模板）
@@ -809,8 +809,9 @@ def main():
     )
     parser.add_argument(
         "--db-password",
-        default=os.getenv("DB_PASSWORD", "postgres"),
-        help="数据库密码",
+        default=os.environ.get("DB_PASSWORD"),
+        required=not bool(os.environ.get("DB_PASSWORD")),
+        help="数据库密码 (required unless DB_PASSWORD env var is set)",
     )
 
     args = parser.parse_args()

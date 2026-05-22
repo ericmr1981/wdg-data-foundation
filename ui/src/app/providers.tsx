@@ -45,12 +45,24 @@ function NavBar() {
   const pathname = usePathname();
 
   useEffect(() => {
+    // login page doesn't need auth — skip to avoid redirect loop
+    if (pathname === '/login') return;
+
     fetch('/api/auth/me', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => {
+        if (!r.ok) {
+          // stale / expired cookie — hard redirect to login
+          window.location.href = '/login';
+          return null;
+        }
+        return r.json();
+      })
       .then((d) => {
         if (d?.success) setMe(d.data);
       })
-      .catch(() => {});
+      .catch(() => {
+        window.location.href = '/login';
+      });
   }, [pathname]);
 
   async function logout() {
