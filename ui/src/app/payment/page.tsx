@@ -42,8 +42,8 @@ export default function PaymentPage() {
 
   const periodOptions = useMemo(() => {
     const base = ['all'] as string[];
-    if (span === 'month') return [...base, '2025-07', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02'];
-    if (span === 'quarter') return [...base, '2025-Q3', '2025-Q4', '2026-Q1'];
+    if (span === 'month') return [...base, '2025-03', '2025-04', '2025-05', '2025-06', '2025-07', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06'];
+    if (span === 'quarter') return [...base, '2025-Q1', '2025-Q2', '2025-Q3', '2025-Q4', '2026-Q1', '2026-Q2'];
     return [...base, '2025', '2026'];
   }, [span]);
 
