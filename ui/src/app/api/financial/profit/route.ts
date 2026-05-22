@@ -54,7 +54,16 @@ function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: 
   const grossProfit = revenueAmt + costSigned;
   lines.push({ section: 'gross_profit', label: '三、毛利', amount: grossProfit, indent: 0, is_subtotal: false, is_highlight: true });
 
-  lines.push({ section: 'expense', label: '四、期间费用', amount: expenseDisplay, indent: 0, is_subtotal: false, is_highlight: false });
+  const otherIncomeDisplay = otherIncome.length > 0 ? Math.abs(otherIncomeAmt) : 0;
+  if (otherIncome.length > 0) {
+    lines.push({ section: 'other_income', label: '四、其他收益', amount: otherIncomeDisplay, indent: 0, is_subtotal: false, is_highlight: false });
+    for (const r of otherIncome) {
+      lines.push({ section: 'other_income_detail', label: `  ${r.lvl2_name}`, amount: Math.abs(Number(r.amount)), indent: 1, is_subtotal: false, is_highlight: false });
+    }
+    lines.push({ section: 'other_income', label: '其他收益合计', amount: otherIncomeDisplay, indent: 0, is_subtotal: true, is_highlight: false });
+  }
+
+  lines.push({ section: 'expense', label: '五、期间费用', amount: expenseDisplay, indent: 0, is_subtotal: false, is_highlight: false });
   for (const r of otherExpense) {
     lines.push({ section: 'expense_detail', label: `  ${r.lvl1_name} - ${r.lvl2_name}`, amount: Math.abs(Number(r.amount)), indent: 1, is_subtotal: false, is_highlight: false });
   }
@@ -64,10 +73,10 @@ function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: 
   lines.push({ section: 'expense', label: '期间费用合计', amount: expenseDisplay, indent: 0, is_subtotal: true, is_highlight: false });
 
   const operatingProfit = grossProfit + expenseSigned + otherIncomeAmt;
-  lines.push({ section: 'operating_profit', label: '五、营业利润', amount: operatingProfit, indent: 0, is_subtotal: false, is_highlight: true });
+  lines.push({ section: 'operating_profit', label: '六、营业利润', amount: operatingProfit, indent: 0, is_subtotal: false, is_highlight: true });
 
   const netProfitLabel = operatingProfit >= 0 ? '净利润' : '净亏损';
-  lines.push({ section: 'net_profit', label: `六、${netProfitLabel}`, amount: operatingProfit, indent: 0, is_subtotal: false, is_highlight: true });
+  lines.push({ section: 'net_profit', label: `七、${netProfitLabel}`, amount: operatingProfit, indent: 0, is_subtotal: false, is_highlight: true });
 
   return lines;
 }
