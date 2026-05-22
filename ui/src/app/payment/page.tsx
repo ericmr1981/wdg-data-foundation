@@ -41,13 +41,14 @@ export default function PaymentPage() {
   const [search, setSearch] = useState('');
 
   const periodOptions = useMemo(() => {
-    if (span === 'month') return ['2025-07', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02'];
-    if (span === 'quarter') return ['2025-Q3', '2025-Q4', '2026-Q1'];
-    return ['2025', '2026'];
+    const base = ['all'] as string[];
+    if (span === 'month') return [...base, '2025-07', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02'];
+    if (span === 'quarter') return [...base, '2025-Q3', '2025-Q4', '2026-Q1'];
+    return [...base, '2025', '2026'];
   }, [span]);
 
   useEffect(() => {
-    setPeriod(periodOptions[periodOptions.length - 1] || '2026-01');
+    setPeriod(prev => prev === 'all' ? 'all' : periodOptions[periodOptions.length - 1] || '2026-01');
   }, [span, periodOptions]);
 
   // Fetch stores
@@ -136,7 +137,7 @@ export default function PaymentPage() {
             <option value="year">按年</option>
           </select>
           <select value={period} onChange={e => setPeriod(e.target.value)} className="border rounded px-2 py-1 text-sm bg-white">
-            {periodOptions.map(p => <option key={p} value={p}>{p}</option>)}
+            {periodOptions.map(p => <option key={p} value={p}>{p === 'all' ? '全部' : p}</option>)}
           </select>
           <select value={store} onChange={e => setStore(e.target.value)} className="border rounded px-2 py-1 text-sm bg-white">
             <option value="all">全部门店</option>
