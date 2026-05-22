@@ -28,7 +28,12 @@ export async function GET(request: Request) {
     // If no counterparty specified, return the list
     if (!counterparty) {
       const listQuery = `
-        SELECT t.counterparty_name,
+        SELECT CASE
+                 WHEN t.counterparty_name IS NOT NULL AND t.counterparty_name != '' THEN t.counterparty_name
+                 WHEN t.purpose IS NOT NULL AND t.purpose != '' AND t.purpose != 'NaN' THEN t.purpose
+                 WHEN t.summary IS NOT NULL AND t.summary != '' THEN t.summary
+                 ELSE '（未知名）'
+               END as counterparty_name,
                sum(coalesce(t.out_amt, 0)) as total_paid,
                count(*) as txn_count,
                min(t.txn_time) as first_date,
@@ -37,31 +42,46 @@ export async function GET(request: Request) {
         JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
         WHERE c.classified_source IN ('rule', 'override')
           AND coalesce(t.out_amt, 0) > 0
-        GROUP BY t.counterparty_name
+        GROUP BY counterparty_name
         ORDER BY total_paid DESC
       `;
       const result = await pool.query(listQuery);
       return NextResponse.json({ success: true, data: { counterparties: result.rows } });
     }
 
-    // Validate period
-    if (!['month', 'quarter', 'year'].includes(span)) {
-      return NextResponse.json({ success: false, error: 'Invalid span' }, { status: 400 });
+    // "全部" = no date filter
+    const isAll = period === 'all';
+    if (!isAll) {
+      if (!['month', 'quarter', 'year'].includes(span)) {
+        return NextResponse.json({ success: false, error: 'Invalid span' }, { status: 400 });
+      }
+      const boundaries = parsePeriod(period, span);
+      if (!boundaries) {
+        return NextResponse.json({ success: false, error: 'Invalid period format' }, { status: 400 });
+      }
     }
-    const boundaries = parsePeriod(period, span);
-    if (!boundaries) {
-      return NextResponse.json({ success: false, error: 'Invalid period format' }, { status: 400 });
-    }
-    const [startDate, endDate] = boundaries;
 
-    const params: (string | number)[] = [counterparty, startDate, endDate];
+    const params: (string | number)[] = [counterparty];
     let storeClause = '';
+    let dateClause = '';
     if (store !== 'all') {
-      storeClause = 'AND t.store_code = $4';
+      storeClause = 'AND t.store_code = $' + (params.length + 1);
       params.push(store);
     }
+    if (!isAll) {
+      const boundaries = parsePeriod(period, span)!;
+      dateClause = 'AND t.txn_time >= $' + (params.length + 1) + '::timestamp AND t.txn_time < $' + (params.length + 2) + '::timestamp';
+      params.push(boundaries[0], boundaries[1]);
+    }
 
-    // Monthly breakdown
+    const conditions = `
+      WHERE t.counterparty_name = $1
+        AND c.classified_source IN ('rule', 'override')
+        AND coalesce(t.out_amt, 0) > 0
+        ${dateClause}
+        ${storeClause}
+    `;
+
     const detailQuery = `
       SELECT date_trunc('month', t.txn_time)::date as month,
              t.txn_time,
@@ -79,29 +99,17 @@ export async function GET(request: Request) {
       JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
       LEFT JOIN ${dmSchema.substring(0, dmSchema.lastIndexOf('_'))}_cfg.dim_category_lvl1 l1 ON l1.lvl1_code = c.lvl1_code
       LEFT JOIN ${dmSchema.substring(0, dmSchema.lastIndexOf('_'))}_cfg.dim_category_lvl2 l2 ON l2.lvl1_code = c.lvl1_code AND l2.lvl2_code = c.lvl2_code
-      WHERE t.counterparty_name = $1
-        AND c.classified_source IN ('rule', 'override')
-        AND coalesce(t.out_amt, 0) > 0
-        AND t.txn_time >= $2::timestamp
-        AND t.txn_time < $3::timestamp
-        ${storeClause}
+      ${conditions}
       ORDER BY t.txn_time DESC
     `;
-
     const result = await pool.query(detailQuery, params);
 
-    // Also get total for the period
     const totalQuery = `
       SELECT sum(coalesce(t.out_amt, 0)) as period_total,
              count(*) as period_count
       FROM ${bankTxnTable} t
       JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
-      WHERE t.counterparty_name = $1
-        AND c.classified_source IN ('rule', 'override')
-        AND coalesce(t.out_amt, 0) > 0
-        AND t.txn_time >= $2::timestamp
-        AND t.txn_time < $3::timestamp
-        ${storeClause}
+      ${conditions}
     `;
     const totalRes = await pool.query(totalQuery, params);
 
