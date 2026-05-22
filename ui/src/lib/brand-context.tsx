@@ -30,7 +30,8 @@ export function useBrand() {
 }
 
 export const BRAND_OPTIONS = [
-  { code: 'gelatomiiix', name: '蜜可诗' }
+  { code: 'gelatomiiix', name: '蜜可诗' },
+  { code: 'bonjur', name: 'Bonjour' }
 ] as const;
 
 // NOTE: dynamic brand list (C2) is loaded via /api/brands at runtime.
