@@ -88,7 +88,7 @@ export async function GET(request: Request) {
     `;
 
     const detailQuery = `
-      SELECT date_trunc('month', t.txn_time)::date as month,
+      SELECT to_char(t.txn_time, 'YYYY-MM') as month,
              t.txn_time,
              t.summary,
              t.memo,
