@@ -42,7 +42,12 @@ export async function GET(request: Request) {
         JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
         WHERE c.classified_source IN ('rule', 'override')
           AND coalesce(t.out_amt, 0) > 0
-        GROUP BY counterparty_name
+        GROUP BY CASE
+                   WHEN t.counterparty_name IS NOT NULL AND t.counterparty_name != '' THEN t.counterparty_name
+                   WHEN t.purpose IS NOT NULL AND t.purpose != '' AND t.purpose != 'NaN' THEN t.purpose
+                   WHEN t.summary IS NOT NULL AND t.summary != '' THEN t.summary
+                   ELSE '（未知名）'
+                 END
         ORDER BY total_paid DESC
       `;
       const result = await pool.query(listQuery);
@@ -75,7 +80,7 @@ export async function GET(request: Request) {
     }
 
     const conditions = `
-      WHERE t.counterparty_name = $1
+      WHERE (t.counterparty_name = $1 OR t.purpose = $1 OR t.summary = $1)
         AND c.classified_source IN ('rule', 'override')
         AND coalesce(t.out_amt, 0) > 0
         ${dateClause}
