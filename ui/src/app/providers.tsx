@@ -84,6 +84,9 @@ function NavBar() {
             <Link href="/payment" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
               付款分析
             </Link>
+            <Link href="/income" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
+              收入分析
+            </Link>
 
             {me?.role === 'admin' && (
               <>

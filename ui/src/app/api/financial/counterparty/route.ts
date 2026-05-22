@@ -13,6 +13,7 @@ export async function GET(request: Request) {
   const span = searchParams.get('span') || 'month';
   const store = searchParams.get('store') || 'all';
   const counterparty = searchParams.get('counterparty') || '';
+  const direction = searchParams.get('direction') || 'out';
   try {
     assertRole(user, ['admin', 'operator']);
 
@@ -27,6 +28,9 @@ export async function GET(request: Request) {
 
     // If no counterparty specified, return the list
     if (!counterparty) {
+      const isIn = direction === 'in';
+      const amountField = isIn ? 'in_amt' : 'out_amt';
+      const totalField = isIn ? 'total_received' : 'total_paid';
       const listQuery = `
         SELECT CASE
                  WHEN t.counterparty_name IS NOT NULL AND t.counterparty_name != '' THEN t.counterparty_name
@@ -34,21 +38,21 @@ export async function GET(request: Request) {
                  WHEN t.summary IS NOT NULL AND t.summary != '' THEN t.summary
                  ELSE '（未知名）'
                END as counterparty_name,
-               sum(coalesce(t.out_amt, 0)) as total_paid,
+               sum(coalesce(t.${amountField}, 0)) as ${totalField},
                count(*) as txn_count,
                min(t.txn_time) as first_date,
                max(t.txn_time) as last_date
         FROM ${bankTxnTable} t
         JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
         WHERE c.classified_source IN ('rule', 'override')
-          AND coalesce(t.out_amt, 0) > 0
+          AND coalesce(t.${amountField}, 0) > 0
         GROUP BY CASE
                    WHEN t.counterparty_name IS NOT NULL AND t.counterparty_name != '' THEN t.counterparty_name
                    WHEN t.purpose IS NOT NULL AND t.purpose != '' AND t.purpose != 'NaN' THEN t.purpose
                    WHEN t.summary IS NOT NULL AND t.summary != '' THEN t.summary
                    ELSE '（未知名）'
                  END
-        ORDER BY total_paid DESC
+        ORDER BY ${totalField} DESC
       `;
       const result = await pool.query(listQuery);
       return NextResponse.json({ success: true, data: { counterparties: result.rows } });
@@ -79,10 +83,14 @@ export async function GET(request: Request) {
       params.push(boundaries[0], boundaries[1]);
     }
 
+    const isIn = direction === 'in';
+    const amountField = isIn ? 'in_amt' : 'out_amt';
+    const totalField = isIn ? 'period_received' : 'period_total';
+
     const conditions = `
       WHERE (t.counterparty_name = $1 OR t.purpose = $1 OR t.summary = $1)
         AND c.classified_source IN ('rule', 'override')
-        AND coalesce(t.out_amt, 0) > 0
+        AND coalesce(t.${amountField}, 0) > 0
         ${dateClause}
         ${storeClause}
     `;
@@ -93,7 +101,7 @@ export async function GET(request: Request) {
              t.summary,
              t.memo,
              t.purpose,
-             t.out_amt,
+             ${isIn ? 't.in_amt as amount' : 't.out_amt as amount'},
              t.balance_amt,
              t.store_code,
              c.lvl1_code,
@@ -110,7 +118,7 @@ export async function GET(request: Request) {
     const result = await pool.query(detailQuery, params);
 
     const totalQuery = `
-      SELECT sum(coalesce(t.out_amt, 0)) as period_total,
+      SELECT sum(coalesce(t.${amountField}, 0)) as ${totalField},
              count(*) as period_count
       FROM ${bankTxnTable} t
       JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
@@ -118,13 +126,17 @@ export async function GET(request: Request) {
     `;
     const totalRes = await pool.query(totalQuery, params);
 
+    const isIn = direction === 'in';
+    const totalField = isIn ? 'period_received' : 'period_total';
+    const dataTotal = Number(totalRes.rows[0]?.[totalField] || 0);
+
     return NextResponse.json({
       success: true,
       data: {
         counterparty,
-        period, span, store,
-        period_total: Number(totalRes.rows[0].period_total || 0),
-        period_count: Number(totalRes.rows[0].period_count || 0),
+        period, span, store, direction,
+        period_total: dataTotal,
+        period_count: Number(totalRes.rows[0]?.period_count || 0),
         transactions: result.rows
       }
     });
