@@ -17,7 +17,11 @@ function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: 
   const lines: LineItem[] = [];
 
   const revenue = raw.filter(r => r.section === 'revenue' && r.lvl1_code === 'REV_BIZ');
-  const otherIncome = raw.filter(r => r.section === 'revenue' && r.lvl1_code === 'REV_OTHER');
+  // 其他收益只包含经营性收入（利息、退款、退税），不含借款/贷款/注资
+  const otherIncome = raw.filter(r =>
+    r.section === 'revenue' && r.lvl1_code === 'REV_OTHER'
+    && !['BORROW_IN', 'LOAN_IN', 'INVEST_IN'].includes(r.lvl2_code)
+  );
   const material = raw.filter(r => r.lvl1_code === 'MATERIAL');
   const shipping = raw.filter(r => r.lvl1_code === 'SHIP');
   const hr = raw.filter(r => r.lvl1_code === 'HR');
