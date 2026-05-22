@@ -91,9 +91,10 @@ export async function POST(request: Request) {
       WHERE enabled = true
         AND match_field = $1
         AND match_value = $2
-        AND NOT (lvl1_code = $3 AND COALESCE(lvl2_code, '') = COALESCE($4, ''))
+        AND direction = $3
+        AND NOT (lvl1_code = $4 AND COALESCE(lvl2_code, '') = COALESCE($5, ''))
       `,
-      [match_field, match_value, lvl1_code, lvl2_code]
+      [match_field, match_value, actualDirection, lvl1_code, lvl2_code]
     );
 
     if (conflictResult.rows.length > 0) {
