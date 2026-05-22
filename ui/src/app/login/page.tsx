@@ -1,10 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +23,8 @@ export default function LoginPage() {
         setError(data.error || 'Login failed');
         return;
       }
-      router.replace('/pipeline');
+      const next = new URLSearchParams(window.location.search).get('next') || '/financial';
+      window.location.href = next;
     } catch (err: any) {
       setError(err.message);
     } finally {

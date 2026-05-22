@@ -3,6 +3,7 @@ import pool from '@/lib/db';
 import { normalizeBrand, getDmSchemaSafe } from '@/lib/brand-server';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { parsePeriod } from '../period-utils';
+import { getErrorMessage } from '@/lib/query-types';
 
 interface LineItem {
   section: string;
@@ -13,7 +14,7 @@ interface LineItem {
   is_highlight: boolean;
 }
 
-function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: string; lvl2_name: string; amount: string }[]): LineItem[] {
+function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: string; lvl2_code: string; lvl2_name: string; amount: string }[]): LineItem[] {
   const lines: LineItem[] = [];
 
   const revenue = raw.filter(r => r.section === 'revenue' && r.lvl1_code === 'REV_BIZ');
@@ -29,6 +30,7 @@ function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: 
   const mkt = raw.filter(r => r.lvl1_code === 'MKT');
   const admin = raw.filter(r => r.lvl1_code === 'ADMIN');
   const build = raw.filter(r => r.lvl1_code === 'BUILD');
+  const taxSurcharge = raw.filter(r => r.lvl1_code === 'TAX_SURCHARGE');
   const expOther = raw.filter(r => r.lvl1_code === 'EXP_OTHER');
   const otherExpense = [...hr, ...rentUtil, ...mkt, ...admin, ...build, ...expOther];
 
@@ -37,37 +39,69 @@ function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: 
 
   const revenueAmt = sumAmount(revenue);
   const otherIncomeAmt = sumAmount(otherIncome);
-  const costSigned = totalSigned(material);           // negative
+  const costSigned = totalSigned(material);                    // negative
+  const taxSurchargeSigned = totalSigned(taxSurcharge);       // negative
   const expenseSigned = totalSigned([...otherExpense, ...shipping]);  // negative
   const costDisplay = Math.abs(costSigned);
+  const taxSurchargeDisplay = Math.abs(taxSurchargeSigned);
   const expenseDisplay = Math.abs(expenseSigned);
 
-  lines.push({ section: 'revenue', label: '一、营业收入', amount: revenueAmt, indent: 0, is_subtotal: false, is_highlight: false });
+  // Dynamic section numbering
+  let seq = 0;
+  const nextNum = () => {
+    seq++;
+    return seq;
+  };
+
+  // Helper: roman numerals
+  const roman = (n: number) => '一二三四五六七八九十'[n - 1] || String(n);
+
+  // — Section 1: 营业收入 —
+  const sec1 = `一、营业收入`;
+  lines.push({ section: 'revenue', label: sec1, amount: revenueAmt, indent: 0, is_subtotal: false, is_highlight: false });
   for (const r of revenue) {
     lines.push({ section: 'revenue_detail', label: `  ${r.lvl2_name}`, amount: Number(r.amount), indent: 1, is_subtotal: false, is_highlight: false });
   }
   lines.push({ section: 'revenue', label: '营业收入合计', amount: revenueAmt, indent: 0, is_subtotal: true, is_highlight: false });
+  nextNum();
 
-  lines.push({ section: 'cost', label: '二、营业成本', amount: costDisplay, indent: 0, is_subtotal: false, is_highlight: false });
+  // — Section 2: 营业成本 —
+  const sec2 = `${roman(nextNum())}、营业成本`;
+  lines.push({ section: 'cost', label: sec2, amount: costDisplay, indent: 0, is_subtotal: false, is_highlight: false });
   for (const r of material) {
     lines.push({ section: 'cost_detail', label: `  材料采购 - ${r.lvl2_name}`, amount: Math.abs(Number(r.amount)), indent: 1, is_subtotal: false, is_highlight: false });
   }
   lines.push({ section: 'cost', label: '营业成本合计', amount: costDisplay, indent: 0, is_subtotal: true, is_highlight: false });
 
-  // amount is already signed: revenue=positive, cost/expense=negative → use addition
-  const grossProfit = revenueAmt + costSigned;
-  lines.push({ section: 'gross_profit', label: '三、毛利', amount: grossProfit, indent: 0, is_subtotal: false, is_highlight: true });
+  // — Section 3: 税金及附加 (always shown if has data, per accounting standards) —
+  if (taxSurcharge.length > 0) {
+    const sec3 = `${roman(nextNum())}、税金及附加`;
+    lines.push({ section: 'tax_surcharge', label: sec3, amount: taxSurchargeDisplay, indent: 0, is_subtotal: false, is_highlight: false });
+    for (const r of taxSurcharge) {
+      lines.push({ section: 'tax_surcharge_detail', label: `  ${r.lvl2_name}`, amount: Math.abs(Number(r.amount)), indent: 1, is_subtotal: false, is_highlight: false });
+    }
+    lines.push({ section: 'tax_surcharge', label: '税金及附加合计', amount: taxSurchargeDisplay, indent: 0, is_subtotal: true, is_highlight: false });
+  }
 
+  // — Gross profit (毛利) = revenue + cost(negative) —
+  const grossProfit = revenueAmt + costSigned;
+  const secGP = `${roman(nextNum())}、毛利`;
+  lines.push({ section: 'gross_profit', label: secGP, amount: grossProfit, indent: 0, is_subtotal: false, is_highlight: true });
+
+  // — 其他收益 (conditional) —
   const otherIncomeDisplay = otherIncome.length > 0 ? Math.abs(otherIncomeAmt) : 0;
   if (otherIncome.length > 0) {
-    lines.push({ section: 'other_income', label: '四、其他收益', amount: otherIncomeDisplay, indent: 0, is_subtotal: false, is_highlight: false });
+    const secOI = `${roman(nextNum())}、其他收益`;
+    lines.push({ section: 'other_income', label: secOI, amount: otherIncomeDisplay, indent: 0, is_subtotal: false, is_highlight: false });
     for (const r of otherIncome) {
       lines.push({ section: 'other_income_detail', label: `  ${r.lvl2_name}`, amount: Math.abs(Number(r.amount)), indent: 1, is_subtotal: false, is_highlight: false });
     }
     lines.push({ section: 'other_income', label: '其他收益合计', amount: otherIncomeDisplay, indent: 0, is_subtotal: true, is_highlight: false });
   }
 
-  lines.push({ section: 'expense', label: '五、期间费用', amount: expenseDisplay, indent: 0, is_subtotal: false, is_highlight: false });
+  // — 期间费用 —
+  const secExp = `${roman(nextNum())}、期间费用`;
+  lines.push({ section: 'expense', label: secExp, amount: expenseDisplay, indent: 0, is_subtotal: false, is_highlight: false });
   for (const r of otherExpense) {
     lines.push({ section: 'expense_detail', label: `  ${r.lvl1_name} - ${r.lvl2_name}`, amount: Math.abs(Number(r.amount)), indent: 1, is_subtotal: false, is_highlight: false });
   }
@@ -76,11 +110,15 @@ function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: 
   }
   lines.push({ section: 'expense', label: '期间费用合计', amount: expenseDisplay, indent: 0, is_subtotal: true, is_highlight: false });
 
-  const operatingProfit = grossProfit + expenseSigned + otherIncomeAmt;
-  lines.push({ section: 'operating_profit', label: '六、营业利润', amount: operatingProfit, indent: 0, is_subtotal: false, is_highlight: true });
+  // — 营业利润 = 毛利 + 税金及附加(negative) + 期间费用(negative) + 其他收益 —
+  const operatingProfit = grossProfit + taxSurchargeSigned + expenseSigned + otherIncomeAmt;
+  const secOP = `${roman(nextNum())}、营业利润`;
+  lines.push({ section: 'operating_profit', label: secOP, amount: operatingProfit, indent: 0, is_subtotal: false, is_highlight: true });
 
+  // — 净利润 —
   const netProfitLabel = operatingProfit >= 0 ? '净利润' : '净亏损';
-  lines.push({ section: 'net_profit', label: `七、${netProfitLabel}`, amount: operatingProfit, indent: 0, is_subtotal: false, is_highlight: true });
+  const secNP = `${roman(nextNum())}、${netProfitLabel}`;
+  lines.push({ section: 'net_profit', label: secNP, amount: operatingProfit, indent: 0, is_subtotal: false, is_highlight: true });
 
   return lines;
 }
@@ -117,9 +155,9 @@ export async function GET(request: Request) {
     let dmSchema: string;
     try {
       dmSchema = await getDmSchemaSafe(brand);
-    } catch (err: any) {
-      if (err?.status === 400) {
-        return NextResponse.json({ success: false, error: err.message }, { status: 400 });
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'status' in err && (err as Record<string, unknown>).status === 400) {
+        return NextResponse.json({ success: false, error: getErrorMessage(err) }, { status: 400 });
       }
       throw err;
     }
@@ -150,12 +188,13 @@ export async function GET(request: Request) {
       data: { brand, period, span, store, lines }
     });
 
-  } catch (error: any) {
-    if (error?.code === '42P01') {
+  } catch (error: unknown) {
+    const errRecord = error as Record<string, unknown>;
+    if (errRecord?.code === '42P01') {
       return NextResponse.json({ success: true, data: { brand: '', period, span, store: '', lines: [] }, note: 'view not ready' });
     }
     console.error('Error in profit route:', error);
-    const status = error?.status || 500;
-    return NextResponse.json({ success: false, error: error.message || 'Failed to load profit statement' }, { status });
+    const status = (errRecord?.status as number) || 500;
+    return NextResponse.json({ success: false, error: getErrorMessage(error) || 'Failed to load profit statement' }, { status });
   }
 }

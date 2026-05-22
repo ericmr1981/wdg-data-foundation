@@ -3,6 +3,7 @@ import pool from '@/lib/db';
 import { normalizeBrand, getDmSchemaSafe } from '@/lib/brand-server';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { parsePeriod } from '../period-utils';
+import { getErrorMessage } from '@/lib/query-types';
 
 interface LineItem {
   section: string;
@@ -89,9 +90,9 @@ export async function GET(request: Request) {
     let dmSchema: string;
     try {
       dmSchema = await getDmSchemaSafe(brand);
-    } catch (err: any) {
-      if (err?.status === 400) {
-        return NextResponse.json({ success: false, error: err.message }, { status: 400 });
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'status' in err && (err as Record<string, unknown>).status === 400) {
+        return NextResponse.json({ success: false, error: getErrorMessage(err) }, { status: 400 });
       }
       throw err;
     }
@@ -150,12 +151,13 @@ export async function GET(request: Request) {
       data: { brand, period, span, store, lines }
     });
 
-  } catch (error: any) {
-    if (error?.code === '42P01') {
+  } catch (error: unknown) {
+    const errRecord = error as Record<string, unknown>;
+    if (errRecord?.code === '42P01') {
       return NextResponse.json({ success: true, data: { brand: '', period, span, store: '', lines: [] }, note: 'view not ready' });
     }
     console.error('Error in balance-sheet route:', error);
-    const status = error?.status || 500;
-    return NextResponse.json({ success: false, error: error.message || 'Failed to load balance sheet' }, { status });
+    const status = (errRecord?.status as number) || 500;
+    return NextResponse.json({ success: false, error: getErrorMessage(error) || 'Failed to load balance sheet' }, { status });
   }
 }

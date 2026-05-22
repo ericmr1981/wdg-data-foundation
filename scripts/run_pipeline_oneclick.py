@@ -12,8 +12,8 @@ WDG Data Foundation｜一键检查 Pipeline 入口脚本
   # 全部品牌，dry-run（不实际写库）
   python scripts/run_pipeline_oneclick.py --brand all --dry-run
 
-  # 仅 Yufeng，指定月份
-  python scripts/run_pipeline_oneclick.py --brand yufeng --month 2025-03
+  # 仅 Gelatomiiix，指定月份
+  python scripts/run_pipeline_oneclick.py --brand gelatomiiix --month 2026-01
 
   # 仅 Bonjur
   python scripts/run_pipeline_oneclick.py --brand bonjur
@@ -31,7 +31,7 @@ from pathlib import Path
 
 import psycopg2
 
-from ops_logger import create_ops_logger
+from ops_logger import create_ops_logger, pipeline_step
 
 # =====================
 # 配置
@@ -41,7 +41,7 @@ DB_CONFIG = {
     "port": os.getenv("DB_PORT", "5432"),
     "database": os.getenv("DB_NAME", "dataplatform"),
     "user": os.getenv("DB_USER", "postgres"),
-    "password": os.getenv("DB_PASSWORD", "postgres"),
+    "password": os.environ["DB_PASSWORD"],
 }
 
 # 项目根目录（相对于本脚本）
@@ -53,14 +53,14 @@ SQL_DIR = PROJECT_ROOT / "sql"
 
 # 导入脚本路径
 IMPORT_SCRIPTS = {
-    "yufeng": PROJECT_ROOT / "scripts" / "import_yufeng_bank_txn.py",
+    "gelatomiiix": PROJECT_ROOT / "scripts" / "import_yufeng_bank_txn.py",
     "bonjur": PROJECT_ROOT / "scripts" / "import_bonjur_sales_daily.py",
 }
 
-# SQL 文件路径
-SQL_FILES = {
-    "yufeng_apply": SQL_DIR / "yufeng_apply_classification.sql",
-    "yufeng_coverage": SQL_DIR / "yufeng_coverage_and_unclassified.sql",
+# Schema names per brand
+BRAND_SCHEMAS = {
+    "gelatomiiix": {"ods": "brand_gelatomiiix_ods", "cfg": "brand_gelatomiiix_cfg", "dm": "brand_gelatomiiix_dm"},
+    "bonjur": {"ods": "bonjur_ods", "cfg": "bonjur_cfg", "dm": "bonjur_dm"},
 }
 
 
@@ -154,6 +154,7 @@ def run_sql_query(sql: str, conn, fetch: bool = True) -> list:
                 return [], []
     except psycopg2.Error as e:
         print(f"ERROR: 查询失败: {e}")
+        conn.rollback()  # reset aborted transaction
         return [], []
 
 
@@ -227,24 +228,16 @@ def run_import(brand: str, dry_run: bool = False, month: str = None) -> dict:
         return {"status": "failed", "reason": str(e)}
 
 
-def check_yufeng_schema(conn) -> bool:
-    """检查 Yufeng 相关表/视图是否存在"""
+def check_brand_schema(schemas: dict, conn) -> bool:
+    """检查品牌的 ODS/CFG/DM 表/视图是否存在"""
     required = [
-        ("yufeng_ods", "bank_txn"),
-        ("yufeng_cfg", "bank_rule_map"),
-        ("yufeng_dm", "v_bank_txn_classified"),
-        ("yufeng_dm", "v_coverage_monthly"),
-        ("yufeng_dm", "v_unclassified_top"),
+        (schemas["ods"], "bank_txn", False),       # 表
+        (schemas["cfg"], "bank_rule_map", False),   # 表
+        (schemas["dm"], "v_bank_txn_classified", True),   # 视图
     ]
 
-    for schema, obj in required:
-        if schema in ("yufeng_ods", "yufeng_cfg"):
-            # ODS/CFG 是表
-            exists = check_table_exists(schema, obj, conn)
-        else:
-            # DM 是视图
-            exists = check_view_exists(schema, obj, conn)
-
+    for schema, obj, is_view in required:
+        exists = check_view_exists(schema, obj, conn) if is_view else check_table_exists(schema, obj, conn)
         if not exists:
             print(f"ERROR: 缺少 {schema}.{obj}")
             return False
@@ -252,23 +245,26 @@ def check_yufeng_schema(conn) -> bool:
     return True
 
 
-def run_yufeng_pipeline(conn, month: str = None, dry_run: bool = False) -> dict:
-    """运行 Yufeng 分类 Pipeline"""
+def run_brand_pipeline(brand: str, schemas: dict, conn, month: str = None, dry_run: bool = False) -> dict:
+    """运行品牌分类 Pipeline（通用，按品牌名和 schema 映射）"""
+    label = brand.upper()
+    ods, cfg, dm = schemas["ods"], schemas["cfg"], schemas["dm"]
+
     print("\n" + "=" * 60)
-    print(">>> YUFENG Pipeline")
+    print(f">>> {label} Pipeline ({brand})")
     print("=" * 60)
 
     # Step 1: 检查表/视图是否存在
-    if not check_yufeng_schema(conn):
-        print("ERROR: Yufeng schema/table/view 不完整，请先执行 DDL")
+    if not check_brand_schema(schemas, conn):
+        print(f"ERROR: {label} schema/table/view 不完整")
         return {"status": "failed", "reason": "schema incomplete"}
 
     # Step 2: 输出覆盖率
-    print("\n--- yufeng_dm.v_coverage_monthly (最新 3 行) ---")
-    sql = """
+    print(f"\n--- {dm}.v_coverage_monthly (最新 3 行) ---")
+    sql = f"""
         SELECT month, total_rows, covered_rows, unclassified_rows,
                coverage_rate_rows, coverage_rate_in_amt, coverage_rate_out_amt
-        FROM yufeng_dm.v_coverage_monthly
+        FROM {dm}.v_coverage_monthly
         ORDER BY month DESC
         LIMIT 3
     """
@@ -279,7 +275,6 @@ def run_yufeng_pipeline(conn, month: str = None, dry_run: bool = False) -> dict:
     columns, rows = run_sql_query(sql, conn)
 
     if columns:
-        # 打印表头
         print(" | ".join(f"{col:>20}" for col in columns))
         print("-" * (22 * len(columns)))
         for row in rows:
@@ -288,10 +283,10 @@ def run_yufeng_pipeline(conn, month: str = None, dry_run: bool = False) -> dict:
         print("（无数据）")
 
     # Step 3: 输出未分类 Top 10
-    print("\n--- yufeng_dm.v_unclassified_top (Top 10) ---")
-    sql = """
+    print(f"\n--- {dm}.v_unclassified_top (Top 10) ---")
+    sql = f"""
         SELECT month, counterparty_name, summary, txn_rows, total_amt
-        FROM yufeng_dm.v_unclassified_top
+        FROM {dm}.v_unclassified_top
         ORDER BY txn_rows DESC
         LIMIT 10
     """
@@ -305,7 +300,6 @@ def run_yufeng_pipeline(conn, month: str = None, dry_run: bool = False) -> dict:
         print(" | ".join(f"{col:>20}" for col in columns))
         print("-" * (22 * len(columns)))
         for row in rows:
-            # 截断长字段
             display_row = []
             for val in row:
                 val_str = str(val) if val is not None else ""
@@ -318,69 +312,13 @@ def run_yufeng_pipeline(conn, month: str = None, dry_run: bool = False) -> dict:
 
     # Step 4: source_file_id 回溯示例 SQL
     print("\n--- source_file_id 回溯示例 SQL ---")
-    sql = """
+    sql = f"""
         SELECT t.id as bank_txn_id, t.txn_time, t.in_amt, t.counterparty_name,
                if.file_name, if.file_path
-        FROM yufeng_ods.bank_txn t
+        FROM {ods}.bank_txn t
         JOIN raw.ingest_file if ON t.source_file_id = if.id
         ORDER BY t.txn_time DESC
         LIMIT 3
-    """
-    print(f"```sql\n{sql}\n```")
-
-    return {"status": "success"}
-
-
-def check_bonjur_schema(conn) -> bool:
-    """检查 Bonjur 相关表是否存在"""
-    # bonjur_ods.sales_monthly 表
-    return check_table_exists("bonjur_ods", "sales_monthly", conn)
-
-
-def run_bonjur_pipeline(conn, month: str = None, dry_run: bool = False) -> dict:
-    """运行 Bonjur 校验 Pipeline"""
-    print("\n" + "=" * 60)
-    print(">>> BONJUR Pipeline")
-    print("=" * 60)
-
-    # 检查表是否存在
-    if not check_bonjur_schema(conn):
-        print("INFO: bonjur_ods.sales_monthly 表尚不存在，跳过校验")
-        print("（Bonjur DM/规则尚未完成，后续可扩展）")
-        return {"status": "skipped", "reason": "schema not ready"}
-
-    # 输出导入校验查询
-    print("\n--- Bonjur 导入校验查询 ---")
-
-    sql = """
-        SELECT if.brand_code, if.store_code, if.month, if.status,
-               if.row_count, if.file_name
-        FROM raw.ingest_file if
-        WHERE if.brand_code = 'bonjur'
-        ORDER BY if.created_at DESC
-        LIMIT 10
-    """
-    print(f"SQL:\n{sql}\n")
-
-    columns, rows = run_sql_query(sql, conn)
-
-    if columns:
-        print(" | ".join(f"{col:>15}" for col in columns))
-        print("-" * (18 * len(columns)))
-        for row in rows:
-            print(" | ".join(f"{str(val):>15}" for val in row))
-    else:
-        print("（无导入记录）")
-
-    # 示例：回溯查询
-    print("\n--- source_file_id 回溯示例 SQL ---")
-    sql = """
-        SELECT sm.id, sm.store_code, sm.month, sm.revenue_amt,
-               if.file_name, if.file_path
-        FROM bonjur_ods.sales_monthly sm
-        JOIN raw.ingest_file if ON sm.source_file_id = if.id
-        ORDER BY sm.month DESC, sm.store_code
-        LIMIT 5
     """
     print(f"```sql\n{sql}\n```")
 
@@ -394,15 +332,15 @@ def main():
         epilog="""
 示例:
   python scripts/run_pipeline_oneclick.py --brand all --dry-run
-  python scripts/run_pipeline_oneclick.py --brand yufeng --month 2025-03
+  python scripts/run_pipeline_oneclick.py --brand gelatomiiix --month 2026-01
   python scripts/run_pipeline_oneclick.py --brand bonjur
-  python scripts/run_pipeline_oneclick.py --brand yufeng --db-url postgresql://user:pass@localhost:5432/db
+  python scripts/run_pipeline_oneclick.py --brand gelatomiiix --db-url postgresql://user:pass@localhost:5432/db
         """,
     )
 
     parser.add_argument(
         "--brand",
-        choices=["yufeng", "bonjur", "all"],
+        choices=["gelatomiiix", "bonjur", "all"],
         default="all",
         help="品牌 (default: all)",
     )
@@ -441,8 +379,9 @@ def main():
     )
     parser.add_argument(
         "--db-password",
-        default=os.getenv("DB_PASSWORD", "postgres"),
-        help="数据库密码",
+        default=os.environ.get("DB_PASSWORD"),
+        required=not bool(os.environ.get("DB_PASSWORD")),
+        help="数据库密码 (required unless DB_PASSWORD env var is set)",
     )
     parser.add_argument(
         "--skip-import",
@@ -484,8 +423,6 @@ def main():
 
     # 初始化 Ops Logger（整个 pipeline 的主 run_id）
     ops = None
-    # 记录已启动但尚未正常结束的步骤（用于异常回滚）
-    started_steps: list[tuple[str, int]] = []
     if not args.dry_run:
         ops = create_ops_logger(
             brand_code="pipeline",
@@ -495,16 +432,6 @@ def main():
             note=f"{args.brand} pipeline",
             db_config=DB_CONFIG,
         )
-        if ops:
-            # Step: run_import_yufeng
-            ops.step_start("run_import_yufeng", step_order=1)
-            started_steps.append(("run_import_yufeng", 1))
-
-    def _rollback_started_steps(reason: str):
-        """异常时回滚所有已启动但未结束的步骤"""
-        if ops:
-            for step_name, step_order in reversed(started_steps):
-                ops.step_end(step_name, status="rollback", error_message=reason[:500])
 
     # 连接数据库
     conn = None
@@ -519,75 +446,34 @@ def main():
         sys.exit(1)
 
     # 确定要处理的品牌
-    brands = ["yufeng", "bonjur"] if args.brand == "all" else [args.brand]
+    brand_list = list(BRAND_SCHEMAS.keys()) if args.brand == "all" else [args.brand]
 
     results = {}
 
     try:
-        for brand in brands:
-            if brand == "yufeng":
-                # Step: run_import_yufeng
-                if ops:
-                    ops.step_end("run_import_yufeng", rows_out=1)
+        for idx, brand in enumerate(brand_list, start=1):
+            schemas = BRAND_SCHEMAS[brand]
 
-                # Step: run_import_bonjur (placeholder for yufeng, no-op)
-                if ops:
-                    ops.step_start("run_import_bonjur", step_order=2)
-                    started_steps.append(("run_import_bonjur", 2))
-                    ops.step_end("run_import_bonjur", rows_out=0, detail={"note": "skipped for yufeng"})
-                    started_steps.pop()  # 已正常结束，移除
+            # Import step
+            with pipeline_step(ops, f"run_import_{brand}", step_order=idx * 10 - 9):
+                import_script = IMPORT_SCRIPTS.get(brand)
+                if import_script and import_script.exists():
+                    result_import = run_import(brand, args.dry_run, args.month)
+                    print(f"  Import: {result_import.get('status')}")
+                else:
+                    print(f"  Import: skipped (no script)")
 
-                # Step: apply_classification_sql
-                if ops:
-                    ops.step_start("apply_classification_sql", step_order=3)
-                    started_steps.append(("apply_classification_sql", 3))
-
-                result = run_yufeng_pipeline(conn, args.month, args.dry_run)
+            # Classification pipeline step
+            with pipeline_step(ops, f"run_{brand}_pipeline", step_order=idx * 10):
+                result = run_brand_pipeline(brand, schemas, conn, args.month, args.dry_run)
                 results[brand] = result
 
-                if ops:
-                    ops.step_end("apply_classification_sql", rows_out=1)
-                    started_steps.pop()
-
-                # Step: apply_coverage_sql
-                if ops:
-                    ops.step_start("apply_coverage_sql", step_order=4)
-                    started_steps.append(("apply_coverage_sql", 4))
-
-                # Coverage is part of run_yufeng_pipeline, mark as success
-                if ops:
-                    ops.step_end("apply_coverage_sql", rows_out=1)
-                    started_steps.pop()
-
-            elif brand == "bonjur":
-                # Step: run_import_yufeng (skipped for bonjur)
-                if ops:
-                    ops.step_start("run_import_yufeng", step_order=1)
-                    started_steps.append(("run_import_yufeng", 1))
-                    ops.step_end("run_import_yufeng", rows_out=0, detail={"note": "skipped for bonjur"})
-                    started_steps.pop()
-
-                # Step: run_import_bonjur
-                if ops:
-                    ops.step_start("run_import_bonjur", step_order=2)
-                    started_steps.append(("run_import_bonjur", 2))
-
-                result = run_bonjur_pipeline(conn, args.month, args.dry_run)
-                results[brand] = result
-
-                if ops:
-                    ops.step_end("run_import_bonjur", rows_out=1)
-                    started_steps.pop()
-
-        # Step: print_summary
-        if ops:
-            ops.step_start("print_summary", step_order=5)
-            started_steps.append(("print_summary", 5))
+        with pipeline_step(ops, "print_summary", step_order=99):
+            pass
 
     except Exception as e:
         error_msg = str(e)
         print(f"ERROR: Pipeline failed: {error_msg}")
-        _rollback_started_steps(error_msg)
         if ops:
             ops.finish(status="failed", note=error_msg[:500])
         raise
@@ -595,9 +481,6 @@ def main():
         if conn:
             conn.close()
         if ops:
-            # 正常结束时移除未结束的步骤（可能在 finally 之前已被 step_end 处理）
-            for step_name, _ in started_steps:
-                ops.step_end(step_name, rows_out=0, detail={"note": "finalized in finally"})
             ops.finish(status="success")
             ops.close()
 
@@ -611,10 +494,10 @@ def main():
         print(f"  {brand}: {status}")
 
     print("\n关键验证查询:")
-    print("  # Yufeng 覆盖率")
-    print("  SELECT * FROM yufeng_dm.v_coverage_monthly;")
-    print("  # Yufeng 未分类 Top 20")
-    print("  SELECT * FROM yufeng_dm.v_unclassified_top LIMIT 20;")
+    print("  # Gelatomiiix 覆盖率")
+    print("  SELECT * FROM brand_gelatomiiix_dm.v_coverage_monthly;")
+    print("  # Gelatomiiix 未分类 Top 20")
+    print("  SELECT * FROM brand_gelatomiiix_dm.v_unclassified_top LIMIT 20;")
     print("  # Bonjur 导入记录")
     print("  SELECT * FROM raw.ingest_file WHERE brand_code = 'bonjur';")
     print("  # Pipeline 运行记录")

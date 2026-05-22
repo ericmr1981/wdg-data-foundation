@@ -40,19 +40,21 @@ select
     a.month,
     a.store_code,
     case
-        when a.lvl1_code in ('REV_BIZ', 'REV_OTHER') then 'revenue'
+        when l1.direction = 'in' then 'revenue'
         else 'expense'
     end as section,
     a.lvl1_code,
     l1.lvl1_name,
     a.lvl2_code,
     l2.lvl2_name,
+    coalesce(l1.direction, 'out') as direction,
     (a.total_in - a.total_out) as amount,
     a.txn_rows,
     case
         when a.lvl1_code = 'REV_BIZ' then 10
         when a.lvl1_code = 'REV_OTHER' then 20
         when a.lvl1_code = 'MATERIAL' then 100
+        when a.lvl1_code = 'TAX_SURCHARGE' then 105
         when a.lvl1_code = 'SHIP' then 110
         when a.lvl1_code = 'HR' then 200
         when a.lvl1_code = 'RENT_UTIL' then 210
@@ -63,7 +65,7 @@ select
         else 999
     end as sort_order,
     case
-        when a.lvl1_code in ('REV_BIZ', 'REV_OTHER') then 0
+        when l1.direction = 'in' then 0
         else 1
     end as indent_level
 from category_agg a
@@ -94,13 +96,13 @@ select
         when lvl1_code = 'REV_OTHER' and lvl2_code = 'INTEREST_IN' then 'operating'
         when lvl1_code = 'REV_OTHER' and lvl2_code = 'REFUND_IN' then 'operating'
         when lvl1_code = 'REV_OTHER' and lvl2_code = 'TAX_REFUND' then 'operating'
-        when lvl1_code in ('HR', 'MATERIAL', 'RENT_UTIL', 'MKT', 'ADMIN', 'SHIP', 'EXP_OTHER') then 'operating'
+        when lvl1_code in ('HR', 'MATERIAL', 'RENT_UTIL', 'MKT', 'ADMIN', 'SHIP', 'TAX_SURCHARGE', 'EXP_OTHER') then 'operating'
         when lvl1_code = 'BUILD' then 'investing'
         when lvl1_code = 'REV_OTHER' and lvl2_code = 'INVEST_IN' then 'investing'
         when lvl1_code = 'REV_OTHER' and lvl2_code = 'LOAN_IN' then 'financing'
         when lvl1_code = 'REV_OTHER' and lvl2_code = 'BORROW_IN' then 'financing'
         when lvl1_code = 'EXP_OTHER' and lvl2_code = 'REPAY' then 'financing'
-        else 'operating'
+        else 'unclassified'
     end as activity,
     lvl1_code,
     lvl2_code,
@@ -117,6 +119,7 @@ select
         when lvl1_code = 'MKT' then 140
         when lvl1_code = 'ADMIN' then 150
         when lvl1_code = 'SHIP' then 160
+        when lvl1_code = 'TAX_SURCHARGE' then 165
         when lvl1_code = 'EXP_OTHER' and lvl2_code = 'TAX' then 170
         when lvl1_code = 'EXP_OTHER' then 180
         when lvl1_code = 'BUILD' then 210
@@ -130,21 +133,23 @@ from classified_txns
 group by month, store_code, lvl1_code, lvl2_code;
 
 -- === 资产负债表 ===
--- 从 0 开始累计，每月末时点快照
+-- 从银行流水中的 balance_amt（银行对账单时点余额）取各月末货币资金值
+-- 用 balance_amt 而非累计 net_cashflow，是因为：
+--   1. 包含期初余额——银行对账单已有起始余额
+--   2. 不会出现负的"货币资金"（除非实际透支）
+--   3. 与银行对账单一致，具备可验证性
 drop view if exists brand_gelatomiiix_dm.v_balance_sheet cascade;
 
 create view brand_gelatomiiix_dm.v_balance_sheet as
--- cash_balance includes ALL transactions (not just classified) because
--- total cash position must reflect every bank movement
-with monthly_net as (
-    select
+with monthly_balance as (
+    -- 取每个门店每月最后一条有 balance_amt 的流水
+    select distinct on (date_trunc('month', t.txn_time)::date, t.store_code)
         date_trunc('month', t.txn_time)::date as month,
-        store_code,
-        sum(coalesce(in_amt, 0)) as total_in,
-        sum(coalesce(out_amt, 0)) as total_out,
-        sum(coalesce(in_amt, 0) - coalesce(out_amt, 0)) as net_cashflow
+        t.store_code,
+        t.balance_amt as cash_balance
     from brand_gelatomiiix_ods.bank_txn t
-    group by date_trunc('month', t.txn_time)::date, store_code
+    where t.balance_amt is not null
+    order by date_trunc('month', t.txn_time)::date, t.store_code, t.txn_time desc
 ),
 classified_txns as (
     select
@@ -157,13 +162,6 @@ classified_txns as (
     from brand_gelatomiiix_ods.bank_txn t
     join brand_gelatomiiix_dm.bank_txn_classified_snapshot c on c.bank_txn_id = t.id
     where c.classified_source in ('rule', 'override')
-),
-cumulative as (
-    select
-        month,
-        store_code,
-        sum(net_cashflow) over (partition by store_code order by month) as cash_balance
-    from monthly_net
 ),
 loans_received as (
     select
@@ -200,7 +198,7 @@ cumulative_items as (
         coalesce(sum(l.total_loan) over (partition by c.store_code order by c.month), 0) as cum_loan,
         coalesce(sum(r.total_repay) over (partition by c.store_code order by c.month), 0) as cum_repay,
         coalesce(sum(cap.total_capital) over (partition by c.store_code order by c.month), 0) as cum_capital
-    from cumulative c
+    from monthly_balance c
     left join loans_received l on l.month = c.month and l.store_code = c.store_code
     left join loans_repaid r on r.month = c.month and r.store_code = c.store_code
     left join capital_invested cap on cap.month = c.month and cap.store_code = c.store_code

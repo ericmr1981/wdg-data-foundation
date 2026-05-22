@@ -26,7 +26,7 @@ function useStores(brand: string) {
       .then(r => r.json())
       .then(json => {
         if (json.success) {
-          setStores(json.data.map((s: any) => ({ code: s.store_code, name: s.store_name })));
+          setStores(json.data.map((s: { store_code: string; store_name: string }) => ({ code: s.store_code, name: s.store_name })));
         }
       })
       .catch(() => {});
