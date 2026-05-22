@@ -7,11 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-<<<<<<< HEAD
     "smoke:browser": "playwright test -c playwright.config.ts",
     "smoke:local-docker": "bash scripts/smoke_local_docker.sh",
     "test:e2e": "playwright test"
->>>>>>> e5b1f18 (chore: install Playwright and add e2e test config)
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
@@ -25,9 +23,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-<<<<<<< HEAD
     "@playwright/test": "^1.59.1",
->>>>>>> e5b1f18 (chore: install Playwright and add e2e test config)
     "@types/node": "^25.5.0",
     "@types/pg": "^8.20.0",
     "@types/react": "^18.3.3",
