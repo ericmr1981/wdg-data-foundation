@@ -62,7 +62,7 @@ const LVL2_OPTIONS: Record<string, string[]> = {
   '营销费用': ['广告费', '礼品费', '推广费', '营销费', '其他营销'],
 
   // 其他费用（二级）
-  '其他费用': ['税金', '还款']
+  '其他费用': ['税金', '还款', '退款']
 };
 
 // 待发送队列项类型
@@ -502,12 +502,14 @@ export default function MatchPage() {
       const matchField2 = useDualMatch ? 'counterparty_name' : null;
       const matchValue2 = useDualMatch ? (settleTxn.counterparty_name || '') : null;
 
+      const txnDir = txnDirection(settleTxn as any);
       const res = await fetch('/api/rules/settle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           brand,
           bank_txn_id: settleTxn.bank_txn_id,
+          direction: txnDir,
           lvl1: settleLvl1,
           lvl2: settleLvl2 || null,
           match_field: settleMatchField,
@@ -873,7 +875,7 @@ export default function MatchPage() {
       {/* 规则沉淀弹窗 */}
       {showSettleModal && settleTxn && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[85vh] overflow-y-auto">
             <h2 className="text-lg font-semibold mb-4">沉淀为规则</h2>
             <div className="space-y-4">
               {/* 当前流水信息 */}
@@ -913,6 +915,16 @@ export default function MatchPage() {
                   </select>
                 </div>
               )}
+
+              {/* 现金流方向（作为 AND 条件） */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700">匹配条件（AND）</label>
+                <div className="mt-1 flex items-center gap-3 text-sm text-gray-600">
+                  <span className="bg-blue-50 border border-blue-200 rounded px-2 py-1">
+                    方向: {txnDirection(settleTxn as any) === 'in' ? '收入 (in)' : '支出 (out)'}
+                  </span>
+                </div>
+              </div>
 
               {/* 匹配字段选择 */}
               <div>

@@ -16,14 +16,14 @@ const TABS: { id: TabId; label: string }[] = [
 ];
 
 function useStores(brand: string) {
-  const [stores, setStores] = useState<string[]>([]);
+  const [stores, setStores] = useState<{ code: string; name: string }[]>([]);
   useEffect(() => {
     if (!brand) return;
     fetch(`/api/stores?brand=${brand}`)
       .then(r => r.json())
       .then(json => {
         if (json.success) {
-          setStores(json.data.map((s: any) => s.store_code));
+          setStores(json.data.map((s: any) => ({ code: s.store_code, name: s.store_name })));
         }
       })
       .catch(() => {});
@@ -100,7 +100,7 @@ export default function FinancialLayout() {
           >
             <option value="all">全部</option>
             {stores.map(s => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s.code} value={s.code}>{s.name}</option>
             ))}
           </select>
         </div>

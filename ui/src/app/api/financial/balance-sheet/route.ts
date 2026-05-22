@@ -48,7 +48,13 @@ function buildBalanceLines(raw: BalanceRow[]): LineItem[] {
   lines.push({ section: 'equity_detail', label: '  未分配利润', amount: retained, indent: 1, is_subtotal: false, is_highlight: false });
   lines.push({ section: 'equity_total', label: '所有者权益总计', amount: totalEquity, indent: 0, is_subtotal: true, is_highlight: true });
 
-  lines.push({ section: 'total', label: '负债和所有者权益总计', amount: totalLiabilities + totalEquity, indent: 0, is_subtotal: false, is_highlight: true });
+  const liabEquityTotal = totalLiabilities + totalEquity;
+  const balanceDiff = cash - liabEquityTotal;
+  lines.push({ section: 'total', label: '负债和所有者权益总计', amount: liabEquityTotal, indent: 0, is_subtotal: false, is_highlight: true });
+
+  if (Math.abs(balanceDiff) > 0.01) {
+    lines.push({ section: 'difference', label: '差额（待分类流水）', amount: balanceDiff, indent: 0, is_subtotal: false, is_highlight: false });
+  }
 
   return lines;
 }
