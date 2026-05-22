@@ -289,6 +289,15 @@ def read_bank_excel(file_path: str) -> pd.DataFrame:
 
     df = df[target_cols]
 
+    # 处理同名列（如 对方单位 和 对方单位名称 都映射到 counterparty_name）
+    # 取第一个非空值合并
+    dup_cols = set(c for c in df.columns if list(df.columns).count(c) > 1)
+    for col in dup_cols:
+        cols = [c for c in df.columns if c == col]
+        if len(cols) > 1:
+            df[col] = df[cols].apply(lambda row: next((v for v in row if pd.notna(v) and str(v).strip() != ''), None), axis=1)
+            df = df.loc[:, ~df.columns.duplicated()]
+
     # 清洗数据
     df["self_acct"] = df["self_acct"].apply(lambda x: str(x).strip() if pd.notna(x) else None)
     df["txn_time"] = df["txn_time"].apply(parse_datetime)
