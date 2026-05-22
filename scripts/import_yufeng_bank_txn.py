@@ -54,6 +54,8 @@ COLUMN_MAPPING = {
     "对方单位": "counterparty_name",
     "对方单位名称": "counterparty_name",
     "对方账号": "counterparty_acct",
+    "借方发生额": "out_amt",  # 借 = 扣款（支出）
+    "贷方发生额": "in_amt",   # 贷 = 到账（收入）
     "转入金额": "in_amt",
     "转出金额": "out_amt",
     "余额": "balance_amt",
