@@ -120,6 +120,17 @@ export async function POST(request: Request) {
       }
     }
 
+    // 导入成功后自动触发分类
+    if (!importError && triggerImport && source === 'bank') {
+      try {
+        const schemaPrefix = ['yufeng', 'bonjur'].includes(brand) ? brand : `brand_${brand}`;
+        await pool.query(`SELECT ${schemaPrefix}_dm.refresh_bank_txn_classified_snapshot(NULL)`);
+        importResult += '\n✅ 分类完成';
+      } catch (classifyErr: any) {
+        importError = `分类失败: ${classifyErr.message}`;
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
