@@ -1,0 +1,24 @@
+has_dash_month_param: True
+has_month_values_for_brand: True
+--- snippet ---
+ set at the beginning of main()
+    dash_desc = f"{BRAND_DISPLAY}：概览（收支总揽/支出一级/支出二级/收入二级/趋势）+ 明细下钻（支出/收入明细表）。筛选：月（按月）/门店（下拉）/支出一级/支出二级/收入一级/收入二级/关键词。"
+
+    month_values = month_values_for_brand()
+    dash_month_param = {
+        # 1) Month: month-only picker — populated from brand's actual bank_txn months
+        #    (Fix: without this, the date/month-year filter expands to all years → full table scan → "waiting")
+        "id": PID_MONTH,
+        "name": "Month",
+        "slug": "month_date",
+        "type": "date/month-year",
+        "sectionId": "date",
+        "required": False,
+        "values_source_type": "static-list",
+        "values_source_config": {
+            "values": month_values
+        },
+    }
+    # Set a safe default (latest month) to avoid loading ALL months/years on first render.
+    if month_values:
+        dash_mont

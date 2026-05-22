@@ -1,0 +1,14 @@
+## docker ps
+NAMES                       IMAGE                      STATUS        PORTS
+dataplatform-ui             wdg-data-foundation-ui     Up 18 hours   0.0.0.0:3002->3000/tcp, [::]:3002->3000/tcp
+dataplatform-metabase       metabase/metabase:latest   Up 5 hours    0.0.0.0:8082->3000/tcp, [::]:8082->3000/tcp
+dataplatform-pg-dashboard   postgres:16                Up 42 hours   127.0.0.1:5432->5432/tcp
+
+## find compose file candidates (quick)
+/opt/_sync/wdg-20260327-142857-f624539/repo/docker-compose.dashboard.yml
+/opt/_sync/wdg-20260327-151215/repo/docker-compose.dashboard.yml
+/opt/_sync/wdg-data-foundation-20260326-121322/docker-compose.dashboard.yml
+/opt/_sync/wdg-data-foundation_repo/docker-compose.dashboard.yml
+/opt/_bak/wdg-data-foundation.20260326-123217/docker-compose.dashboard.yml
+/opt/retail-finance.bak.20260325-100516/docker-compose.yml
+/opt/wdg-data-foundation/docker-compose.dashboard.yml

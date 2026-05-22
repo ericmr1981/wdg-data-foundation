@@ -1,0 +1,38 @@
+# env
+.env
+.env.*
+!.env.example
+
+# local private notes
+Account.private.md
+mb_key_*.md
+
+# secrets docs
+/docs/VPS_MIGRATION_SECRETS.md
+/docs/VPS_MIGRATION_PLAN_PRIVATE.md
+
+# local data (never commit real bank files)
+inputs/**
+!inputs/README.md
+
+# local exports/imports
+ops/imports/
+
+# harness backups
+.harness-backup-*/
+
+# local credentials (NEVER commit)
+Account.md
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# node
+node_modules/
+.next/
+*.tsbuildinfo
+
+# mac
+.DS_Store

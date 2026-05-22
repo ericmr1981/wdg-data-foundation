@@ -1,0 +1,33 @@
+Metabase: http://localhost:8082
+Dashboards: 7
+- #1 E-commerce Insights — cards=22 breakdown={'row': 1, 'line': 1, 'gauge': 1, 'map': 1, 'bar': 3, 'combo': 1, 'smartscalar': 1, 'progress': 1, 'pivot': 1, 'pie': 2, 'scatter': 1, 'table': 1, 'funnel': 1, 'area': 1, 'object': 1, 'sankey': 1, 'waterfall': 1, 'boxplot': 1, 'scalar': 1}
+- #4 Bonjur｜营业看板 — cards=5 breakdown={'table': 2, 'line': 1, 'pie': 1, 'bar': 1}
+- #5 Bonjur｜财务看板 — cards=8 breakdown={'table': 3, 'pie': 2, 'bar': 2, 'line': 1}
+- #6 Dashboard — cards=0 breakdown={}
+- #8 蜜可诗｜经营看板 — cards=8 breakdown={'table': 3, 'pie': 2, 'bar': 2, 'line': 1}
+- #9 榆枫与山｜经营看板 — cards=8 breakdown={'table': 3, 'pie': 2, 'bar': 2, 'line': 1}
+- #10 本就｜经营看板 — cards=8 breakdown={'table': 3, 'pie': 2, 'bar': 2, 'line': 1}
+
+Relevant cards: 58
+Orphan relevant cards: 21
+  - card#40 Yufeng｜收支总揽（表） (table)
+  - card#41 Yufeng｜支出一级分类（饼图） (pie)
+  - card#42 Yufeng｜支出二级分类（饼图） (pie)
+  - card#43 Yufeng｜收入二级分类（柱状图） (bar)
+  - card#45 Yufeng｜营业收入 vs 支出（不含营建） (bar)
+  - card#46 Yufeng｜支出一级分类趋势（多线图） (line)
+  - card#47 Yufeng｜门店下拉选项 (table)
+  - card#48 Yufeng｜支出明细（下钻） (table)
+  - card#49 Yufeng｜收入明细（下钻） (table)
+  - card#65 蜜可诗｜经营看板｜支出一级分类（饼图） (pie)
+  - card#66 蜜可诗｜经营看板｜支出二级分类（饼图） (pie)
+  - card#67 蜜可诗｜经营看板｜收入二级分类（柱状图） (bar)
+  - card#68 蜜可诗｜经营看板｜营业收入 vs 支出（不含营建） (bar)
+  - card#69 蜜可诗｜经营看板｜支出一级分类趋势（多线图） (line)
+  - card#70 蜜可诗｜经营看板｜支出明细（下钻） (table)
+  - card#71 蜜可诗｜经营看板｜收入明细（下钻） (table)
+  - card#72 蜜可诗｜经营看板｜门店下拉选项 (table)
+  - card#73 蜜可诗｜经营看板｜收支总揽（表） (table)
+  - card#82 蜜可诗｜门店下拉选项 (table)
+  - card#91 榆枫与山｜门店下拉选项 (table)
+  - card#100 本就｜门店下拉选项 (table)

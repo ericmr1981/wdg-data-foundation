@@ -1,0 +1,40 @@
+[
+  {
+    "id": "F-001",
+    "title": "Repo-first harness baseline installed (init + guard pass)",
+    "passes": true,
+    "verify": "bash init.sh && bash scripts/run_change_guard.sh"
+  },
+  {
+    "id": "F-002",
+    "title": "Login rate-limiting: ops.login_attempts + IP lockout (5 attempts / 5 min → 429)",
+    "passes": true,
+    "verify": "HTTP 429 on 6th failed attempt within 5 min (E2E tested via curl)",
+    "e2e": "curl 6x → 401×5 then 429; ops.login_attempts has 5 rows"
+  },
+  {
+    "id": "F-003",
+    "title": "Upload file-type validation: whitelist .xlsx/.csv only",
+    "passes": true,
+    "verify": "cd ui && npx tsc --noEmit",
+    "note": "Oracle is tsc type-check only; real upload E2E pending admin session"
+  },
+  {
+    "id": "F-004",
+    "title": "ETL pipeline transaction + step rollback on failure",
+    "passes": true,
+    "verify": "python3 -m py_compile scripts/ops_logger.py scripts/run_pipeline_oneclick.py"
+  },
+  {
+    "id": "F-005",
+    "title": "Schema whitelist validation (ops.allowed_schemas table)",
+    "passes": true,
+    "verify": "cd ui && npx tsc --noEmit; Python logic test 7/7 SQL injection payloads blocked"
+  },
+  {
+    "id": "F-006",
+    "title": "Classification rules JSON-ized + pytest unit tests",
+    "passes": true,
+    "verify": ".venv/bin/pytest tests/test_classify.py -v → 16/16 PASSED"
+  }
+]

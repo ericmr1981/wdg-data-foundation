@@ -1,0 +1,6 @@
+# WDG Data Foundation (local dev)
+# Keep this minimal and portable.
+
+pandas>=2.2
+openpyxl>=3.1
+psycopg2-binary>=2.9
