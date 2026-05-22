@@ -5,14 +5,17 @@ import { useBrand } from '@/lib/brand-context';
 import ProfitStatement from './profit/profit-tab';
 import CashflowStatement from './cashflow/cashflow-tab';
 import BalanceSheet from './balance-sheet/balance-sheet-tab';
+import OverviewPanel from './overview-panel';
+import CounterpartyTab from './counterparty/counterparty-tab';
 
-type TabId = 'profit' | 'cashflow' | 'balance-sheet';
+type TabId = 'profit' | 'cashflow' | 'balance-sheet' | 'counterparty';
 type SpanId = 'month' | 'quarter' | 'year';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'profit', label: '利润表' },
   { id: 'cashflow', label: '现金流量表' },
   { id: 'balance-sheet', label: '资产负债表' },
+  { id: 'counterparty', label: '付款分析' },
 ];
 
 function useStores(brand: string) {
@@ -60,6 +63,7 @@ export default function FinancialLayout() {
       case 'profit': return <ProfitStatement {...props} />;
       case 'cashflow': return <CashflowStatement {...props} />;
       case 'balance-sheet': return <BalanceSheet {...props} />;
+      case 'counterparty': return <CounterpartyTab {...props} />;
     }
   };
 
@@ -105,6 +109,14 @@ export default function FinancialLayout() {
           </select>
         </div>
       </div>
+
+      {/* 收付实现制声明 */}
+      <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+        <strong>披露声明：</strong>本报表基于银行流水按<strong>收付实现制（现金收付基础）</strong>编制，与按企业会计准则要求以权责发生制编制的法定财务报表存在差异。本报表不构成完整的会计核算，仅供参考。主要差异包括但不限于：不包含应收账款/应付账款、存货、固定资产折旧等权责发生制调整项目。
+      </div>
+
+      {/* 经营概览 */}
+      <OverviewPanel brand={brand} period={period} span={span} store={store} />
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
