@@ -29,45 +29,45 @@ function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: 
   const otherExpense = [...hr, ...rentUtil, ...mkt, ...admin, ...build, ...expOther];
 
   const sumAmount = (items: typeof raw) => items.reduce((s, r) => s + Number(r.amount), 0);
+  const totalSigned = (items: typeof raw) => items.reduce((s, r) => s + Number(r.amount), 0);
 
   const revenueAmt = sumAmount(revenue);
   const otherIncomeAmt = sumAmount(otherIncome);
-  const costAmt = sumAmount(material) + sumAmount(shipping);
-  const totalExpenseAmt = sumAmount(otherExpense);
+  const costSigned = totalSigned(material);           // negative
+  const expenseSigned = totalSigned([...otherExpense, ...shipping]);  // negative
+  const costDisplay = Math.abs(costSigned);
+  const expenseDisplay = Math.abs(expenseSigned);
 
   lines.push({ section: 'revenue', label: '一、营业收入', amount: revenueAmt, indent: 0, is_subtotal: false, is_highlight: false });
   for (const r of revenue) {
     lines.push({ section: 'revenue_detail', label: `  ${r.lvl2_name}`, amount: Number(r.amount), indent: 1, is_subtotal: false, is_highlight: false });
   }
-  if (otherIncome.length > 0) {
-    lines.push({ section: 'revenue', label: '二、其他收入', amount: otherIncomeAmt, indent: 0, is_subtotal: false, is_highlight: false });
-    for (const r of otherIncome) {
-      lines.push({ section: 'revenue_detail', label: `  ${r.lvl2_name}`, amount: Number(r.amount), indent: 1, is_subtotal: false, is_highlight: false });
-    }
-  }
-  lines.push({ section: 'revenue', label: '收入合计', amount: revenueAmt + otherIncomeAmt, indent: 0, is_subtotal: true, is_highlight: false });
+  lines.push({ section: 'revenue', label: '营业收入合计', amount: revenueAmt, indent: 0, is_subtotal: true, is_highlight: false });
 
-  lines.push({ section: 'cost', label: '三、营业成本', amount: costAmt, indent: 0, is_subtotal: false, is_highlight: false });
+  lines.push({ section: 'cost', label: '二、营业成本', amount: costDisplay, indent: 0, is_subtotal: false, is_highlight: false });
   for (const r of material) {
-    lines.push({ section: 'cost_detail', label: `  材料采购 - ${r.lvl2_name}`, amount: Number(r.amount), indent: 1, is_subtotal: false, is_highlight: false });
+    lines.push({ section: 'cost_detail', label: `  材料采购 - ${r.lvl2_name}`, amount: Math.abs(Number(r.amount)), indent: 1, is_subtotal: false, is_highlight: false });
+  }
+  lines.push({ section: 'cost', label: '营业成本合计', amount: costDisplay, indent: 0, is_subtotal: true, is_highlight: false });
+
+  // amount is already signed: revenue=positive, cost/expense=negative → use addition
+  const grossProfit = revenueAmt + costSigned;
+  lines.push({ section: 'gross_profit', label: '三、毛利', amount: grossProfit, indent: 0, is_subtotal: false, is_highlight: true });
+
+  lines.push({ section: 'expense', label: '四、期间费用', amount: expenseDisplay, indent: 0, is_subtotal: false, is_highlight: false });
+  for (const r of otherExpense) {
+    lines.push({ section: 'expense_detail', label: `  ${r.lvl1_name} - ${r.lvl2_name}`, amount: Math.abs(Number(r.amount)), indent: 1, is_subtotal: false, is_highlight: false });
   }
   for (const r of shipping) {
-    lines.push({ section: 'cost_detail', label: `  运费 - ${r.lvl2_name}`, amount: Number(r.amount), indent: 1, is_subtotal: false, is_highlight: false });
+    lines.push({ section: 'expense_detail', label: `  运费 - ${r.lvl2_name}`, amount: Math.abs(Number(r.amount)), indent: 1, is_subtotal: false, is_highlight: false });
   }
-  lines.push({ section: 'cost', label: '营业成本合计', amount: costAmt, indent: 0, is_subtotal: true, is_highlight: false });
+  lines.push({ section: 'expense', label: '期间费用合计', amount: expenseDisplay, indent: 0, is_subtotal: true, is_highlight: false });
 
-  const grossProfit = (revenueAmt + otherIncomeAmt) - costAmt;
-  lines.push({ section: 'gross_profit', label: '毛利', amount: grossProfit, indent: 0, is_subtotal: false, is_highlight: true });
+  const operatingProfit = grossProfit + expenseSigned + otherIncomeAmt;
+  lines.push({ section: 'operating_profit', label: '五、营业利润', amount: operatingProfit, indent: 0, is_subtotal: false, is_highlight: true });
 
-  lines.push({ section: 'expense', label: '四、期间费用', amount: totalExpenseAmt, indent: 0, is_subtotal: false, is_highlight: false });
-  for (const r of otherExpense) {
-    lines.push({ section: 'expense_detail', label: `  ${r.lvl1_name} - ${r.lvl2_name}`, amount: Number(r.amount), indent: 1, is_subtotal: false, is_highlight: false });
-  }
-  lines.push({ section: 'expense', label: '期间费用合计', amount: totalExpenseAmt, indent: 0, is_subtotal: true, is_highlight: false });
-
-  const netProfit = grossProfit - totalExpenseAmt;
-  const netProfitLabel = netProfit >= 0 ? '净利润' : '净亏损';
-  lines.push({ section: 'net_profit', label: `五、${netProfitLabel}`, amount: netProfit, indent: 0, is_subtotal: false, is_highlight: true });
+  const netProfitLabel = operatingProfit >= 0 ? '净利润' : '净亏损';
+  lines.push({ section: 'net_profit', label: `六、${netProfitLabel}`, amount: operatingProfit, indent: 0, is_subtotal: false, is_highlight: true });
 
   return lines;
 }
