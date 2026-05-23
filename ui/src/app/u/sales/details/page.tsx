@@ -43,6 +43,7 @@ export default function SalesDetailsPage() {
   const [page, setPage] = useState(1);
   const [cashData, setCashData] = useState<CashRegisterRow[]>([]);
   const [productData, setProductData] = useState<ProductRow[]>([]);
+  const [distribution, setDistribution] = useState<{ range: string; count: number }[]>([]);
   const [hourlyData, setHourlyData] = useState<{ order_hour: string; order_cnt: number }[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -72,25 +73,14 @@ export default function SalesDetailsPage() {
       .then(r => r.json())
       .then(j => { if (j.success) setHourlyData(j.data || []); })
       .catch(() => {});
+    fetch('/api/gelatomiiix/sales/distribution?store_code=' + storeCode + '&month=' + month)
+      .then(r => r.json())
+      .then(j => { if (j.success) setDistribution(j.data || []); })
+      .catch(() => {});
   }, [storeCode, month]);
 
   const totalPages = Math.ceil(total / limit);
 
-  // Compute order amount distribution (20-yuan buckets)
-  const maxAmt = Math.max(...cashData.map(r => Number(r.gross_amt)), 0);
-  const bucketSize = 20;
-  const bucketCount = Math.ceil(maxAmt / bucketSize);
-  const buckets = Array.from({ length: bucketCount + 1 }, (_, i) => i * bucketSize);
-  const distribution = buckets.map((min, i) => {
-    if (i >= buckets.length - 1) return null;
-    const max = buckets[i + 1];
-    const label = `¥${min}-${max}`;
-    const count = cashData.filter(r => {
-      const amt = Number(r.gross_amt);
-      return amt >= min && amt < max;
-    }).length;
-    return { range: label, count };
-  }).filter((d): d is { range: string; count: number } => d !== null && d.count > 0);
 
 
   return (
