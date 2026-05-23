@@ -29,8 +29,7 @@ services:
 
   ui:
     build:
-      context: .
-      dockerfile: ui/Dockerfile
+      context: ./ui
     container_name: dataplatform-ui
     depends_on:
       - postgres
@@ -40,7 +39,9 @@ services:
       DB_NAME: ${DB_NAME:-dataplatform}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
-      SCRIPTS_DIR: /app/scripts
+      SCRIPTS_DIR: /scripts
+    volumes:
+      - ./scripts:/scripts
     ports:
       - "${UI_PORT:-3002}:3000"
     restart: unless-stopped

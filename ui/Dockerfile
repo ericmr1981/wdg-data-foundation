@@ -6,14 +6,14 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
-COPY ui/package.json ui/package-lock.json ./
+COPY package.json package-lock.json ./
 RUN npm ci
 
 FROM node:20-alpine AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
-COPY ui/ .
+COPY . .
 RUN npm run build
 
 FROM node:20-alpine AS runner
@@ -33,7 +33,6 @@ RUN sed -i 's#https\?://dl-cdn.alpinelinux.org#https://mirrors.aliyun.com#g' /et
       py3-openpyxl
 
 COPY --from=builder /app .
-COPY scripts /app/scripts
 
 EXPOSE 3000
 CMD ["npm","run","start","--","-p","3000","-H","0.0.0.0"]
