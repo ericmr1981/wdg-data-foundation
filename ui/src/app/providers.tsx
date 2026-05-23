@@ -36,6 +36,7 @@ function BrandSelector() {
 
 function NavBar() {
   const [me, setMe] = useState<{ username: string; role: string } | null>(null);
+  const [adminOpen, setAdminOpen] = useState(false);
   const pathname = usePathname();
 
   useEffect(() => {
@@ -59,6 +60,12 @@ function NavBar() {
       });
   }, [pathname]);
 
+  useEffect(() => {
+    function handleClick() { setAdminOpen(false); }
+    if (adminOpen) document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, [adminOpen]);
+
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
     window.location.href = '/login';
@@ -69,35 +76,37 @@ function NavBar() {
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex justify-between h-14">
           <div className="flex space-x-8 items-center">
-            <Link href="/" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-900 hover:text-blue-600">
+            <Link href="/u" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-900 hover:text-blue-600">
               首页
             </Link>
-            <Link href="/pipeline" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
-              Pipeline 监控
-            </Link>
-            <Link href="/rules" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
-              规则管理
-            </Link>
-            <Link href="/match" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
-              人工匹配
-            </Link>
-            <Link href="/upload" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
-              文件上传
-            </Link>
-            <Link href="/financial" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
+            <Link href="/u/financial" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
               财务报表
             </Link>
-            <Link href="/payment" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
+            <Link href="/u/payment" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
               付款分析
             </Link>
-            <Link href="/income" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
+            <Link href="/u/income" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
               收入分析
             </Link>
 
             {me?.role === 'admin' && (
-              <Link href="/admin/config" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
-                配置
-              </Link>
+              <div className="relative">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setAdminOpen((v) => !v); }}
+                  className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600"
+                >
+                  管理 ▼
+                </button>
+                {adminOpen && (
+                  <div className="absolute left-0 top-full mt-1 w-40 bg-white border rounded shadow-lg z-50">
+                    <Link href="/admin/pipeline" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Pipeline 监控</Link>
+                    <Link href="/admin/rules" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">规则管理</Link>
+                    <Link href="/admin/match" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">人工匹配</Link>
+                    <Link href="/admin/upload" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">文件上传</Link>
+                    <Link href="/admin/config" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">配置</Link>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
