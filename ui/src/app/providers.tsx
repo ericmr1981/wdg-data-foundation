@@ -37,6 +37,7 @@ function BrandSelector() {
 function NavBar() {
   const [me, setMe] = useState<{ username: string; role: string } | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [salesOpen, setSalesOpen] = useState(false);
   const pathname = usePathname();
 
   useEffect(() => {
@@ -61,10 +62,10 @@ function NavBar() {
   }, [pathname]);
 
   useEffect(() => {
-    function handleClick() { setAdminOpen(false); }
-    if (adminOpen) document.addEventListener('click', handleClick);
+    function handleClick() { setAdminOpen(false); setSalesOpen(false); }
+    if (adminOpen || salesOpen) document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
-  }, [adminOpen]);
+  }, [adminOpen, salesOpen]);
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -88,9 +89,20 @@ function NavBar() {
             <Link href="/u/income" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
               收入分析
             </Link>
-            <Link href="/u/sales" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
-              销售报表
-            </Link>
+            <div className="relative">
+              <button
+                onClick={(e) => { e.stopPropagation(); setSalesOpen((v) => !v); }}
+                className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600"
+              >
+                销售数据 ▼
+              </button>
+              {salesOpen && (
+                <div className="absolute left-0 top-full mt-1 w-36 bg-white border rounded shadow-lg z-50">
+                  <Link href="/u/sales" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">销售报表</Link>
+                  <Link href="/u/sales/details" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">销售明细</Link>
+                </div>
+              )}
+            </div>
 
             {me?.role === 'admin' && (
               <div className="relative">
