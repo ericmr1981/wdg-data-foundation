@@ -6,6 +6,7 @@ import { useBrand } from '@/lib/brand-context';
 interface CounterpartySummary {
   counterparty_name: string;
   total_paid: number;
+  total_received?: number;
   txn_count: number;
   first_date: string;
   last_date: string;
@@ -117,9 +118,9 @@ export default function PaymentPage() {
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(t);
     }
-    for (const [month, items] of map) {
+    map.forEach((items, month) => {
       groups.push({ month, items, total: items.reduce((s, i) => s + Number(i.amount || 0), 0) });
-    }
+    });
     groups.sort((a, b) => b.month.localeCompare(a.month));
     return groups;
   }, [txns]);

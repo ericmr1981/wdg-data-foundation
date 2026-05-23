@@ -95,13 +95,13 @@ export default function CounterpartyTab({ brand, period, span, store }: Counterp
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(t);
     }
-    for (const [month, items] of map) {
+    map.forEach((items, month) => {
       groups.push({
         month,
         items,
         total: items.reduce((s, i) => s + Number(i.out_amt || 0), 0)
       });
-    }
+    });
     groups.sort((a, b) => b.month.localeCompare(a.month));
     return groups;
   }, [txns]);
