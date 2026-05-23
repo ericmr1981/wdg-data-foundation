@@ -128,7 +128,7 @@ export default function SalesDetailsPage() {
               <BarChart data={distribution}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="range" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} tickCount={5} />
                 <Tooltip />
                 <Bar dataKey="count" name="订单数" fill="#2563eb" />
               </BarChart>
@@ -139,7 +139,7 @@ export default function SalesDetailsPage() {
             <ResponsiveContainer width="100%" height={150}>
               <LineChart data={dailyOrderData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="biz_date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => v.slice(5)} />
+                <XAxis dataKey="biz_date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => v.slice(0, 10).slice(5)} />
                 <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip />
                 <Line type="monotone" dataKey="count" name="订单数" stroke="#2563eb" strokeWidth={2} dot={false} />
