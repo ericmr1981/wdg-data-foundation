@@ -86,13 +86,16 @@ export default function PaymentPage() {
       .finally(() => setMetricsLoading(false));
   }, [brand, period, span, store]);
 
-  // Fetch counterparty list
+  // Fetch counterparty list (filtered by period/span/store)
   useEffect(() => {
     async function fetchList() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/financial/counterparty?brand=${brand}`);
+        const params = new URLSearchParams({ brand });
+        if (period !== 'all') { params.set('period', period); params.set('span', span); }
+        if (store !== 'all') params.set('store', store);
+        const res = await fetch(`/api/financial/counterparty?${params}`);
         const json = await res.json();
         if (json.success) setCounterparties(json.data.counterparties || []);
         else setError(json.error);
@@ -103,7 +106,7 @@ export default function PaymentPage() {
       }
     }
     fetchList();
-  }, [brand]);
+  }, [brand, period, span, store]);
 
   // Fetch detail when counterparty selected
   useEffect(() => {

@@ -29,6 +29,30 @@ export async function GET(request: Request) {
 
     // If no counterparty specified, return the list
     if (!counterparty) {
+      const isAll = period === 'all';
+      if (!isAll) {
+        if (!['month', 'quarter', 'year'].includes(span)) {
+          return NextResponse.json({ success: false, error: 'Invalid span' }, { status: 400 });
+        }
+        const boundaries = parsePeriod(period, span);
+        if (!boundaries) {
+          return NextResponse.json({ success: false, error: 'Invalid period format' }, { status: 400 });
+        }
+      }
+
+      const params: (string | number)[] = [];
+      let storeClause = '';
+      let dateClause = '';
+      if (store !== 'all') {
+        storeClause = 'AND t.store_code = $' + (params.length + 1);
+        params.push(store);
+      }
+      if (!isAll) {
+        const boundaries = parsePeriod(period, span)!;
+        dateClause = 'AND t.txn_time >= $' + (params.length + 1) + '::timestamp AND t.txn_time < $' + (params.length + 2) + '::timestamp';
+        params.push(boundaries[0], boundaries[1]);
+      }
+
       const isIn = direction === 'in';
       const amountField = isIn ? 'in_amt' : 'out_amt';
       const totalField = isIn ? 'total_received' : 'total_paid';
@@ -47,6 +71,8 @@ export async function GET(request: Request) {
         JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
         WHERE c.classified_source IN ('rule', 'override')
           AND coalesce(t.${amountField}, 0) > 0
+          ${dateClause}
+          ${storeClause}
         GROUP BY CASE
                    WHEN t.counterparty_name IS NOT NULL AND t.counterparty_name != '' THEN t.counterparty_name
                    WHEN t.purpose IS NOT NULL AND t.purpose != '' AND t.purpose != 'NaN' THEN t.purpose
@@ -55,7 +81,7 @@ export async function GET(request: Request) {
                  END
         ORDER BY ${totalField} DESC
       `;
-      const result = await pool.query(listQuery);
+      const result = await pool.query(listQuery, params);
       return NextResponse.json({ success: true, data: { counterparties: result.rows } });
     }
 
