@@ -6,16 +6,14 @@ import ProfitStatement from './profit/profit-tab';
 import CashflowStatement from './cashflow/cashflow-tab';
 import BalanceSheet from './balance-sheet/balance-sheet-tab';
 import OverviewPanel from './overview-panel';
-import CounterpartyTab from './counterparty/counterparty-tab';
 
-type TabId = 'profit' | 'cashflow' | 'balance-sheet' | 'counterparty';
+type TabId = 'profit' | 'cashflow' | 'balance-sheet';
 type SpanId = 'month' | 'quarter' | 'year';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'profit', label: '利润表' },
   { id: 'cashflow', label: '现金流量表' },
   { id: 'balance-sheet', label: '资产负债表' },
-  { id: 'counterparty', label: '付款分析' },
 ];
 
 function useStores(brand: string) {
@@ -63,7 +61,6 @@ export default function FinancialLayout() {
       case 'profit': return <ProfitStatement {...props} />;
       case 'cashflow': return <CashflowStatement {...props} />;
       case 'balance-sheet': return <BalanceSheet {...props} />;
-      case 'counterparty': return <CounterpartyTab {...props} />;
     }
   };
 
