@@ -43,6 +43,7 @@ export default function SalesDetailsPage() {
   const [page, setPage] = useState(1);
   const [cashData, setCashData] = useState<CashRegisterRow[]>([]);
   const [productData, setProductData] = useState<ProductRow[]>([]);
+  const [hourlyData, setHourlyData] = useState<{ order_hour: string; order_cnt: number }[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const limit = 50;
@@ -64,6 +65,13 @@ export default function SalesDetailsPage() {
       setTotal(json.total);
     }
     setLoading(false);
+
+  useEffect(() => {
+    fetch('/api/gelatomiiix/sales/hourly?store_code=' + storeCode + '&month=' + month)
+      .then(r => r.json())
+      .then(j => { if (j.success) setHourlyData(j.data || []); })
+      .catch(() => {});
+  }, [storeCode, month]);
   }
 
   const totalPages = Math.ceil(total / limit);
@@ -84,14 +92,6 @@ export default function SalesDetailsPage() {
     return { range: label, count };
   }).filter((d): d is { range: string; count: number } => d !== null && d.count > 0);
 
-  // Compute daily order count
-  const dailyOrders = cashData.reduce<Record<string, number>>((acc, r) => {
-    acc[r.biz_date] = (acc[r.biz_date] || 0) + 1;
-    return acc;
-  }, {});
-  const dailyOrderData = Object.entries(dailyOrders)
-    .map(([biz_date, count]) => ({ biz_date, count }))
-    .sort((a, b) => a.biz_date.localeCompare(b.biz_date));
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -139,15 +139,15 @@ export default function SalesDetailsPage() {
             </ResponsiveContainer>
           </div>
           <div className="bg-white border rounded-lg p-4">
-            <h3 className="font-semibold mb-2 text-sm">每日订单数</h3>
+            <h3 className="font-semibold mb-2 text-sm">时段订单分布</h3>
             <ResponsiveContainer width="100%" height={150}>
-              <LineChart data={dailyOrderData}>
+              <BarChart data={hourlyData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="biz_date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => { const d = v.slice(0, 10); return d.slice(5); }} interval={0} angle={-45} textAnchor="end" height={50} />
+                <XAxis dataKey="order_hour" tick={{ fontSize: 10 }} />
                 <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip />
-                <Line type="monotone" dataKey="count" name="订单数" stroke="#2563eb" strokeWidth={2} dot={false} />
-              </LineChart>
+                <Bar dataKey="order_cnt" name="订单数" fill="#2563eb" />
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </div>

@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS gelatomiiix_ods.product_sales_detail (
   sales_amt       NUMERIC(14,2),
   received_amt    NUMERIC(14,2),
   discount_amt    NUMERIC(14,2),
+  order_hour      TEXT,
 
   source_file_id  BIGINT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
