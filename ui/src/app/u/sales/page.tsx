@@ -74,6 +74,7 @@ export default function SalesReportPage() {
   const [storeCode, setStoreCode] = useState('sh_xtd');
   const [month, setMonth] = useState('2026-04');
   const [paymentMethod, setPaymentMethod] = useState('');
+  const [pureMode, setPureMode] = useState(false);
 
   const [kpi, setKpi] = useState<KpiData | null>(null);
   const [daily, setDaily] = useState<DailyData[]>([]);
@@ -87,11 +88,12 @@ export default function SalesReportPage() {
     fetchProducts();
     fetchChannels();
     fetchTrend();
-  }, [storeCode, month, paymentMethod]);
+  }, [storeCode, month, paymentMethod, pureMode]);
 
   async function fetchOverview() {
     const params = new URLSearchParams({ store_code: storeCode, month });
     if (paymentMethod) params.set('payment_method', paymentMethod);
+    if (pureMode) params.set('pure_mode', 'true');
     const res = await fetch(`/api/gelatomiiix/sales/overview?${params}`);
     const json = await res.json();
     if (json.success && json.data) {
@@ -108,7 +110,9 @@ export default function SalesReportPage() {
   }
 
   async function fetchChannels() {
-    const res = await fetch(`/api/gelatomiiix/sales/channels?store_code=${storeCode}&month=${month}`);
+    const params = new URLSearchParams({ store_code: storeCode, month });
+    if (pureMode) params.set('pure_mode', 'true');
+    const res = await fetch(`/api/gelatomiiix/sales/channels?${params}`);
     const json = await res.json();
     if (json.success) setChannels(json.data || []);
   }
@@ -140,6 +144,11 @@ export default function SalesReportPage() {
           className="border rounded px-3 py-1.5 text-sm">
           {PAYMENT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
+        <label className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
+          <input type="checkbox" checked={pureMode} onChange={e => setPureMode(e.target.checked)}
+            className="rounded border-gray-300" />
+          纯净版
+        </label>
       </div>
 
       {kpi && (

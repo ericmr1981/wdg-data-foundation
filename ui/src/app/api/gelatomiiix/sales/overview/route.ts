@@ -10,10 +10,13 @@ export async function GET(request: NextRequest) {
     const storeCode = searchParams.get('store_code');
     const month = searchParams.get('month');
     const paymentMethod = searchParams.get('payment_method');
+    const pureMode = searchParams.get('pure_mode') === 'true';
 
     if (!storeCode || !month) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
+
+    const excludeCustom = pureMode ? `AND payment_method != '自定义结账方式'` : '';
 
     const kpiResult = await pool.query(`
       SELECT
@@ -30,6 +33,7 @@ export async function GET(request: NextRequest) {
       WHERE store_code = $1
         AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
         AND ($3::text IS NULL OR payment_method = $3)
+        ${excludeCustom}
     `, [storeCode, `${month}-01`, paymentMethod || null]);
 
     const dailyResult = await pool.query(`
@@ -42,6 +46,7 @@ export async function GET(request: NextRequest) {
       WHERE store_code = $1
         AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
         AND ($3::text IS NULL OR payment_method = $3)
+        ${excludeCustom}
       GROUP BY biz_date
       ORDER BY biz_date
     `, [storeCode, `${month}-01`, paymentMethod || null]);
@@ -54,6 +59,7 @@ export async function GET(request: NextRequest) {
       WHERE store_code = $1
         AND DATE_TRUNC('month', biz_date)::DATE = ($2::DATE - INTERVAL '1 month')::DATE
         AND ($3::text IS NULL OR payment_method = $3)
+        ${excludeCustom}
     `, [storeCode, `${month}-01`, paymentMethod || null]);
 
     return NextResponse.json({

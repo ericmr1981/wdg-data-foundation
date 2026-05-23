@@ -16,10 +16,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const storeCode = searchParams.get('store_code');
     const month = searchParams.get('month');
+    const pureMode = searchParams.get('pure_mode') === 'true';
 
     if (!storeCode || !month) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
+
+    const excludeCustom = pureMode ? `AND payment_method != '自定义结账方式'` : '';
 
     const result = await pool.query(`
       SELECT
@@ -29,6 +32,7 @@ export async function GET(request: NextRequest) {
         SUM(COALESCE(revenue_amt,0)) AS revenue_amt
       FROM gelatomiiix_ods.cash_register_detail
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
+        ${excludeCustom}
       GROUP BY payment_method
       ORDER BY gross_amt DESC
     `, [storeCode, `${month}-01`]);
