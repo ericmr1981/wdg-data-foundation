@@ -92,8 +92,7 @@ export default function PaymentPage() {
       setLoading(true);
       setError(null);
       try {
-        const params = new URLSearchParams({ brand });
-        if (period !== 'all') { params.set('period', period); params.set('span', span); }
+        const params = new URLSearchParams({ brand, period, span });
         if (store !== 'all') params.set('store', store);
         const res = await fetch(`/api/financial/counterparty?${params}`);
         const json = await res.json();
