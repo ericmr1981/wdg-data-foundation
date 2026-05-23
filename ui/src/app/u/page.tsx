@@ -15,6 +15,17 @@ interface StoreRow {
   latest_txn: string | null;
 }
 
+interface DataSource {
+  schema: string;
+  table: string;
+  rows: number;
+  latest_at: string | null;
+}
+
+const EXTRA_SOURCES: Record<string, string[]> = {
+  gelatomiiix: ['cash_register_detail', 'product_sales_detail'],
+};
+
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
@@ -25,9 +36,8 @@ export default async function HomePage() {
     FROM ops.brands b WHERE b.enabled = true ORDER BY b.sort_order NULLS LAST, b.brand_code
   `)).rows;
 
-  // Get stores with their latest transaction time from the correct ODS schema
+  // Get stores with their latest bank transaction time
   const stores: StoreRow[] = [];
-
   for (const brand of brands) {
     const odsSchema = `${brand.schema_prefix}_ods`;
     try {
@@ -40,15 +50,37 @@ export default async function HomePage() {
       `, [brand.brand_code]);
       stores.push(...res.rows);
     } catch {
-      stores.push({
-        store_code: '', store_name: '', brand_code: brand.brand_code, latest_txn: null
-      });
+      stores.push({ store_code: '', store_name: '', brand_code: brand.brand_code, latest_txn: null });
+    }
+  }
+
+  // Get extra data sources for each brand
+  const allSources: DataSource[] = [];
+  for (const brand of brands) {
+    const tables = EXTRA_SOURCES[brand.brand_code] || [];
+    for (const table of tables) {
+      try {
+        const schema = `${brand.brand_code}_ods`;
+        const res = await pool.query(`
+          SELECT count(*)::int as rows,
+            (SELECT MAX(COALESCE(biz_date::text, created_at::text)) FROM ${sanitizeSchema(schema)}.${sanitizeSchema(table)}) as latest_at
+          FROM ${sanitizeSchema(schema)}.${sanitizeSchema(table)}
+        `);
+        allSources.push({
+          schema, table,
+          rows: res.rows[0]?.rows || 0,
+          latest_at: res.rows[0]?.latest_at || null,
+        });
+      } catch {
+        // table might not exist
+      }
     }
   }
 
   const grouped = brands.map(brand => ({
     ...brand,
     stores: stores.filter(s => s.brand_code === brand.brand_code),
+    sources: allSources.filter(s => s.schema.startsWith(brand.brand_code)),
   }));
 
   return (
@@ -68,11 +100,13 @@ export default async function HomePage() {
               )}
             </span>
           </div>
-          <table className="w-full text-sm">
+
+          {/* 银行流水 */}
+          <table className="w-full text-sm mb-4">
             <thead>
               <tr className="border-b text-left text-gray-500">
-                <th className="py-2 font-medium w-1/2">门店</th>
-                <th className="py-2 font-medium">最近流水时间</th>
+                <th className="py-2 font-medium">门店</th>
+                <th className="py-2 font-medium">最近银行流水</th>
               </tr>
             </thead>
             <tbody>
@@ -91,6 +125,30 @@ export default async function HomePage() {
               )}
             </tbody>
           </table>
+
+          {/* 其他数据源 */}
+          {brand.sources.length > 0 && (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-gray-500">
+                  <th className="py-2 font-medium">数据表</th>
+                  <th className="py-2 font-medium">记录数</th>
+                  <th className="py-2 font-medium">最新数据时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                {brand.sources.map(src => (
+                  <tr key={src.table} className="border-b last:border-0">
+                    <td className="py-2.5">{src.table === 'cash_register_detail' ? '收银明细' : src.table === 'product_sales_detail' ? '产品销售明细' : src.table}</td>
+                    <td className="py-2.5 text-gray-600">{src.rows.toLocaleString()}</td>
+                    <td className="py-2.5 text-gray-600">
+                      {src.latest_at ? new Date(src.latest_at).toLocaleString('zh-CN') : '暂无数据'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       ))}
     </div>
