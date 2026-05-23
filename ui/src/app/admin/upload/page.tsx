@@ -196,7 +196,7 @@ export default function UploadPage() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="mt-1 block w-full border border-dashed border-gray-300 rounded-md px-4 py-3 text-sm text-gray-600 hover:border-blue-400 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 transition-colors"
+              className="mt-1 block w-full border border-dashed border-gray-300 rounded-md px-4 py-3 text-sm text-gray-600 hover:border-blue-400 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 transition-colors cursor-pointer"
             >
               {file ? file.name : '点击选择文件...'}
             </button>
