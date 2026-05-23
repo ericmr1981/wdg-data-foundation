@@ -28,6 +28,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: result.rows });
   } catch (error: unknown) {
+    const pgError = error as Record<string, string>;
+    if (pgError?.code === '42P01') {
+      return NextResponse.json({ success: true, data: null, note: 'view not ready' });
+    }
     return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
   }
 }

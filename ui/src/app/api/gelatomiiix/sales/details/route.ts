@@ -12,7 +12,9 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type') || 'cash_register';
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '50', 10);
-    const offset = (page - 1) * limit;
+    const safeLimit = Math.min(Math.max(limit, 1), 500);
+    const safePage = Math.max(page, 1);
+    const offset = (safePage - 1) * safeLimit;
 
     if (!storeCode || !month) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
@@ -31,13 +33,13 @@ export async function GET(request: NextRequest) {
         WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
         ORDER BY biz_date, order_no
         LIMIT $3 OFFSET $4
-      `, [storeCode, `${month}-01`, limit, offset]);
+      `, [storeCode, `${month}-01`, safeLimit, offset]);
 
       return NextResponse.json({
         success: true,
         data: dataResult.rows,
         total: parseInt(countResult.rows[0].total, 10),
-        page, limit,
+        page: safePage, limit: safeLimit,
       });
     }
 
@@ -53,15 +55,19 @@ export async function GET(request: NextRequest) {
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
       ORDER BY biz_date DESC, order_no
       LIMIT $3 OFFSET $4
-    `, [storeCode, `${month}-01`, limit, offset]);
+    `, [storeCode, `${month}-01`, safeLimit, offset]);
 
     return NextResponse.json({
       success: true,
       data: dataResult.rows,
       total: parseInt(countResult.rows[0].total, 10),
-      page, limit,
+      page: safePage, limit: safeLimit,
     });
   } catch (error: unknown) {
+    const pgError = error as Record<string, string>;
+    if (pgError?.code === '42P01') {
+      return NextResponse.json({ success: true, data: null, note: 'view not ready' });
+    }
     return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
   }
 }

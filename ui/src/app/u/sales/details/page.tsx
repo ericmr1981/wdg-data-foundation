@@ -162,6 +162,7 @@ export default function SalesDetailsPage() {
                   <th className="text-right p-3">单价</th>
                   <th className="text-right p-3">数量</th>
                   <th className="text-right p-3">销售额</th>
+                  <th className="text-right p-3">优惠</th>
                   <th className="text-right p-3">实收</th>
                 </>
               )}
@@ -184,6 +185,7 @@ export default function SalesDetailsPage() {
                 <td className="p-3 text-right">¥{Number(row.unit_price).toFixed(2)}</td>
                 <td className="p-3 text-right">{row.qty}</td>
                 <td className="p-3 text-right">¥{Number(row.sales_amt).toFixed(2)}</td>
+                <td className="p-3 text-right">¥{Number(row.discount_amt || 0).toFixed(2)}</td>
                 <td className="p-3 text-right">¥{Number(row.received_amt).toFixed(2)}</td>
               </tr>
             ))}

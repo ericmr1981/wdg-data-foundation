@@ -88,6 +88,9 @@ function NavBar() {
             <Link href="/u/income" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
               收入分析
             </Link>
+            <Link href="/u/sales" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
+              销售报表
+            </Link>
 
             {me?.role === 'admin' && (
               <div className="relative">
