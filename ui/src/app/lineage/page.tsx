@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useBrand } from '@/lib/brand-context';
-import { getCfgSchema, getDmSchema, getOdsSchema } from '@/lib/brand-server';
+import { getCfgSchema, getDmSchema, getOdsSchema } from '@/lib/brand-schema';
 import { getLineageGraph, type LineageNode } from '@/lib/lineage-manifest';
 
 type PipelineStepRun = {
