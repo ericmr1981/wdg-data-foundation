@@ -133,6 +133,7 @@ def transform(df: pd.DataFrame) -> list[dict]:
             'sales_amt': to_numeric(r.get('商品销售额')),
             'received_amt': to_numeric(r.get('商品实收')),
             'discount_amt': to_numeric(r.get('商品优惠')),
+            'order_hour': str(r.get('小时', '')).strip() or None,
         })
     return records
 
@@ -197,24 +198,33 @@ def delete_existing_by_source(source_file_id: int, conn) -> int:
 def insert_rows(records: list[dict], meta: dict, source_file_id: int, conn) -> int:
     store_code = meta.get("store_code") or STORE_CODE_DEFAULT
     store_name = STORE_NAME_DEFAULT
+    # Dedup by (order_no, product_name) to avoid ON CONFLICT errors
+    seen: set[tuple[str, str]] = set()
+    deduped: list[dict] = []
+    for r in records:
+        key = (r['order_no'], r['product_name'])
+        if key not in seen:
+            seen.add(key)
+            deduped.append(r)
     values = [
         (store_code, store_name, r['biz_date'], r['order_no'],
          r['product_name'], r['unit_price'], r['qty'],
-         r['sales_amt'], r['received_amt'], r['discount_amt'], source_file_id)
-        for r in records
+         r['sales_amt'], r['received_amt'], r['discount_amt'],
+         r.get('order_hour'), source_file_id)
+        for r in deduped
     ]
     if not values:
         return 0
     with conn.cursor() as cur:
         execute_values(cur, f"""
             INSERT INTO {TARGET_TABLE}
-              (store_code,store_name,biz_date,order_no,product_name,unit_price,qty,sales_amt,received_amt,discount_amt,source_file_id)
+              (store_code,store_name,biz_date,order_no,product_name,unit_price,qty,sales_amt,received_amt,discount_amt,order_hour,source_file_id)
             VALUES %s
             ON CONFLICT (store_code, order_no, product_name) DO UPDATE SET
               store_name=EXCLUDED.store_name, unit_price=EXCLUDED.unit_price,
               qty=EXCLUDED.qty, sales_amt=EXCLUDED.sales_amt,
               received_amt=EXCLUDED.received_amt, discount_amt=EXCLUDED.discount_amt,
-              source_file_id=EXCLUDED.source_file_id
+              order_hour=EXCLUDED.order_hour, source_file_id=EXCLUDED.source_file_id
         """, values)
         conn.commit()
     return len(values)
