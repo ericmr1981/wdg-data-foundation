@@ -65,6 +65,7 @@ export default function SalesDetailsPage() {
       setTotal(json.total);
     }
     setLoading(false);
+  }
 
   useEffect(() => {
     fetch('/api/gelatomiiix/sales/hourly?store_code=' + storeCode + '&month=' + month)
@@ -72,7 +73,6 @@ export default function SalesDetailsPage() {
       .then(j => { if (j.success) setHourlyData(j.data || []); })
       .catch(() => {});
   }, [storeCode, month]);
-  }
 
   const totalPages = Math.ceil(total / limit);
 
