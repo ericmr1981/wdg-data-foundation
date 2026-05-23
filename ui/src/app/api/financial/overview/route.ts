@@ -48,7 +48,7 @@ export async function GET(request: Request) {
       dmSchema = await getDmSchemaSafe(brand);
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'status' in err && (err as Record<string, unknown>).status === 400) {
-        return NextResponse.json({ success: false, error: err.message }, { status: 400 });
+        return NextResponse.json({ success: false, error: getErrorMessage(err) }, { status: 400 });
       }
       throw err;
     }
