@@ -39,6 +39,7 @@ export default function SalesDetailsPage() {
   const [subTab, setSubTab] = useState(0);
   const [storeCode, setStoreCode] = useState('sh_xtd');
   const [month, setMonth] = useState('2026-04');
+  const [pureMode, setPureMode] = useState(false);
   const [page, setPage] = useState(1);
   const [cashData, setCashData] = useState<CashRegisterRow[]>([]);
   const [productData, setProductData] = useState<ProductRow[]>([]);
@@ -46,14 +47,16 @@ export default function SalesDetailsPage() {
   const [loading, setLoading] = useState(false);
   const limit = 50;
 
-  useEffect(() => { setPage(1); }, [storeCode, month, subTab]);
+  useEffect(() => { setPage(1); }, [storeCode, month, subTab, pureMode]);
 
-  useEffect(() => { fetchDetails(); }, [storeCode, month, subTab, page]);
+  useEffect(() => { fetchDetails(); }, [storeCode, month, subTab, page, pureMode]);
 
   async function fetchDetails() {
     setLoading(true);
     const type = subTab === 0 ? 'cash_register' : 'product';
-    const res = await fetch(`/api/gelatomiiix/sales/details?store_code=${storeCode}&month=${month}&type=${type}&page=${page}&limit=${limit}`);
+    const params = new URLSearchParams({ store_code: storeCode, month, type, page: String(page), limit: String(limit) });
+    if (pureMode) params.set('pure_mode', 'true');
+    const res = await fetch(`/api/gelatomiiix/sales/details?${params}`);
     const json = await res.json();
     if (json.success) {
       if (subTab === 0) setCashData(json.data);
@@ -97,6 +100,11 @@ export default function SalesDetailsPage() {
         </select>
         <input type="month" value={month} onChange={e => setMonth(e.target.value)}
           className="border rounded px-3 py-1.5 text-sm" />
+        <label className="flex items-center gap-1.5 text-sm cursor-pointer select-none">
+          <input type="checkbox" checked={pureMode} onChange={e => setPureMode(e.target.checked)}
+            className="rounded border-gray-300" />
+          纯净版
+        </label>
         <span className="text-sm text-gray-500 leading-8">共 {total} 条</span>
       </div>
 

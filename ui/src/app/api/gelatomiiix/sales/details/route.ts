@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
     const storeCode = searchParams.get('store_code');
     const month = searchParams.get('month');
     const type = searchParams.get('type') || 'cash_register';
+    const pureMode = searchParams.get('pure_mode') === 'true';
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const safeLimit = Math.min(Math.max(limit, 1), 500);
@@ -19,6 +20,8 @@ export async function GET(request: NextRequest) {
     if (!storeCode || !month) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
+
+    const excludeCustom = pureMode ? `AND payment_method != '自定义结账方式'` : '';
 
     if (type === 'product') {
       const countResult = await pool.query(`
@@ -47,12 +50,14 @@ export async function GET(request: NextRequest) {
       SELECT COUNT(*) AS total
       FROM gelatomiiix_ods.cash_register_detail
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
+        ${excludeCustom}
     `, [storeCode, `${month}-01`]);
 
     const dataResult = await pool.query(`
       SELECT biz_date, order_no, gross_amt, revenue_amt, discount_amt, net_amt, txn_qty, payment_method
       FROM gelatomiiix_ods.cash_register_detail
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
+        ${excludeCustom}
       ORDER BY biz_date DESC, order_no
       LIMIT $3 OFFSET $4
     `, [storeCode, `${month}-01`, safeLimit, offset]);
