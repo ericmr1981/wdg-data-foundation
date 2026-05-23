@@ -17,8 +17,8 @@ interface TxnDetail {
   summary: string | null;
   memo: string | null;
   purpose: string | null;
-  out_amt: number;
-  balance_amt: number;
+  out_amt: number | string;
+  balance_amt: number | string;
   store_code: string;
   lvl1_name: string | null;
   lvl2_name: string | null;
@@ -150,7 +150,7 @@ export default function PaymentPage() {
     return groups;
   }, [txns]);
 
-  const formatAmt = (v: number) => v.toLocaleString('zh-CN', { minimumFractionDigits: 2 });
+  const formatAmt = (v: number | string) => Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <div className="space-y-6">
@@ -320,7 +320,7 @@ export default function PaymentPage() {
                               <td className="px-3 py-2 max-w-[180px] truncate" title={t.purpose || ''}>{t.purpose || '-'}</td>
                               <td className="px-3 py-2 max-w-[180px] truncate" title={t.summary || ''}>{t.summary || '-'}</td>
                               <td className="px-3 py-2 max-w-[150px] truncate" title={t.memo || ''}>{t.memo || '-'}</td>
-                              <td className="px-3 py-2 whitespace-nowrap text-right font-mono">{formatAmt(Number(t.out_amt || 0))}</td>
+                              <td className="px-3 py-2 whitespace-nowrap text-right font-mono">{formatAmt(Number(t.out_amt))}</td>
                               <td className="px-3 py-2 whitespace-nowrap">{[t.lvl1_name, t.lvl2_name].filter(Boolean).join(' / ') || '-'}</td>
                             </tr>
                           ))}
