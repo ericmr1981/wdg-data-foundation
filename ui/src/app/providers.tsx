@@ -13,7 +13,13 @@ function BrandSelector() {
     fetchBrands()
       .then((rows) => {
         if (!rows.length) return;
-        setOpts(rows.map((r) => ({ code: r.brand_code, name: r.brand_name })));
+        const next = rows.map((r) => ({ code: r.brand_code, name: r.brand_name }));
+        setOpts(next);
+
+        // 若新增/禁用品牌导致当前 brand 不在列表里，自动切到第一个可用品牌
+        if (!next.find((b) => b.code === brand)) {
+          setBrand(next[0].code as any);
+        }
       })
       .catch(() => {});
   }, []);
@@ -72,9 +78,14 @@ function NavBar() {
             </Link>
 
             {me?.role === 'admin' && (
-              <Link href="/admin/config" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
-                配置
-              </Link>
+              <>
+                <Link href="/lineage" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
+                  数据流地图
+                </Link>
+                <Link href="/admin/config" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
+                  配置
+                </Link>
+              </>
             )}
           </div>
 

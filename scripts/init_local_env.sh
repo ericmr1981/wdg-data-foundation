@@ -281,9 +281,13 @@ main() {
   execute_sql_file "$PROJECT_DIR/sql/yufeng_dim_store.sql" "Yufeng：门店维表"
   execute_sql_file "$PROJECT_DIR/sql/bonjur_dim_store.sql" "Bonjur：门店维表"
 
+  # Bonjur 销售自助下载（日粒度）
+  execute_sql_file "$PROJECT_DIR/sql/bonjur_sales_daily_self_service_ods.sql" "Bonjur：营业数据自助下载 ODS（日粒度）"
+
   # DM 模型
   execute_sql_file "$PROJECT_DIR/sql/yufeng_dm_models.sql" "Yufeng：DM 模型"
   execute_sql_file "$PROJECT_DIR/sql/bonjur_dm_models.sql" "Bonjur：DM 模型"
+  execute_sql_file "$PROJECT_DIR/sql/bonjur_sales_daily_self_service_dm.sql" "Bonjur：营业数据自助下载 DM（报表/拆分）"
 
   create_bonjur_compat_view
 

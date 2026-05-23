@@ -3,47 +3,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { useBrand } from '@/lib/brand-context';
 
-const SOURCE_META: Record<string, {
-  name: string;
-  hint: string;
-  fields?: string;
-  nextStep?: string;
-}> = {
-  bank: {
-    name: '银行流水',
-    hint: '适用于银行流水 Excel / CSV，上传后可进入现有分类与覆盖率链路。',
-    nextStep: '上传并导入后，可在覆盖率页面继续检查分类情况。',
-  },
-  sales: {
-    name: '营业数据',
-    hint: '适用于营业日报/营业汇总数据，上传后会进入销售导入脚本。',
-    nextStep: '上传成功后，可继续回看营业相关报表。',
-  },
-  delivery: {
-    name: '配送明细',
-    hint: '适用于门店配送/入库明细 Excel，上传后会进入配送明细导入脚本。',
-    fields: '配送单号、门店编码、门店名称、创建时间、品项名称、品项编码、品项分类、订货数量、审核数量、发货数量、送达数量、订货金额。',
-    nextStep: '导入成功后，可去新天地看板查看月总览、趋势和品项分析。',
-  },
-};
-
-function summarizeImportResult(importResult?: string | null) {
-  if (!importResult) return null;
-  const total = importResult.match(/总行数:\s*(\d+)/)?.[1];
-  const success = importResult.match(/成功:\s*(\d+)/)?.[1];
-  const error = importResult.match(/错误:\s*(\d+)/)?.[1];
-  const month = importResult.match(/月度汇总已刷新:\s*([^\n]+)/)?.[1]?.trim();
-  if (!total && !success && !error && !month) return null;
-  return { total, success, error, month };
-}
-
 export default function UploadPage() {
   const { brand: globalBrand } = useBrand();
   const [file, setFile] = useState<File | null>(null);
   const [brand, setBrand] = useState(globalBrand);
   const [store, setStore] = useState('yf_gh');
   const [source, setSource] = useState('bank');
-  const [triggerImport, setTriggerImport] = useState(true);
+  const [triggerImport, setTriggerImport] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -93,11 +59,8 @@ export default function UploadPage() {
 
   const sources = [
     { code: 'bank', name: '银行流水' },
-    { code: 'sales', name: '营业数据' },
-    { code: 'delivery', name: '配送明细' }
+    { code: 'sales', name: '营业数据' }
   ];
-  const currentSourceMeta = SOURCE_META[source] || SOURCE_META.bank;
-  const importSummary = summarizeImportResult(result?.importResult);
 
   // Fetch coverage for the uploaded file
   async function fetchCoverage(fileId: number) {
@@ -219,17 +182,6 @@ export default function UploadPage() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
-            <div className="font-medium">当前数据源：{currentSourceMeta.name}</div>
-            <div className="mt-1 text-blue-800">{currentSourceMeta.hint}</div>
-            {currentSourceMeta.fields && (
-              <div className="mt-2 text-blue-700">
-                <span className="font-medium">预期字段：</span>
-                {currentSourceMeta.fields}
-              </div>
-            )}
-          </div>
-
           {/* 文件上传 */}
           <div>
             <label className="block text-sm font-medium text-gray-700">选择文件</label>
@@ -256,7 +208,7 @@ export default function UploadPage() {
               className="mr-2"
             />
             <label htmlFor="triggerImport" className="text-sm text-gray-700">
-              触发导入（推荐开启，上传后自动运行导入脚本）
+              触发导入（上传后自动运行导入脚本）
             </label>
           </div>
 
@@ -266,7 +218,7 @@ export default function UploadPage() {
             disabled={uploading || !file}
             className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
-            {uploading ? '上传中...' : triggerImport ? '上传并导入' : '仅上传保存'}
+            {uploading ? '上传中...' : '上传并保存'}
           </button>
         </form>
       </div>
@@ -282,73 +234,36 @@ export default function UploadPage() {
       {/* 结果展示 */}
       {result && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <div className="font-medium text-green-800">上传成功</div>
-              <div className="text-sm mt-1 text-green-700">
-                数据源：{currentSourceMeta.name} · 文件：{result.fileName}
-              </div>
-            </div>
-            <div className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
-              {triggerImport ? '已触发导入' : '仅上传未导入'}
-            </div>
-          </div>
-
-          <div className="text-sm mt-3 space-y-1 text-green-700">
+          <div className="font-medium text-green-800">上传成功</div>
+          <div className="text-sm mt-2 space-y-1 text-green-700">
             <div>文件路径: {result.filePath}</div>
-            {result.fileMonth && <div>归档月份: {result.fileMonth}</div>}
-            {result.sourceFileId && <div>文件ID: {result.sourceFileId}</div>}
+            <div>文件名: {result.fileName}</div>
+            {result.sourceFileId && (
+              <div>文件ID: {result.sourceFileId}</div>
+            )}
+            {result.importStatus && (
+              <div>导入状态: {result.importStatus}{result.rowCount != null ? `（row_count=${result.rowCount}）` : ''}</div>
+            )}
+            {result.errorMessage && (
+              <div className="text-red-600">导入错误（DB 记录）: {result.errorMessage}</div>
+            )}
+            {result.importResult && (
+              <div className="mt-2">
+                <div className="font-medium">导入结果:</div>
+                <pre className="mt-1 p-2 bg-white rounded text-xs overflow-auto max-h-64">
+                  {result.importResult}
+                </pre>
+              </div>
+            )}
+            {result.importError && (
+              <div className="mt-2 text-red-600">
+                <div className="font-medium">导入错误:</div>
+                <pre className="mt-1 p-2 bg-red-100 rounded text-xs overflow-auto max-h-64">
+                  {result.importError}
+                </pre>
+              </div>
+            )}
           </div>
-
-          {importSummary && (
-            <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-              <div className="rounded bg-white p-3 border border-green-100">
-                <div className="text-gray-500">总行数</div>
-                <div className="font-semibold text-gray-900">{importSummary.total || '-'}</div>
-              </div>
-              <div className="rounded bg-white p-3 border border-green-100">
-                <div className="text-gray-500">成功</div>
-                <div className="font-semibold text-gray-900">{importSummary.success || '-'}</div>
-              </div>
-              <div className="rounded bg-white p-3 border border-green-100">
-                <div className="text-gray-500">错误</div>
-                <div className="font-semibold text-gray-900">{importSummary.error || '0'}</div>
-              </div>
-              <div className="rounded bg-white p-3 border border-green-100">
-                <div className="text-gray-500">刷新月份</div>
-                <div className="font-semibold text-gray-900">{importSummary.month || '-'}</div>
-              </div>
-            </div>
-          )}
-
-          {currentSourceMeta.nextStep && (
-            <div className="mt-3 rounded border border-green-100 bg-white p-3 text-sm text-gray-700">
-              <span className="font-medium text-gray-900">下一步：</span>
-              {currentSourceMeta.nextStep}
-              {source === 'delivery' && (
-                <a href="/xintiandi" className="ml-2 text-blue-600 hover:underline">
-                  打开新天地看板 →
-                </a>
-              )}
-            </div>
-          )}
-
-          {result.importResult && (
-            <div className="mt-3">
-              <div className="font-medium text-green-800">导入日志</div>
-              <pre className="mt-1 p-2 bg-white rounded text-xs overflow-auto max-h-64 text-gray-700">
-                {result.importResult}
-              </pre>
-            </div>
-          )}
-          {result.importError && (
-            <div className="mt-3 text-red-600">
-              <div className="font-medium">导入错误</div>
-              <pre className="mt-1 p-2 bg-red-100 rounded text-xs overflow-auto max-h-64">
-                {result.importError}
-              </pre>
-            </div>
-          )}
         </div>
       )}
 
@@ -400,10 +315,10 @@ export default function UploadPage() {
         <ul className="text-sm text-gray-600 space-y-1">
           <li>1. 选择品牌、门店、数据源类型</li>
           <li>2. 选择要上传的 Excel/CSV 文件</li>
-          <li>3. 默认已勾选“触发导入”，建议保持开启</li>
-          <li>4. 点击“上传并导入”按钮</li>
-          <li>5. 文件会上传到 inputs/ 目录，并触发对应导入脚本</li>
-          <li>6. 上传成功后，页面会展示导入摘要与下一步入口</li>
+          <li>3. 如果需要自动导入，可以勾选"触发导入"</li>
+          <li>4. 点击"上传并保存"按钮</li>
+          <li>5. 文件会上传到 inputs/ 目录，并可选择触发相应的导入脚本</li>
+          <li>6. 勾选"触发导入"后，上传成功会显示该文件的覆盖率统计</li>
         </ul>
       </div>
     </div>
