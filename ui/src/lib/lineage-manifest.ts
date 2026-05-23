@@ -1,4 +1,4 @@
-import { getCfgSchema, getDmSchema, getOdsSchema } from '@/lib/brand-server';
+import { getCfgSchema, getDmSchema, getOdsSchema } from '@/lib/brand-schema';
 
 export type LineageObjectRef = {
   kind: 'table' | 'view' | 'function' | 'script' | 'ui' | 'concept';
