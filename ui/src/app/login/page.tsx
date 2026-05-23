@@ -23,7 +23,7 @@ export default function LoginPage() {
         setError(data.error || 'Login failed');
         return;
       }
-      const next = new URLSearchParams(window.location.search).get('next') || '/financial';
+      const next = new URLSearchParams(window.location.search).get('next') || '/u/financial';
       window.location.href = next;
     } catch (err: any) {
       setError(err.message);

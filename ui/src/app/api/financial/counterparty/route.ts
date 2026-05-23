@@ -102,7 +102,7 @@ export async function GET(request: Request) {
              t.summary,
              t.memo,
              t.purpose,
-             ${isIn ? 't.in_amt as amount' : 't.out_amt as out_amt'},
+             ${isIn ? 't.in_amt as amount' : 't.out_amt as amount'},
              t.balance_amt,
              t.store_code,
              c.lvl1_code,
