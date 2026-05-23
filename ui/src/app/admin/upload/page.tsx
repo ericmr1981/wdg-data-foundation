@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useBrand } from '@/lib/brand-context';
 
 export default function UploadPage() {
@@ -14,7 +14,6 @@ export default function UploadPage() {
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [coverage, setCoverage] = useState<any>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync with global brand
   useEffect(() => {
@@ -185,21 +184,23 @@ export default function UploadPage() {
           {/* 文件上传 */}
           <div>
             <label className="block text-sm font-medium text-gray-700">选择文件</label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="hidden"
-              required
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="mt-1 block w-full border border-dashed border-gray-300 rounded-md px-4 py-3 text-sm text-gray-600 hover:border-blue-400 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 transition-colors cursor-pointer"
-            >
-              {file ? file.name : '点击选择文件...'}
-            </button>
+            <div className="relative mt-1">
+              {/* Invisible file input overlaid on the visible button.
+                  This is more reliable than <input hidden> + ref.click() because
+                  calling .click() on display:none elements does not work in all browsers. */}
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                required
+              />
+              <div
+                className="block w-full border border-dashed border-gray-300 rounded-md px-4 py-3 text-sm text-gray-600 bg-gray-50 transition-colors select-none"
+              >
+                {file ? file.name : '点击选择文件...'}
+              </div>
+            </div>
             <p className="mt-1 text-sm text-gray-500">
               支持 .xlsx, .xls, .csv 格式。文件将上传到 inputs/{brand}/{store}/{source}/{yyyyMM}/（使用系统当前时间）
             </p>
