@@ -1,0 +1,13 @@
+{
+  "values_source_type": "static-list",
+  "values_source_config": {
+    "values": [
+      [
+        "",
+        ""
+      ]
+    ]
+  },
+  "values": null,
+  "default": ""
+}

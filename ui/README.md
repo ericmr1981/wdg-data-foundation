@@ -56,7 +56,8 @@ npm start
 | `/pipeline` | Pipeline 监控 - 展示最近运行记录和覆盖率统计 |
 | `/rules` | 规则管理 - CRUD、启用/禁用、优先级调整 |
 | `/match` | 人工匹配 - 未分类流水列表、批量归类、撤销 |
-| `/upload` | 文件上传 - 上传 Excel/CSV 并触发导入脚本 |
+| `/upload` | 文件上传 - 上传 Excel/CSV 并触发导入脚本，现支持银行流水 / 营业数据 / 配送明细 |
+| `/xintiandi` | 新天地配送看板 - 月总览、趋势数据、品项分析 |
 
 ## API 接口
 
@@ -72,7 +73,9 @@ npm start
 | POST | `/api/match` | 创建/更新单条 override |
 | PUT | `/api/match` | 批量创建 override |
 | DELETE | `/api/match/override?bank_txn_id={id}` | 删除 override |
-| POST | `/api/upload` | 上传文件并可选触发导入 |
+| POST | `/api/upload` | 上传文件并可选触发导入（支持 `bank` / `sales` / `delivery`） |
+| GET | `/api/xintiandi/dashboard` | 获取新天地看板数据 |
+| GET | `/api/xintiandi/batch` | 获取新天地导入批次 |
 
 ## 数据库依赖
 
@@ -92,6 +95,8 @@ npm start
 3. 访问 `/rules` - 确认能查看、添加、编辑、删除规则
 4. 访问 `/match` - 确认能看到未分类流水，并能归类和撤销
 5. 访问 `/upload` - 确认能上传文件并触发导入
+6. 在 `/upload` 选择 `配送明细` - 确认页面出现配送明细字段提示
+7. 导入成功后访问 `/xintiandi` - 确认能看到月总览、趋势和品项分析
 
 ## 目录结构
 
@@ -104,11 +109,13 @@ ui/
 │   │   │   ├── coverage/
 │   │   │   ├── rules/
 │   │   │   ├── match/
-│   │   │   └── upload/
-│   │   ├── pipeline/       # Pipeline 监控页面
+│   │   │   ├── upload/
+│   │   │   └── xintiandi/
+│   │   ├── pipeline/      # Pipeline 监控页面
 │   │   ├── rules/         # 规则管理页面
-│   │   ├── match/        # 人工匹配页面
-│   │   └── upload/       # 文件上传页面
+│   │   ├── match/         # 人工匹配页面
+│   │   ├── upload/        # 文件上传页面
+│   │   └── xintiandi/     # 新天地配送看板页面
 │   └── lib/
 │       ├── db.ts          # 数据库连接
 │       └── types.ts       # TypeScript 类型

@@ -72,6 +72,11 @@ export function getOdsSchema(brand: BrandCode): string {
   return `${getSchemaPrefix(brand)}_ods`;
 }
 
+export function getDeliverySchema(brand: BrandCode): string {
+  // Delivery schema uses same prefix as other brand schemas
+  return `${getSchemaPrefix(brand)}_delivery`;
+}
+
 export function getCfgRuleTable(brand: BrandCode): string {
   return `${getCfgSchema(brand)}.bank_rule_map`;
 }

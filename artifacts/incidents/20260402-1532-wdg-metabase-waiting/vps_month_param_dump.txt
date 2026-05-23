@@ -1,0 +1,80 @@
+=== dashboard 8 month_date param ===
+{
+  "id": "00000000-0000-0000-0000-000000000001",
+  "name": "Month",
+  "slug": "month_date",
+  "type": "date/month-year",
+  "sectionId": "date",
+  "required": false,
+  "values_source_type": "static-list",
+  "values_source_config": {}
+}
+
+=== dashboard 9 month_date param ===
+{
+  "slug": "month_date",
+  "default": "2025-09",
+  "name": "Month",
+  "type": "date/month-year",
+  "sectionId": "date",
+  "values_source_type": "static-list",
+  "id": "00000000-0000-0000-0000-000000000001",
+  "values": [
+    [
+      "2025-09",
+      "2025-09"
+    ],
+    [
+      "2025-08",
+      "2025-08"
+    ],
+    [
+      "2025-07",
+      "2025-07"
+    ],
+    [
+      "2025-06",
+      "2025-06"
+    ],
+    [
+      "2025-05",
+      "2025-05"
+    ]
+  ],
+  "required": false
+}
+
+=== dashboard 10 month_date param ===
+{
+  "slug": "month_date",
+  "default": "2026-01",
+  "name": "Month",
+  "type": "date/month-year",
+  "sectionId": "date",
+  "values_source_type": "static-list",
+  "id": "00000000-0000-0000-0000-000000000001",
+  "values": [
+    [
+      "2026-01",
+      "2026-01"
+    ],
+    [
+      "2025-12",
+      "2025-12"
+    ],
+    [
+      "2025-11",
+      "2025-11"
+    ],
+    [
+      "2025-10",
+      "2025-10"
+    ],
+    [
+      "2025-09",
+      "2025-09"
+    ]
+  ],
+  "required": false
+}
+

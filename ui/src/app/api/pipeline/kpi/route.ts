@@ -7,11 +7,14 @@
  import { NextResponse } from 'next/server';
  import pool from '@/lib/db';
  import { getDmSchema, getOdsBankTxnTable, normalizeBrand } from '@/lib/brand-server';
+ import { getSessionUser, assertRole } from '@/lib/auth-server';
 
  // GET /api/pipeline/kpi?brand=xxx
  // 返回未分类统计（软阀门 KPI）
  export async function GET(request: Request) {
+   const user = await getSessionUser();
    try {
+     assertRole(user, ['admin', 'operator']);
      const { searchParams } = new URL(request.url);
      const brandParam = searchParams.get('brand') || 'yufeng';
      const brand = normalizeBrand(brandParam);

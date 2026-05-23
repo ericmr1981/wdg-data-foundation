@@ -1,0 +1,8 @@
+[     105ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:4200/login:0
+[     112ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:4200/_next/static/chunks/webpack.js:0
+[     112ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:4200/_next/static/chunks/main-app.js:0
+[     112ms] [LOG] ✅ Agent content script: Automation listener 初始化 @ chrome-extension://hnmocdhmnfgcjnedmdgfefcobideaeja/js/agent_content_script.js:0
+[   15612ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:4200/login?:0
+[   15625ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:4200/_next/static/chunks/webpack.js:0
+[   15627ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:4200/_next/static/chunks/main-app.js:0
+[   15628ms] [LOG] ✅ Agent content script: Automation listener 初始化 @ chrome-extension://hnmocdhmnfgcjnedmdgfefcobideaeja/js/agent_content_script.js:0

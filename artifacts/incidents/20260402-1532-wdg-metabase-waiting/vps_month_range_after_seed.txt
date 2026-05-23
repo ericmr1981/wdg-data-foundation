@@ -1,0 +1,3 @@
+dashboard 8: values_source_type= static-list
+dashboard 8: has_values_list= False
+dashboard 8: values_source_config.values_list= False len= None

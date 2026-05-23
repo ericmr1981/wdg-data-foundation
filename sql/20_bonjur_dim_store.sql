@@ -10,6 +10,8 @@ create table if not exists bonjur_cfg.dim_store (
 -- seed（可按需扩展）
 insert into bonjur_cfg.dim_store(store_code, store_name)
 values
-  ('hz_in77', '杭州in77')
+  ('wz_oh_wxc', '温州瓯海万象城店'),
+  ('wz_ra_wy',  '温州瑞安吾悦广场店'),
+  ('hz_in77',   '杭州in77')
 on conflict (store_code) do update
 set store_name = excluded.store_name;

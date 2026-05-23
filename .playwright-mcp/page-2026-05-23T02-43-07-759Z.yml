@@ -1,0 +1,29 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - link "首页" [ref=e6] [cursor=pointer]:
+          - /url: /u
+        - link "财务报表" [ref=e7] [cursor=pointer]:
+          - /url: /u/financial
+        - link "付款分析" [ref=e8] [cursor=pointer]:
+          - /url: /u/payment
+        - link "收入分析" [ref=e9] [cursor=pointer]:
+          - /url: /u/income
+      - generic [ref=e10]:
+        - generic [ref=e11]: "品牌:"
+        - combobox [ref=e12]:
+          - option "蜜可诗" [selected]
+          - option "Bonjour"
+        - button "退出" [ref=e13] [cursor=pointer]
+  - main [ref=e14]:
+    - generic [ref=e16]:
+      - heading "WDG 登录" [level=1] [ref=e17]
+      - generic [ref=e18]:
+        - generic [ref=e19]: 用户名
+        - textbox [ref=e20]: admin
+      - generic [ref=e21]:
+        - generic [ref=e22]: 密码
+        - textbox [ref=e23]
+      - button "登录" [ref=e24] [cursor=pointer]
+      - paragraph [ref=e25]: 角色：admin / operator

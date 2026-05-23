@@ -1,0 +1,62 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - link "首页" [ref=e6] [cursor=pointer]:
+          - /url: /u
+        - link "财务报表" [ref=e7] [cursor=pointer]:
+          - /url: /u/financial
+        - link "付款分析" [ref=e8] [cursor=pointer]:
+          - /url: /u/payment
+        - link "收入分析" [ref=e9] [cursor=pointer]:
+          - /url: /u/income
+      - generic [ref=e10]:
+        - generic [ref=e11]: "品牌:"
+        - combobox [ref=e12]:
+          - option "蜜可诗" [selected]
+          - option "Bonjour"
+        - button "退出" [ref=e13] [cursor=pointer]
+  - main [ref=e14]:
+    - generic [ref=e15]:
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]: "跨度:"
+          - combobox [ref=e19]:
+            - option "月" [selected]
+            - option "季度"
+            - option "年"
+        - generic [ref=e20]:
+          - generic [ref=e21]: "期间:"
+          - combobox [ref=e22]:
+            - option "2025-03"
+            - option "2025-04"
+            - option "2025-05"
+            - option "2025-06"
+            - option "2025-07"
+            - option "2025-08"
+            - option "2025-09"
+            - option "2025-10"
+            - option "2025-11"
+            - option "2025-12"
+            - option "2026-01"
+            - option "2026-02"
+            - option "2026-03"
+            - option "2026-04"
+            - option "2026-05"
+            - option "2026-06" [selected]
+        - generic [ref=e23]:
+          - generic [ref=e24]: "门店:"
+          - combobox [ref=e25]:
+            - option "全部" [selected]
+      - generic [ref=e26]:
+        - strong [ref=e27]: 披露声明：
+        - text: 本报表基于银行流水按
+        - strong [ref=e28]: 收付实现制（现金收付基础）
+        - text: 编制，与按企业会计准则要求以权责发生制编制的法定财务报表存在差异。本报表不构成完整的会计核算，仅供参考。主要差异包括但不限于：不包含应收账款/应付账款、存货、固定资产折旧等权责发生制调整项目。
+      - navigation [ref=e37]:
+        - button "利润表" [ref=e38] [cursor=pointer]
+        - button "现金流量表" [ref=e39] [cursor=pointer]
+        - button "资产负债表" [ref=e40] [cursor=pointer]
+        - button "付款分析" [ref=e41] [cursor=pointer]
+      - generic [ref=e43]: 加载中...
+  - alert [ref=e44]

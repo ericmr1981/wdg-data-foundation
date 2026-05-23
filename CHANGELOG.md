@@ -1,7 +1,11 @@
 # Progress Log
 
+## 2026-03-27 14:20
+- goal: Upload 回执补全（返回 source_file_id / 导入状态）+ 新增品牌/门店体验收口
+- bet: /api/upload 计算文件 sha256 并回读 raw.ingest_file（best-effort）；Brand 下拉在当前 brand 不可用时自动切换到第一个可用品牌
+
 ## 2026-04-01 12:46
-- Fixed: 部署环境 Metabase 所有 Dashboard 卡在 "Waiting for results"
+- Fixed: 部署环境 Metabase 所有 Dashboard 卡在 “Waiting for results”
   - Root cause: `site-url` 端口错误 (8081 vs 8082) + Month 参数无 values 来源
   - Fix: 修正 site-url，为 Dashboard 8/9/10/5 的 Month 参数添加静态值列表
   - Result: 5 个 Dashboard 全部正常加载（8+8+8+8+5 cards）
@@ -13,7 +17,7 @@
 - changes:
   - scripts/metabase_seed_dashboard.py: 新增 --brand 和 --dashboard-name 参数
   - 新增 sql_for_brand() 函数，自动替换 schema 前缀（yufeng_* → {brand}_*）
-  - 所有 Card/Dashboard 名称改为动态生成（f"{BRAND_DISPLAY}｜..."）
+  - 所有 Card/Dashboard 名称改为动态生成（f”{BRAND_DISPLAY}｜...”）
   - HEADERS 初始化移至 main()，支持 --help 不连接 Metabase
   - 修复 dashboard 名称重复问题（移除重复的 dash_name 赋值）
 - commit: d1c2295 + 7df2336
@@ -38,13 +42,13 @@
 - next: 在 Metabase 刷新 dashboard 确认显示正常
 
 ## 2026-03-31 19:25
-- goal: 修复所有品牌 Metabase dashboard 卡在"等待中"
+- goal: 修复所有品牌 Metabase dashboard 卡在”等待中”
 - root-causes:
   1. gelatomiiix/bonjur 缺少 DM 视图（revenue_monthly, expense_monthly, profit_monthly）
-  2. sql_for_brand() 不支持 "brand_{brand}_*" schema 前缀模式
+  2. sql_for_brand() 不支持 “brand_{brand}_*” schema 前缀模式
   3. Card SQL 引用了 c.lvl1/c.lvl2 兼容列（gelatomiiix 视图没有这些列）
 - fixes:
-  - sql_for_brand(): 支持 "brand_{brand}_*" 模式（gelatomiiix 等）
+  - sql_for_brand(): 支持 “brand_{brand}_*” 模式（gelatomiiix 等）
   - 移除所有 c.lvl1/c.lvl2 引用，改用 c.lvl1_name/c.lvl2_name
   - 创建 sql/gelatomiiix_dm_models.sql + sql/bonjur_dm_models.sql
   - 部署环境 apply 成功：所有品牌 DM 视图创建完成
@@ -92,7 +96,7 @@
 - dashboards:
 
 ## 2026-03-31 20:20
-- goal: 继续排查“页面仍然转圈”而非仅 API 查询是否成功
+- goal: 继续排查”页面仍然转圈”而非仅 API 查询是否成功
 - root-cause (new): Dashboard 8/9/10 的 `store_code` 顶部筛选器配置不稳定
   - Dashboard 8: `values_source_type = null`
   - Dashboard 9/10: `values_source_type = card`，但绑定了硬编码 field id `771/772`
@@ -143,9 +147,56 @@
 - bet: Seed 时显式指定 X=月份、Y=金额(元)、series=一级分类，避免 Metabase 自动推断
 - commit: HEAD
 - verification:
+  - command: (ui) npm run build
+  - result: pass (Next build ok)
   - command: bash scripts/run_change_guard.sh
   - result: pass
 - decision: keep
+- next: 需要的话把 /api/upload 的回执信息（status/row_count/error_message）同步展示到更多页面（比如 lineage）
+
+## 2026-03-27 08:55
+- goal: Reduce harness drift-check noise while keeping progress logging useful
+- bet: Allow progress log to reference the current commit symbolically (commit: HEAD)
+- commit: HEAD
+- verification:
+  - command: bash scripts/run_drift_check.sh
+  - result: pass
+- decision: keep
+- next: n/a
+
+## 2026-03-27 08:45
+- goal: Add a more meaningful, portable test oracle (beyond compileall)
+- bet: Introduce a lightweight selftest that always runs compileall + harness-script smoke, and optionally runs key script entrypoints when deps are installed
+- commit: 4202da3
+- verification:
+  - command: bash scripts/selftest.sh
+  - result: pass (deps missing → optional entrypoint smoke skipped)
+  - command: bash scripts/run_change_guard.sh
+  - result: pass
+- decision: keep
+- next: If we want stricter checks, add a DB-backed integration test profile (docker compose + SQL apply) as e2eCommand
+
+## 2026-03-27 (earlier)
+- goal: Data lineage admin UI (lineage V3 overlay + drilldown)
+- bet: Add lineage page + related secured APIs
+- commit: 5ef5b33
+- verification:
+  - command: bash scripts/run_change_guard.sh
+  - result: pass
+- decision: keep
+- next: Decide whether to merge feat/ui-lineage to main and whether lineage should be enabled by default or behind admin flag
+
+## 2026-03-26 22:10
+- goal: Install repo-first harness (Trinity) and avoid record-root guard name collisions
+- bet: Move legacy record-root governance scripts under `scripts/record_root`; scaffold repo-first harness at repo root
+- commit: 18ced46
+- verification:
+  - command: bash init.sh
+  - result: pass (compileall excluding .venv)
+  - command: bash scripts/run_change_guard.sh
+  - result: pass
+- decision: keep
+- next: Define a real test oracle (pytest/integration) and set `harness.json:testCommand` accordingly
 
 ## 2026-03-26 22:15
 - goal: Merge harness branch into main
@@ -155,6 +206,7 @@
   - command: bash scripts/run_change_guard.sh
   - result: pass
 - decision: keep
+- next: Keep improving real test oracle beyond compileall
 
 ## 2026-03-31 13:00
 - goal: 新品牌 gelatomiiix（蜜可诗）上线后端到端验收 + 修复初始化完整性 bug

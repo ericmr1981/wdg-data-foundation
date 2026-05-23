@@ -1,0 +1,4 @@
+months_len= 8 first= 2026-02 last= 2025-07
+PUT http_code=200
+after_patch: values_len= 8 default= 2026-02
+after_patch: first= ['2026-02', '2026-02'] last= ['2025-07', '2025-07']

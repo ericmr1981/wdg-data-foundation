@@ -241,6 +241,12 @@ export default function UploadPage() {
             {result.sourceFileId && (
               <div>文件ID: {result.sourceFileId}</div>
             )}
+            {result.importStatus && (
+              <div>导入状态: {result.importStatus}{result.rowCount != null ? `（row_count=${result.rowCount}）` : ''}</div>
+            )}
+            {result.errorMessage && (
+              <div className="text-red-600">导入错误（DB 记录）: {result.errorMessage}</div>
+            )}
             {result.importResult && (
               <div className="mt-2">
                 <div className="font-medium">导入结果:</div>

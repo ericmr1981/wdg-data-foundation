@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "smoke:browser": "playwright test -c playwright.config.ts",
+    "smoke:local-docker": "bash scripts/smoke_local_docker.sh",
     "test:e2e": "playwright test"
   },
   "dependencies": {
