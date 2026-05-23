@@ -94,9 +94,9 @@ export default function SalesReportPage() {
     if (paymentMethod) params.set('payment_method', paymentMethod);
     const res = await fetch(`/api/gelatomiiix/sales/overview?${params}`);
     const json = await res.json();
-    if (json.success) {
+    if (json.success && json.data) {
       setKpi(json.data.kpi);
-      setDaily(json.data.daily);
+      setDaily(json.data.daily || []);
       setPrevMonth(json.data.prev_month);
     }
   }
@@ -104,13 +104,13 @@ export default function SalesReportPage() {
   async function fetchProducts() {
     const res = await fetch(`/api/gelatomiiix/sales/products?store_code=${storeCode}&month=${month}`);
     const json = await res.json();
-    if (json.success) setProducts(json.data);
+    if (json.success) setProducts(json.data || { by_sales: [], by_qty: [] });
   }
 
   async function fetchChannels() {
     const res = await fetch(`/api/gelatomiiix/sales/channels?store_code=${storeCode}&month=${month}`);
     const json = await res.json();
-    if (json.success) setChannels(json.data);
+    if (json.success) setChannels(json.data || []);
   }
 
   async function fetchTrend() {
