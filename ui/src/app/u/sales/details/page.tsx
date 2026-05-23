@@ -68,17 +68,21 @@ export default function SalesDetailsPage() {
 
   const totalPages = Math.ceil(total / limit);
 
-  // Compute order amount distribution
-  const buckets = [0, 50, 100, 200, 500, 1000];
+  // Compute order amount distribution (20-yuan buckets)
+  const maxAmt = Math.max(...cashData.map(r => Number(r.gross_amt)), 0);
+  const bucketSize = 20;
+  const bucketCount = Math.ceil(maxAmt / bucketSize);
+  const buckets = Array.from({ length: bucketCount + 1 }, (_, i) => i * bucketSize);
   const distribution = buckets.map((min, i) => {
-    const max = i < buckets.length - 1 ? buckets[i + 1] : Infinity;
-    const label = i < buckets.length - 1 ? `¥${min}-${max}` : `¥${min}+`;
+    if (i >= buckets.length - 1) return null;
+    const max = buckets[i + 1];
+    const label = `¥${min}-${max}`;
     const count = cashData.filter(r => {
       const amt = Number(r.gross_amt);
       return amt >= min && amt < max;
     }).length;
     return { range: label, count };
-  }).filter(d => d.count > 0);
+  }).filter((d): d is { range: string; count: number } => d !== null && d.count > 0);
 
   // Compute daily order count
   const dailyOrders = cashData.reduce<Record<string, number>>((acc, r) => {
@@ -139,7 +143,7 @@ export default function SalesDetailsPage() {
             <ResponsiveContainer width="100%" height={150}>
               <LineChart data={dailyOrderData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="biz_date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => v.slice(0, 10).slice(5)} />
+                <XAxis dataKey="biz_date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => { const d = v.slice(0, 10); return d.slice(5); }} interval={0} angle={-45} textAnchor="end" height={50} />
                 <YAxis tick={{ fontSize: 10 }} />
                 <Tooltip />
                 <Line type="monotone" dataKey="count" name="订单数" stroke="#2563eb" strokeWidth={2} dot={false} />
