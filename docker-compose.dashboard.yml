@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
-      - "0.0.0.0:${DB_PORT:-9742}:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - dataplatform_pg_data:/var/lib/postgresql/data
     restart: unless-stopped

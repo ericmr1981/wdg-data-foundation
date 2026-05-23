@@ -1,43 +1,49 @@
 # WDG Data Foundation
 
-营业日报 + 银行流水 + 配送明细 → 清洗 / 分类 / 建模 → 可视化看板（UI / Metabase）
+Code repo for WDG（营业日报 + 银行流水 + 配送明细 → 清洗/分类/建模 → UI/Metabase）。
 
-## 数据类型
+## 当前新增能力
 
-| 类型 | 说明 |
-|------|------|
-| 营业日报 | 门店每日经营数据 |
-| 银行流水 | 资金进出记录 |
-| 配送明细 | 新天地等品牌门店配送订单 |
+- `/upload` 已支持第三类数据源：`配送明细`
+- 配送明细上传后可走 `import_xintiandi_delivery.py` 导入链路
+- 新天地门店可查看专用看板：`/xintiandi`
+- Metabase 已可生成新天地配送看板
 
-## 功能入口
+### 配送明细预期字段
 
-- **上传入口**: `/upload` — 支持三类数据源上传，自动触发清洗导入
-- **新天地看板**: `/xintiandi` — 配送数据月总览、趋势分析、品项统计
-- **Metabase**: `http://112.124.18.246:8082` — 多品牌数据报表
+- 配送单号
+- 门店编码
+- 门店名称
+- 创建时间
+- 品项名称
+- 品项编码
+- 品项分类
+- 订货数量
+- 审核数量
+- 发货数量
+- 送达数量
+- 订货金额
 
-## 技术栈
-
-- **前端**: Next.js (UI)
-- **后端**: Python (数据处理脚本)
-- **数据库**: PostgreSQL
-- **可视化**: Metabase
-
-## 部署
-
-GitHub Actions 自动部署到 VPS，push 到 `main` 分支触发。
+## Local dev
 
 ```bash
-# 本地开发
-bash scripts/init_local_env.sh
-bash docs/LOCAL_STARTUP.md
-
-# VPS 部署
-docker-compose -f docker-compose.dashboard.yml up -d --build ui
+cd /Users/ericmr/Documents/GitHub/wdg-data-foundation
 ```
 
-## 相关文档
+- Local startup: `docs/LOCAL_STARTUP.md`
+- End-to-end acceptance: `docs/ACCEPTANCE_RUNBOOK.md`
+- One-click init: `scripts/init_local_env.sh`
+- 新天地模块说明：`docs/XINTIANDI_MODULE.md`
 
-- `docs/LOCAL_STARTUP.md` — 本地启动
-- `docs/ACCEPTANCE_RUNBOOK.md` — 验收测试
-- `docs/XINTIANDI_MODULE.md` — 新天地模块说明
+## Upload / 验收补充
+
+- 入口：`/upload`
+- 数据源类型：`银行流水` / `营业数据` / `配送明细`
+- 选择 `配送明细` 并勾选“触发导入”后，会自动进入配送导入脚本
+- 导入成功后：
+  - `/upload` 页面会显示导入摘要
+  - `/xintiandi` 可查看月总览、趋势、品项分析
+
+## Project records
+
+Project governance / task board / acceptance evidence are maintained in Obsidian (not tracked in this repo).

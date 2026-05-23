@@ -42,10 +42,6 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
 
-      # Metabase（用于 seed / store-sync 等 admin API 能力）
-      METABASE_URL: ${METABASE_URL:-http://metabase:3000}
-      METABASE_API_KEY: ${METABASE_API_KEY}
-
       # 让 /api/upload 触发导入脚本时用系统 python3（不要走 /.venv/bin/python）
       PYTHON_BIN: python3
 
