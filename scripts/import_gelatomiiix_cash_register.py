@@ -228,11 +228,19 @@ def delete_existing_by_source(source_file_id: int, conn) -> int:
 def insert_rows(records: list[dict], meta: dict, source_file_id: int, conn) -> int:
     store_code = meta.get("store_code") or STORE_CODE_DEFAULT
     store_name = STORE_NAME_DEFAULT
+    # Dedup by order_no (keep first occurrence) to avoid ON CONFLICT errors
+    seen: set[str] = set()
+    deduped: list[dict] = []
+    for r in records:
+        key = r['order_no']
+        if key not in seen:
+            seen.add(key)
+            deduped.append(r)
     values = [
         (store_code, store_name, r['biz_date'], r['order_no'],
          r['gross_amt'], r['revenue_amt'], r['discount_amt'], r['net_amt'],
          r['txn_qty'], r['payment_method'], source_file_id)
-        for r in records
+        for r in deduped
     ]
     if not values:
         return 0
