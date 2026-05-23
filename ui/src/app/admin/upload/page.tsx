@@ -190,9 +190,16 @@ export default function UploadPage() {
               type="file"
               accept=".xlsx,.xls,.csv"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="mt-1 block w-full border rounded-md px-3 py-2"
+              className="hidden"
               required
             />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="mt-1 block w-full border border-dashed border-gray-300 rounded-md px-4 py-3 text-sm text-gray-600 hover:border-blue-400 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 transition-colors"
+            >
+              {file ? file.name : '点击选择文件...'}
+            </button>
             <p className="mt-1 text-sm text-gray-500">
               支持 .xlsx, .xls, .csv 格式。文件将上传到 inputs/{brand}/{store}/{source}/{yyyyMM}/（使用系统当前时间）
             </p>
