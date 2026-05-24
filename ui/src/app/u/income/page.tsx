@@ -313,6 +313,9 @@ function BankEntryRateSection({ brand, span, period, periodOptions }: {
               unentered_amt: parseFloat(r.unentered_amt) || 0,
             })),
           });
+        } else if (json.data === null && json.note) {
+          // graceful degradation: view not ready yet
+          setData(null);
         } else {
           setError(json.error ?? '加载失败');
         }
