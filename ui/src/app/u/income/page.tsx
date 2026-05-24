@@ -292,8 +292,29 @@ function BankEntryRateSection({ brand, span, period, periodOptions }: {
     fetch(`/api/gelatomiiix/income/bank-entry-stats?brand=${brand}&period=${effectivePeriod}`)
       .then(r => r.json())
       .then(json => {
-        if (json.success) setData(json.data);
-        else setError(json.error ?? '加载失败');
+        if (json.success && json.data) {
+          const d = json.data;
+          setData({
+            channels: (d.channelMetrics || []).map((r: any) => ({
+              channel: r.channel,
+              qimai_net_amt: parseFloat(r.qimai_net_amt) || 0,
+              bank_entry_amt: parseFloat(r.bank_entry_amt) || 0,
+              entry_rate: parseFloat(r.entry_rate) || 0,
+            })),
+            monthly_trend: (d.monthlyTrend || []).map((r: any) => ({
+              month: r.month,
+              qimai_net_amt: parseFloat(r.qimai_net_amt) || 0,
+              bank_entry_amt: parseFloat(r.bank_entry_amt) || 0,
+            })),
+            unmatched_orders: (d.unmatchedOrders || []).map((r: any) => ({
+              channel: r.channel,
+              order_count: parseInt(r.order_count) || 0,
+              unentered_amt: parseFloat(r.unentered_amt) || 0,
+            })),
+          });
+        } else {
+          setError(json.error ?? '加载失败');
+        }
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
