@@ -2,6 +2,9 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useBrand } from '@/lib/brand-context';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts';
 
 interface CounterpartySummary {
   counterparty_name: string;
@@ -241,6 +244,136 @@ export default function PaymentPage() {
           )}
         </div>
       </div>
+
+      {/* ===== 银行入账率区块 ===== */}
+      {brand === 'gelatomiiix' && (
+        <div className="mt-8 pt-8 border-t">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">银行入账率</h2>
+          <BankEntryRateSection brand={brand} span={span} period={period} periodOptions={periodOptions} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+const CHANNEL_COLORS: Record<string, string> = {
+  WECHAT: 'bg-green-50 border-green-200 text-green-800',
+  ALIPAY: 'bg-blue-50 border-blue-200 text-blue-800',
+  MEITUAN: 'bg-orange-50 border-orange-200 text-orange-800',
+  UNIONPAY: 'bg-gray-50 border-gray-200 text-gray-800',
+};
+const CHANNEL_LABELS: Record<string, string> = {
+  WECHAT: '微信支付',
+  ALIPAY: '支付宝',
+  MEITUAN: '美团/蜜可诗',
+  UNIONPAY: '云闪付',
+};
+
+interface BankEntryData {
+  channels: { channel: string; qimai_net_amt: number; bank_entry_amt: number; entry_rate: number }[];
+  monthly_trend: { month: string; qimai_net_amt: number; bank_entry_amt: number }[];
+  unmatched_orders: { channel: string; order_count: number; unentered_amt: number }[];
+}
+
+function BankEntryRateSection({ brand, span, period, periodOptions }: {
+  brand: string; span: string; period: string; periodOptions: string[];
+}) {
+  const [data, setData] = useState<BankEntryData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const effectivePeriod = period === 'all'
+    ? periodOptions.filter(p => p !== 'all').at(-1) ?? '2026-01'
+    : period;
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    fetch(`/api/gelatomiiix/income/bank-entry-stats?brand=${brand}&period=${effectivePeriod}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.success) setData(json.data);
+        else setError(json.error ?? '加载失败');
+      })
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setLoading(false));
+  }, [brand, effectivePeriod]);
+
+  if (loading) return (
+    <div className="grid grid-cols-4 gap-4">
+      {[0,1,2,3].map(i => <div key={i} className="h-24 bg-gray-100 rounded-lg animate-pulse" />)}
+    </div>
+  );
+  if (error) return <div className="text-red-600 text-sm">{error}</div>;
+  if (!data) return null;
+
+  const displayChannels = data.channels.filter(c => c.channel !== 'TOTAL');
+
+  return (
+    <div className="space-y-6">
+      {/* Metric cards */}
+      <div className="grid grid-cols-3 gap-4">
+        {displayChannels.map(ch => {
+          const isLow = ch.entry_rate < 95;
+          const colorClass = isLow
+            ? 'bg-red-50 border-red-200 text-red-800'
+            : (CHANNEL_COLORS[ch.channel] ?? 'bg-gray-50 border-gray-200 text-gray-800');
+          return (
+            <div key={ch.channel} className={`border rounded-lg p-4 ${colorClass}`}>
+              <div className="text-sm font-medium mb-2">{CHANNEL_LABELS[ch.channel] ?? ch.channel}</div>
+              <div className="text-xs opacity-70 mb-1">
+                企迈实收 {ch.qimai_net_amt.toLocaleString('zh-CN', { minimumFractionDigits: 2 })} 元
+              </div>
+              <div className="text-xs opacity-70 mb-2">
+                银行入账 {ch.bank_entry_amt.toLocaleString('zh-CN', { minimumFractionDigits: 2 })} 元
+              </div>
+              <div className="text-2xl font-bold font-mono">{ch.entry_rate.toFixed(1)}%</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Line chart */}
+      {data.monthly_trend && data.monthly_trend.length > 0 && (
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={data.monthly_trend}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="month" />
+            <YAxis tickFormatter={v => (v / 10000).toFixed(0) + '万'} />
+            <Tooltip formatter={(v: unknown) => Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2 }) + ' 元'} />
+            <Legend />
+            <Line type="monotone" dataKey="qimai_net_amt" name="企迈实收" stroke="#1677FF" strokeWidth={2} />
+            <Line type="monotone" dataKey="bank_entry_amt" name="银行入账" stroke="#52C41A" strokeDasharray="5 5" />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+
+      {/* Unmatched orders table */}
+      {data.unmatched_orders && data.unmatched_orders.filter(o => o.channel !== 'OTHER').length > 0 && (
+        <div className="border rounded-lg overflow-hidden">
+          <div className="bg-gray-50 px-4 py-2 text-sm font-semibold">未入账订单明细</div>
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">渠道</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">未入账订单数</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">未入账金额（元）</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {data.unmatched_orders.filter(o => o.channel !== 'OTHER').map(row => (
+                <tr key={row.channel} className="hover:bg-gray-50">
+                  <td className="px-4 py-2">{CHANNEL_LABELS[row.channel] ?? row.channel}</td>
+                  <td className="px-4 py-2 text-right font-mono">{row.order_count.toLocaleString('zh-CN')}</td>
+                  <td className="px-4 py-2 text-right font-mono text-red-600">
+                    {row.unentered_amt.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
