@@ -10,7 +10,7 @@ import { getErrorMessage } from '@/lib/query-types';
 export async function GET(request: Request) {
   const user = await getSessionUser();
   const { searchParams } = new URL(request.url);
-  const period = searchParams.get('period') || '';
+  const period = searchParams.get('period') || 'all';
   const span = searchParams.get('span') || 'month';
   const store = searchParams.get('store') || 'all';
   const counterparty = searchParams.get('counterparty') || '';
