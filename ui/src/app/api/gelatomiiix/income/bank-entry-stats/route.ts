@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     const channelMetricsQuery = `
       SELECT
         CASE
-          WHEN $2 = ANY(payment_methods) THEN 'WECHAT'
+          WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
           WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
           WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
           WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
