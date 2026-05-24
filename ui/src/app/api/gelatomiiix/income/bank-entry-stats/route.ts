@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
+import { parsePeriod } from '@/app/api/financial/period-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,27 +24,29 @@ interface UnmatchedOrder {
   unentered_amt: string;
 }
 
-// GET /api/gelatomiiix/income/bank-entry-stats?brand=gelatomiiix&period=2026-04
+// GET /api/gelatomiiix/income/bank-entry-stats?brand=gelatomiiix&period=2026-04&span=month
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const brand = searchParams.get('brand');
     const period = searchParams.get('period');
+    const span = searchParams.get('span') || 'month';
 
     if (!brand || !period) {
       return NextResponse.json({ success: false, error: 'brand and period required' }, { status: 400 });
     }
 
-    // Validate period format YYYY-MM
-    if (!/^\d{4}-\d{2}$/.test(period)) {
-      return NextResponse.json({ success: false, error: 'period must be YYYY-MM' }, { status: 400 });
+    // Parse period with span to get date range [start, end)
+    const range = parsePeriod(period, span);
+    if (!range) {
+      return NextResponse.json({ success: false, error: 'Invalid period format for span' }, { status: 400 });
     }
-
-    // period end = first day of the month (SQL appends '-01' to get last day)
-    const periodEnd = period;
+    const [periodStart, periodEnd] = range;
+    // periodEnd is exclusive (first day of next period), so subtract 1 day for <= comparison
+    const periodEndInclusive = `(${periodEnd}::DATE - INTERVAL '1 day')::DATE`;
 
     // --- channelMetrics ---
-    // Qimai net amounts grouped by payment channel up to period end date
+    // Qimai net amounts grouped by payment channel up to period end date (cumulative)
     const channelMetricsQuery = `
       SELECT
         CASE
@@ -57,12 +60,12 @@ export async function GET(request: NextRequest) {
       FROM gelatomiiix_ods.income_detail
       WHERE NOT is_refund
         AND NOT is_member_payment
-        AND biz_date <= ($1 || '-01')::DATE + INTERVAL '1 month - 1 day'
+        AND biz_date <= ${periodEndInclusive}
       GROUP BY channel
       ORDER BY channel
     `;
 
-    // Bank entry amounts by channel (lvl2_code) up to period end date
+    // Bank entry amounts by channel (lvl2_code) up to period end date (cumulative)
     const bankEntryQuery = `
       SELECT
         r.lvl2_code AS channel,
@@ -72,7 +75,7 @@ export async function GET(request: NextRequest) {
         ON t.counterparty_name ILIKE '%' || r.match_value || '%'
       WHERE r.direction = 'in'
         AND r.lvl1_code = 'REV_BIZ'
-        AND t.txn_date <= ($1 || '-01')::DATE + INTERVAL '1 month - 1 day'
+        AND t.txn_date <= ${periodEndInclusive}
       GROUP BY r.lvl2_code
     `;
 
@@ -125,16 +128,16 @@ export async function GET(request: NextRequest) {
       WHERE third_party_txn_no IS NULL
         AND NOT is_refund
         AND NOT is_member_payment
-        AND biz_date <= ($1 || '-01')::DATE + INTERVAL '1 month - 1 day'
+        AND biz_date <= ${periodEndInclusive}
       GROUP BY channel
       ORDER BY channel
     `;
 
     const [channelMetricsResult, bankEntryResult, monthlyTrendResult, unmatchedOrdersResult] = await Promise.all([
-      pool.query(channelMetricsQuery, [periodEnd]),
-      pool.query(bankEntryQuery, [periodEnd]),
+      pool.query(channelMetricsQuery),
+      pool.query(bankEntryQuery),
       pool.query(monthlyTrendQuery),
-      pool.query(unmatchedOrdersQuery, [periodEnd]),
+      pool.query(unmatchedOrdersQuery),
     ]);
 
     // Build channel metrics by joining Qimai channels with bank entry channels

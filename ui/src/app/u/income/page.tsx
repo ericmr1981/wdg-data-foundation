@@ -290,7 +290,7 @@ function BankEntryRateSection({ brand, span, period, periodOptions }: {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetch(`/api/gelatomiiix/income/bank-entry-stats?brand=${brand}&period=${effectivePeriod}`)
+    fetch(`/api/gelatomiiix/income/bank-entry-stats?brand=${brand}&period=${effectivePeriod}&span=${span}`)
       .then(r => r.json())
       .then(json => {
         if (json.success && json.data) {
@@ -322,7 +322,7 @@ function BankEntryRateSection({ brand, span, period, periodOptions }: {
       })
       .catch((err: unknown) => setError(getErrorMessage(err)))
       .finally(() => setLoading(false));
-  }, [brand, effectivePeriod]);
+  }, [brand, span, effectivePeriod]);
 
   if (loading) return (
     <div className="grid grid-cols-4 gap-4">
