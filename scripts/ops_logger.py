@@ -28,10 +28,12 @@ OPS Logger - ETL 监控记录模块
 """
 
 import os
+import sys
 import uuid
 import warnings
+from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 import psycopg2
 from psycopg2 import extras
@@ -45,7 +47,7 @@ DEFAULT_DB_CONFIG = {
     "port": os.getenv("DB_PORT", "5432"),
     "database": os.getenv("DB_NAME", "dataplatform"),
     "user": os.getenv("DB_USER", "postgres"),
-    "password": os.getenv("DB_PASSWORD", "postgres"),
+    "password": os.environ["DB_PASSWORD"],
 }
 
 
@@ -366,3 +368,33 @@ def create_ops_logger(
     except Exception as e:
         warnings.warn(f"[OPS] Failed to create OpsLogger: {e}")
         return None
+
+
+@contextmanager
+def pipeline_step(ops: Optional[OpsLogger], step_name: str, step_order: int, *, detail: Optional[dict] = None) -> Iterator[None]:
+    """
+    Context manager wrapping a pipeline step for automatic lifecycle management.
+
+    Auto-starts the step on enter, auto-ends with 'success' on clean exit,
+    and auto-ends with 'failed' + error_message on exception.
+
+    Usage:
+        with pipeline_step(ops, "apply_classification_sql", step_order=3):
+            run_classification()
+        # step_end("success") called automatically
+
+        with pipeline_step(ops, "apply_classification_sql", step_order=3):
+            raise RuntimeError("crash")
+        # step_end("failed", error_message="crash") called automatically, exception re-raised
+    """
+    if ops:
+        ops.step_start(step_name, step_order, detail=detail)
+    try:
+        yield
+    except Exception:
+        if ops:
+            ops.step_end(step_name, status="failed", error_message=str(sys.exc_info()[1])[:500])
+        raise
+    else:
+        if ops:
+            ops.step_end(step_name, rows_out=1)

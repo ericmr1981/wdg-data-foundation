@@ -11,12 +11,21 @@
 
 | ID | 描述 | 状态 | 备注 |
 |----|------|------|------|
+<<<<<<< HEAD
 | P0 | 新品牌初始化完整性（init-bank-template 漏表/视图）| ✅ 已修复 | snapshot 表 + expense/profit 视图已补加，部署侧已完成（材料已归档） |
 | P0 | gelatomiiix 数据库补建（snapshot 表 + refresh 函数）| ✅ 已修复 | 部署侧直接执行（材料已归档） |
 | P0 | import_yufeng_bank_txn.py schema 命名不一致 | ✅ 已修复 | get_ods_schema() / get_dm_schema() |
 | P1 | Metabase 报表多品牌支持 | ✅ 已完成 | yufeng/bonjur/gelatomiiix 全部验证通过（各 17 行数据） |
 | P1 | 新品牌上传银行数据端到端测试 | 🔵 待测试 | UI 重新上传 gelatomiiix 数据 |
 | P2 | ops.brands init_vp 流程规范化 | 📋 待做 | 目前部署侧 DDL 靠手动 apply（材料已归档） |
+=======
+| P0 | 新品牌初始化完整性（init-bank-template 漏表/视图）| ✅ 已修复 | snapshot 表 + expense/profit 视图已补加（代码侧完成） |
+| P0 | gelatomiiix 数据库补建（snapshot 表 + refresh 函数）| ✅ 已修复 | 部署侧执行记录请由使用者自行维护 |
+| P0 | import_yufeng_bank_txn.py schema 命名不一致 | ✅ 已修复 | get_ods_schema() / get_dm_schema() |
+| P1 | Metabase 报表多品牌支持 | ✅ 已完成 | yufeng/bonjur/gelatomiiix 全部验证通过（各 17 行数据） |
+| P1 | 新品牌上传银行数据端到端测试 | 🔵 待测试 | UI 重新上传 gelatomiiix 数据 |
+| P2 | ops.brands init_vp 流程规范化 | 📋 待做 | 部署侧 DDL 流程需规范化（本仓库不维护部署细节） |
+>>>>>>> origin/main
 
 ---
 
@@ -25,7 +34,11 @@
 | ID | 描述 | 状态 | 备注 |
 |----|------|------|------|
 | D1 | rules_history.sql（fn_log_bank_rule_map_change）从未被 init 脚本引用 | ⚠️ 需修复 | 应在 init-brand 时自动 apply |
+<<<<<<< HEAD
 | D2 | sql/rules_history.sql 未同步到 Docker 镜像 | ⚠️ 需修复 | 当前靠手动 apply（部署侧，材料已归档） |
+=======
+| D2 | sql/rules_history.sql 未同步到 Docker 镜像 | ⚠️ 需修复 | 当前靠手动 apply（部署侧；本仓库不维护部署细节） |
+>>>>>>> origin/main
 | D3 | Metabase 报表 brand 隔离（多 brand 访问控制）| 📋 待做 | 目前无 schema 级访问控制 |
 
 ---

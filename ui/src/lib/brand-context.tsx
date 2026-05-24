@@ -12,7 +12,7 @@ interface BrandContextType {
 const BrandContext = createContext<BrandContextType | undefined>(undefined);
 
 export function BrandProvider({ children }: { children: ReactNode }) {
-  const [brand, setBrand] = useState<Brand>('yufeng');
+  const [brand, setBrand] = useState<Brand>('gelatomiiix');
 
   return (
     <BrandContext.Provider value={{ brand, setBrand }}>
@@ -30,8 +30,8 @@ export function useBrand() {
 }
 
 export const BRAND_OPTIONS = [
-  { code: 'yufeng', name: '榆枫与山' },
-  { code: 'bonjur', name: '本就' }
+  { code: 'gelatomiiix', name: '蜜可诗' },
+  { code: 'bonjur', name: 'Bonjour' }
 ] as const;
 
 // NOTE: dynamic brand list (C2) is loaded via /api/brands at runtime.

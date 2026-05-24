@@ -5,27 +5,30 @@
 
 ---
 
-## T-006 ✅ VPS Metabase Dashboard 全部卡在 "Waiting for results" — 已修复 (2026-04-01)
+## T-006 ✅ Metabase Dashboards 卡在 "Waiting for results" — 已修复 (2026-04-01)
 
 ### 根因
+<<<<<<< HEAD
 1. `site-url` 设置为 `http://<VPS_HOST>:8081`，但 Metabase 实际运行在 **8082**。前端所有 API 调用 401 Unauthorized。
 2. Month 参数缺少 `values` 配置，导致查询时参数为空，返回空结果。
 
 ### 修复操作
 1. 修正 `site-url` → `http://<VPS_HOST>:8082`（通过 API PUT）
 2. 为 Dashboard 8/9/10 的 Month 参数添加 `values_source_type=static-list` + 月份列表 + default 值
+=======
+1. Metabase `site-url` 端口配置与实际访问端口不一致，导致前端 API 调用异常。
+2. Dashboard 的 Month 参数缺少 `values` 配置，导致查询时参数为空或触发慢查询。
 
-### 修复后验证
-| Dashboard | 品牌 | Cards |
-|-----------|------|-------|
-| 8  | 蜜可诗 | 8/8 ✅ |
-| 9  | 榆枫与山 | 8/8 ✅ |
-| 10 | 本就 | 8/8 ✅ |
-| 5  | Bonjur财务 | 8/8 ✅ |
-| 4  | Bonjur营业 | 5/5 ✅ |
+### 修复操作
+1. 修正 Metabase `site-url` 配置（通过 Metabase API）。
+2. 为相关 Dashboard 的 Month 参数添加 `static-list` 值来源 + 月份列表 + default 值。
+>>>>>>> origin/main
+
+### 修复后验证（示例）
+- 相关 Dashboard 能正常加载，卡片均返回数据。
 
 ### 待办
-- [ ] `ops.login_attempts` 和 `ops.allowed_schemas` DDL 还未在 VPS apply（T-001/T-004 前置条件）
+- [ ] 部署方需确保相关 DDL（如 `ops.login_attempts`、`ops.allowed_schemas`）在目标环境已执行（T-001/T-004 前置条件）
 - [ ] 品牌（gelatomiiix/yufeng/bonjur）前端 UI 端到端验收
 
 ## 任务清单

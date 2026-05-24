@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""Seed Metabase Questions + Dashboard via API key (X-Api-Key).
+"""Seed Metabase Questions + Dashboard for 榆枫与山 via API key (X-Api-Key).
 
 Usage:
   # Option A (recommended): API key
   export METABASE_URL=http://127.0.0.1:8082
   export METABASE_API_KEY='...'
-  
-  # For yufeng (default)
   python3 scripts/metabase_seed_dashboard.py
-  
-  # For other brands (e.g., gelatomiiix, bonjur)
-  python3 scripts/metabase_seed_dashboard.py --brand gelatomiiix --dashboard-name "蜜可诗｜经营看板"
+
+  # Option B (local/dev): username + password (script will create a session)
+  export METABASE_URL=http://localhost:3001
+  export METABASE_USER='demo@metabase.com'
+  export METABASE_PASSWORD='demo123456'
+  python3 scripts/metabase_seed_dashboard.py
 
 Design goals
 - Idempotent by *name* for Cards and Dashboard.
-- Keep LOCAL and VPS consistent by making Metabase artifacts reproducible.
+- Keep environments consistent by making Metabase artifacts reproducible.
 - Metabase v0.59+ compatible (dataset_query uses `stages` + `lib/type`).
-- Support multi-brand via --brand argument.
 
 Notes
 - Do NOT hardcode secrets; use env vars.
@@ -27,7 +27,6 @@ Notes
 import os
 import sys
 import json
-import argparse
 from typing import Optional, Any
 
 import requests
@@ -36,10 +35,6 @@ MB_URL = os.environ.get("METABASE_URL", "http://localhost:3000").rstrip("/")
 MB_KEY = os.environ.get("METABASE_API_KEY")
 MB_USER = os.environ.get("METABASE_USER")
 MB_PASSWORD = os.environ.get("METABASE_PASSWORD")
-
-# Brand configuration (set in main())
-BRAND_CODE = "yufeng"  # default
-BRAND_DISPLAY = "榆枫与山"  # default
 
 
 def build_headers() -> dict:
@@ -77,8 +72,7 @@ def build_headers() -> dict:
     return {**base, "X-Metabase-Session": sid}
 
 
-# HEADERS will be initialized in main() after parsing arguments
-HEADERS = None
+HEADERS = build_headers()
 
 
 def die(msg: str) -> "NoReturn":  # type: ignore[name-defined]
@@ -120,97 +114,6 @@ def find_database_id(name_hint: str = "dataplatform") -> int:
             return int(d["id"])
 
     return int(items[0]["id"])
-
-
-def sql_for_brand(sql_template: str) -> str:
-    """Replace yufeng_ schema references with the target brand."""
-    global BRAND_CODE
-    if BRAND_CODE == "yufeng":
-        return sql_template
-    
-    # Determine target schema prefix
-    # yufeng/bonjur use "{brand}_*", but new brands (gelatomiiix) use "brand_{brand}_*"
-    if BRAND_CODE in ("bonjur",):
-        target_prefix = f"{BRAND_CODE}_"
-    else:
-        # Default to "brand_{brand}_" pattern for new brands
-        target_prefix = f"brand_{BRAND_CODE}_"
-    
-    # Replace schema names
-    result = sql_template.replace("yufeng_ods.", f"{target_prefix}ods.")
-    result = result.replace("yufeng_dm.", f"{target_prefix}dm.")
-    result = result.replace("yufeng_cfg.", f"{target_prefix}cfg.")
-    result = result.replace("yufeng_ops.", f"{target_prefix}ops.")
-    return result
-
-
-def store_values_for_brand() -> list[list[str]]:
-    """Stable store dropdown options. Avoid Metabase card/field-id binding bugs."""
-    global BRAND_CODE
-    if BRAND_CODE == "gelatomiiix":
-        return [["sh_xtd", "上海新天地店"]]
-    if BRAND_CODE == "yufeng":
-        return [["yf_gh", "榆枫国华"]]
-    if BRAND_CODE == "bonjur":
-        return [
-            ["hz_in77", "杭州in77"],
-            ["sh_wdg", "上海旺鼎阁"],
-            ["sh_zb", "上海王鼎阁"],
-            ["wz_oh_wxc", "温州瓯海万象城店"],
-            ["wz_ra_wy", "温州瑞安吾悦广场店"],
-        ]
-    return []
-
-
-def month_values_for_brand() -> list[list[str]]:
-    """Populate Month filter with actual months from brand's bank_txn table.
-
-    Fixes the "waiting for results" dashboard hang: when Month has no values_source,
-    the [[ AND extract(year from t.txn_time) = extract(year from {{month_date}}) ]] clause
-    expands to all years, causing a full table scan on large datasets.
-
-    Returns list of [date_string, label] pairs suitable for Metabase
-    values_source_config (date/month-year type uses YYYY-MM-01 format).
-    """
-    global BRAND_CODE
-    try:
-        if BRAND_CODE == "yufeng":
-            ods_schema = "yufeng_ods"
-        elif BRAND_CODE == "bonjur":
-            ods_schema = "bonjur_ods"
-        else:
-            ods_schema = f"brand_{BRAND_CODE}_ods"
-
-        rows = mb_get(
-            "/api/dataset",
-            params={
-                "query": json.dumps({
-                    "database": find_database_id(),
-                    "native": {
-                        "query": f"SELECT DISTINCT date_trunc('month', txn_time)::date AS month "
-                                 f"FROM {ods_schema}.bank_txn "
-                                 f"WHERE txn_time IS NOT NULL "
-                                 f"ORDER BY month DESC "
-                                 f"LIMIT 24"
-                    }
-                })
-            },
-            timeout=30,
-        )
-
-        values = []
-        raw_data = rows.get("data", {}) if isinstance(rows, dict) else {}
-        rows_list = raw_data.get("rows", [])
-
-        for row in rows_list:
-            month_date = row[0] if row else None
-            if month_date:
-                label = month_date[:7]
-                values.append([month_date, label])
-
-        return values[:24]
-    except Exception:
-        return []
 
 
 def search_one(model: str, name: str) -> Optional[dict]:
@@ -275,9 +178,6 @@ def card_payload(*, name: str, database_id: int, sql: str, description: str, dis
 
 def upsert_card(*, name: str, database_id: int, sql: str, description: str = "", display: str = "table", visualization_settings: Optional[dict] = None, template_tags: Optional[dict] = None, parameters: Optional[list[dict]] = None) -> int:
     existing = search_one("card", name)
-    
-    # Apply brand-specific schema replacement
-    sql = sql_for_brand(sql)
 
     payload = card_payload(
         name=name,
@@ -437,38 +337,6 @@ def mp(card_id: int, parameter_id: str, tag_name: str) -> dict:
 
 
 def main() -> None:
-    global BRAND_CODE, BRAND_DISPLAY
-    
-    # Parse arguments
-    parser = argparse.ArgumentParser(description="Seed Metabase dashboard for a brand")
-    parser.add_argument("--brand", default="yufeng", help="Brand code (e.g., yufeng, bonjur, gelatomiiix)")
-    parser.add_argument("--dashboard-name", default=None, help="Dashboard name (default: auto-generated from brand)")
-    args = parser.parse_args()
-    
-    BRAND_CODE = args.brand
-    
-    # Auto-generate brand display name
-    if BRAND_CODE == "yufeng":
-        BRAND_DISPLAY = "榆枫与山"
-    elif BRAND_CODE == "bonjur":
-        BRAND_DISPLAY = "本就"
-    elif BRAND_CODE == "gelatomiiix":
-        BRAND_DISPLAY = "蜜可诗"
-    else:
-        BRAND_DISPLAY = BRAND_CODE
-    
-    # Use custom dashboard name if provided, otherwise auto-generate
-    if args.dashboard_name:
-        dash_name = args.dashboard_name
-    else:
-        dash_name = f"{BRAND_DISPLAY}｜经营看板"
-    
-    print(f"Brand: {BRAND_CODE} ({BRAND_DISPLAY})")
-    
-    # Initialize HEADERS now that we have all config
-    global HEADERS
-    HEADERS = build_headers()
-    
     me = mb_get("/api/user/current")
     if not me.get("is_superuser"):
         print("WARN: api key user is not superuser; may lack permissions")
@@ -480,12 +348,11 @@ def main() -> None:
     # -----------------
 
     # Card 40: 收支总揽（表） + 利润/利润率/毛利率 + 当月现金流
-    card40_name = f"{BRAND_DISPLAY}｜收支总揽（表）"
     sql_card40 = r"""WITH base AS (
   SELECT
     to_char(t.txn_time, 'YYYY-MM') AS month,
     t.store_code,
-    c.lvl1_name AS lvl1_name,
+    COALESCE(c.lvl1_name, c.lvl1) AS lvl1_name,
     c.classified_source,
     COALESCE(t.in_amt, 0)  AS in_amt,
     COALESCE(t.out_amt, 0) AS out_amt
@@ -516,12 +383,8 @@ agg AS (
   SELECT
     COALESCE(SUM(in_amt)  FILTER (WHERE in_amt  > 0), 0) AS total_in,
 
-    -- 来自 profit_monthly（单行），这里用 MAX() 避免与 base 的聚合冲突。
-    -- Fix: some brands (e.g., gelatomiiix) may have profit_monthly not populated yet.
-    -- Fallback to bank_txn-derived total out (excluding "营建费用") so totals + ratios don't become 0.
-    CASE WHEN MAX(profit_agg.total_out) > 0 THEN MAX(profit_agg.total_out)
-         ELSE COALESCE(SUM(out_amt) FILTER (WHERE out_amt > 0 AND lvl1_name IS DISTINCT FROM '营建费用'), 0)
-    END AS total_out,
+    -- 来自 profit_monthly（单行），这里用 MAX() 避免与 base 的聚合冲突
+    MAX(profit_agg.total_out)  AS total_out,
 
     -- 这里“营业收入”以 yufeng_dm.profit_monthly 口径为准（REV_BIZ）
     MAX(profit_agg.in_biz) AS in_biz,
@@ -578,6 +441,7 @@ SELECT
 FROM rows
 ORDER BY ord;"""
 
+    card40_name = "Yufeng｜收支总揽（表）"
     card40_id = upsert_card(
         name=card40_name,
         database_id=db_id,
@@ -596,7 +460,7 @@ ORDER BY ord;"""
 
     # Card 41: 支出一级
     sql_41 = r"""SELECT
-  c.lvl1_name AS "类别",
+  COALESCE(c.lvl1_name, c.lvl1) AS "类别",
   SUM(COALESCE(t.out_amt,0)) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 JOIN yufeng_dm.v_bank_txn_classified c
@@ -606,11 +470,11 @@ WHERE t.txn_time IS NOT NULL
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   AND COALESCE(t.out_amt,0) > 0
   [[ AND t.store_code = {{store_code}} ]]
-GROUP BY c.lvl1_name
+GROUP BY COALESCE(c.lvl1_name, c.lvl1)
 ORDER BY "金额(元)" DESC;"""
 
     card41_id = upsert_card(
-        name=f"{BRAND_DISPLAY}｜支出一级分类（饼图）",
+        name="Yufeng｜支出一级分类（饼图）",
         database_id=db_id,
         sql=sql_41,
         description="支出一级分类饼图（类别+金额）。",
@@ -628,7 +492,7 @@ ORDER BY "金额(元)" DESC;"""
 
     # Card 42: 支出二级（含 一级/二级 筛选）
     sql_42 = r"""SELECT
-  COALESCE(NULLIF(c.lvl2_name,''), '（未填）') AS "类别",
+  COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') AS "类别",
   SUM(COALESCE(t.out_amt,0)) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 JOIN yufeng_dm.v_bank_txn_classified c
@@ -638,12 +502,12 @@ WHERE t.txn_time IS NOT NULL
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   AND COALESCE(t.out_amt,0) > 0
   [[ AND t.store_code = {{store_code}} ]]
-  [[ AND c.lvl1_name = {{expense_lvl1}} ]]
-GROUP BY COALESCE(NULLIF(c.lvl2_name,''), '（未填）')
+  [[ AND COALESCE(c.lvl1_name, c.lvl1) = {{expense_lvl1}} ]]
+GROUP BY COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）')
 ORDER BY "金额(元)" DESC;"""
 
     card42_id = upsert_card(
-        name=f"{BRAND_DISPLAY}｜支出二级分类（饼图）",
+        name="Yufeng｜支出二级分类（饼图）",
         database_id=db_id,
         sql=sql_42,
         description="支出二级分类饼图（类别+金额）；支持支出一级筛选。",
@@ -663,7 +527,7 @@ ORDER BY "金额(元)" DESC;"""
 
     # Card 43: 收入二级（含 一级/二级 筛选）
     sql_43 = r"""SELECT
-  COALESCE(NULLIF(c.lvl2_name,''), '（未填）') AS "类别",
+  COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') AS "类别",
   SUM(COALESCE(t.in_amt,0)) AS "金额(元)"
 FROM yufeng_ods.bank_txn t
 JOIN yufeng_dm.v_bank_txn_classified c
@@ -673,12 +537,12 @@ WHERE t.txn_time IS NOT NULL
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   AND COALESCE(t.in_amt,0) > 0
   [[ AND t.store_code = {{store_code}} ]]
-  [[ AND c.lvl1_name = {{income_lvl1}} ]]
-GROUP BY COALESCE(NULLIF(c.lvl2_name,''), '（未填）')
+  [[ AND COALESCE(c.lvl1_name, c.lvl1) = {{income_lvl1}} ]]
+GROUP BY COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）')
 ORDER BY "金额(元)" DESC;"""
 
     card43_id = upsert_card(
-        name=f"{BRAND_DISPLAY}｜收入二级分类（柱状图）",
+        name="Yufeng｜收入二级分类（柱状图）",
         database_id=db_id,
         sql=sql_43,
         description="收入二级分类柱状图（类别+金额）；支持收入一级筛选。",
@@ -726,7 +590,7 @@ FROM base
 ORDER BY month;"""
 
     card45_id = upsert_card(
-        name=f"{BRAND_DISPLAY}｜营业收入 vs 支出（不含营建）",
+        name="Yufeng｜营业收入 vs 支出（不含营建）",
         database_id=db_id,
         sql=sql_45,
         description="按月对比：营业收入 vs 支出（剔除营建费用 BUILD）。支持 Month/Store Code 筛选。",
@@ -757,7 +621,7 @@ GROUP BY 1, 2
 ORDER BY 1, 2;"""
 
     card46_id = upsert_card(
-        name=f"{BRAND_DISPLAY}｜支出一级分类趋势（多线图）",
+        name="Yufeng｜支出一级分类趋势（多线图）",
         database_id=db_id,
         sql=sql_46,
         description="支出的一级分类按月趋势（多线图）；支持 Store 筛选。",
@@ -765,11 +629,10 @@ ORDER BY 1, 2;"""
         visualization_settings={
             "graph.show_values": True,
             "graph.value_formatting": "currency",
-            # X=月份, series=一级分类, Y=金额(元)
-            # Note: In Metabase line charts, the breakout dimension often needs to be included
-            # in graph.dimensions (not only series_dimension), otherwise it may collapse into a single total line.
-            "graph.dimensions": ["月份", "一级分类"],
+            # Fix axis auto-detection: X=月份, Y=金额(元), series=一级分类
+            "graph.dimensions": ["月份"],
             "graph.metrics": ["金额(元)"],
+            "graph.series_dimension": "一级分类",
         },
         template_tags={
             "store_code": {"id": PID_STORE, "name": "store_code", "display-name": "Store Code", "type": "text"},
@@ -783,8 +646,8 @@ ORDER BY 1, 2;"""
     sql_47 = r"""SELECT
   t.txn_time AS "时间",
   t.store_code AS "门店",
-  c.lvl1_name AS "支出一级",
-  COALESCE(NULLIF(c.lvl2_name,''), '（未填）') AS "支出二级",
+  COALESCE(c.lvl1_name, c.lvl1) AS "支出一级",
+  COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') AS "支出二级",
   t.counterparty_name AS "对方单位",
   t.summary AS "摘要",
   t.memo AS "附言",
@@ -802,8 +665,8 @@ WHERE t.txn_time IS NOT NULL
   [[ AND extract(year from t.txn_time) = extract(year from {{month_date}})
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   [[ AND t.store_code = {{store_code}} ]]
-  [[ AND c.lvl1_name = {{expense_lvl1}} ]]
-  [[ AND COALESCE(NULLIF(c.lvl2_name,''), '（未填）') = {{expense_lvl2}} ]]
+  [[ AND COALESCE(c.lvl1_name, c.lvl1) = {{expense_lvl1}} ]]
+  [[ AND COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') = {{expense_lvl2}} ]]
   [[ AND (
         COALESCE(t.counterparty_name,'') ILIKE '%' || {{keyword}} || '%'
      OR COALESCE(t.summary,'') ILIKE '%' || {{keyword}} || '%'
@@ -814,7 +677,7 @@ ORDER BY COALESCE(t.out_amt,0) DESC, t.txn_time DESC
 LIMIT 2000;"""
 
     card47_id = upsert_card(
-        name=f"{BRAND_DISPLAY}｜支出明细（下钻）",
+        name="Yufeng｜支出明细（下钻）",
         database_id=db_id,
         sql=sql_47,
         description="用于下钻查看支出明细：按月/门店/支出一级/支出二级/关键词筛选；按金额倒序。",
@@ -839,8 +702,8 @@ LIMIT 2000;"""
     sql_48 = r"""SELECT
   t.txn_time AS "时间",
   t.store_code AS "门店",
-  c.lvl1_name AS "收入一级",
-  COALESCE(NULLIF(c.lvl2_name,''), '（未填）') AS "收入二级",
+  COALESCE(c.lvl1_name, c.lvl1) AS "收入一级",
+  COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') AS "收入二级",
   t.counterparty_name AS "对方单位",
   t.summary AS "摘要",
   t.memo AS "附言",
@@ -858,8 +721,8 @@ WHERE t.txn_time IS NOT NULL
   [[ AND extract(year from t.txn_time) = extract(year from {{month_date}})
      AND extract(month from t.txn_time) = extract(month from {{month_date}}) ]]
   [[ AND t.store_code = {{store_code}} ]]
-  [[ AND c.lvl1_name = {{income_lvl1}} ]]
-  [[ AND COALESCE(NULLIF(c.lvl2_name,''), '（未填）') = {{income_lvl2}} ]]
+  [[ AND COALESCE(c.lvl1_name, c.lvl1) = {{income_lvl1}} ]]
+  [[ AND COALESCE(NULLIF(COALESCE(c.lvl2_name, c.lvl2),''), '（未填）') = {{income_lvl2}} ]]
   [[ AND (
         COALESCE(t.counterparty_name,'') ILIKE '%' || {{keyword}} || '%'
      OR COALESCE(t.summary,'') ILIKE '%' || {{keyword}} || '%'
@@ -870,7 +733,7 @@ ORDER BY COALESCE(t.in_amt,0) DESC, t.txn_time DESC
 LIMIT 2000;"""
 
     card48_id = upsert_card(
-        name=f"{BRAND_DISPLAY}｜收入明细（下钻）",
+        name="Yufeng｜收入明细（下钻）",
         database_id=db_id,
         sql=sql_48,
         description="用于下钻查看收入明细：按月/门店/收入一级/收入二级/关键词筛选；按金额倒序。",
@@ -892,35 +755,31 @@ LIMIT 2000;"""
     )
 
     # -----------------
+    # Options cards (for dropdown filters)
+    # -----------------
+
+    store_options_id = upsert_card(
+        name="Yufeng｜门店下拉选项",
+        database_id=db_id,
+        sql=r"""SELECT store_code, store_name
+FROM yufeng_cfg.dim_store
+ORDER BY COALESCE(sort_order, 9999), store_code;""",
+        description="Dashboard filter options: store_code + store_name",
+        display="table",
+    )
+
+    # -----------------
     # Dashboard
     # -----------------
 
-    # dash_name already set at the beginning of main()
-    dash_desc = f"{BRAND_DISPLAY}：概览（收支总揽/支出一级/支出二级/收入二级/趋势）+ 明细下钻（支出/收入明细表）。筛选：月（按月）/门店（下拉）/支出一级/支出二级/收入一级/收入二级/关键词。"
-
-    month_values = month_values_for_brand()
-    dash_month_param = {
-        # 1) Month: month-only picker — populated from brand's actual bank_txn months
-        #    (Fix: without this, the date/month-year filter expands to all years → full table scan → "waiting")
-        "id": PID_MONTH,
-        "name": "Month",
-        "slug": "month_date",
-        "type": "date/month-year",
-        "sectionId": "date",
-        "required": False,
-        "values_source_type": "static-list",
-        "values_source_config": {
-            "values": month_values
-        },
-    }
-    # Set a safe default (latest month) to avoid loading ALL months/years on first render.
-    if month_values:
-        dash_month_param["default"] = month_values[0][0]
+    dash_name = "榆枫与山｜经营看板"
+    dash_desc = "榆枫与山：概览（收支总揽/支出一级/支出二级/收入二级/趋势）+ 明细下钻（支出/收入明细表）。筛选：月（按月）/门店（下拉）/支出一级/支出二级/收入一级/收入二级/关键词。"
 
     dash_params = [
-        dash_month_param,
+        # 1) Month: month-only picker
+        {"id": PID_MONTH, "name": "Month", "slug": "month_date", "type": "date/month-year", "sectionId": "date", "required": False},
 
-        # 2) Store: stable static list (avoid Metabase values_source/card field-id drift)
+        # 2) Store: dropdown with store names (static list for now)
         {
             "id": PID_STORE,
             "name": "门店",
@@ -928,9 +787,11 @@ LIMIT 2000;"""
             "type": "category",
             "sectionId": "string",
             "required": False,
-            "values_source_type": "static-list",
+            "values_source_type": "card",
             "values_source_config": {
-                "values": store_values_for_brand()
+                "card_id": store_options_id,
+                "value_field": ["field", 771, None],
+                "label_field": ["field", 772, None]
             },
         },
 
@@ -1187,13 +1048,13 @@ LIMIT 2000;"""
     print(f"Dashboard: {dash_name} (id={dash_id}) -> {MB_URL}/dashboard/{dash_id}")
     for name, cid in [
         (card40_name, card40_id),
-        (f"{BRAND_DISPLAY}｜支出一级分类（饼图）", card41_id),
-        (f"{BRAND_DISPLAY}｜支出二级分类（饼图）", card42_id),
-        (f"{BRAND_DISPLAY}｜收入二级分类（柱状图）", card43_id),
-        (f"{BRAND_DISPLAY}｜营业收入 vs 支出（不含营建）", card45_id),
-        (f"{BRAND_DISPLAY}｜支出一级分类趋势（多线图）", card46_id),
-        (f"{BRAND_DISPLAY}｜支出明细（下钻）", card47_id),
-        (f"{BRAND_DISPLAY}｜收入明细（下钻）", card48_id),
+        ("Yufeng｜支出一级分类（饼图）", card41_id),
+        ("Yufeng｜支出二级分类（饼图）", card42_id),
+        ("Yufeng｜收入二级分类（柱状图）", card43_id),
+        ("Yufeng｜营业收入 vs 支出（不含营建）", card45_id),
+        ("Yufeng｜支出一级分类趋势（多线图）", card46_id),
+        ("Yufeng｜支出明细（下钻）", card47_id),
+        ("Yufeng｜收入明细（下钻）", card48_id),
     ]:
         print(f"Card: {name} (id={cid}) -> {MB_URL}/question/{cid}")
 

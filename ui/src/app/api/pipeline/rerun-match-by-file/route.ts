@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getDmSchema, normalizeBrand } from '@/lib/brand-server';
+import { getErrorMessage } from '@/lib/query-types';
+import type { FileRow } from '@/lib/query-types';
 
 // POST /api/pipeline/rerun-match-by-file - 按文件重跑分类匹配
 export async function POST(request: Request) {
@@ -68,7 +70,7 @@ export async function POST(request: Request) {
     // L2 snapshot 模式：通过 refresh_*_snapshot(source_file_id) 触发增量重算
     const results: { source_file_id: number; status: string; message: string }[] = [];
 
-    const idsToProcess = rerunAll ? files.map((f: any) => Number(f.id)) : targetIds;
+    const idsToProcess = rerunAll ? (files as FileRow[]).map((f) => Number(f.id)) : targetIds;
 
     for (const fileId of idsToProcess) {
       try {
@@ -88,11 +90,11 @@ export async function POST(request: Request) {
           status: 'success',
           message: 'Snapshot refreshed'
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         results.push({
           source_file_id: fileId,
           status: 'error',
-          message: err.message
+          message: getErrorMessage(err)
         });
       }
     }
@@ -102,7 +104,7 @@ export async function POST(request: Request) {
       run_type: 'rerun_match',
       all_files: rerunAll,
       source_file_ids: idsToProcess,
-      file_names: files.map((f: any) => f.file_name)
+      file_names: (files as FileRow[]).map((f) => f.file_name)
     });
 
     const runInsert = await pool.query(
@@ -134,10 +136,10 @@ export async function POST(request: Request) {
         all_files: rerunAll
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in rerun-match-by-file:', error);
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: getErrorMessage(error) },
       { status: 500 }
     );
   }

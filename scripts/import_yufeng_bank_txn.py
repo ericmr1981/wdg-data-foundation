@@ -44,7 +44,7 @@ DB_CONFIG = {
     "port": os.getenv("DB_PORT", "5432"),
     "database": os.getenv("DB_NAME", "dataplatform"),
     "user": os.getenv("DB_USER", "postgres"),
-    "password": os.getenv("DB_PASSWORD", "postgres"),
+    "password": os.environ["DB_PASSWORD"],
 }
 
 # Excel 列名映射（工行流水模板）
@@ -52,7 +52,10 @@ COLUMN_MAPPING = {
     "本方账号": "self_acct",
     "交易时间": "txn_time",
     "对方单位": "counterparty_name",
+    "对方单位名称": "counterparty_name",
     "对方账号": "counterparty_acct",
+    "借方发生额": "out_amt",  # 借 = 扣款（支出）
+    "贷方发生额": "in_amt",   # 贷 = 到账（收入）
     "转入金额": "in_amt",
     "转出金额": "out_amt",
     "余额": "balance_amt",
@@ -287,6 +290,15 @@ def read_bank_excel(file_path: str) -> pd.DataFrame:
             df[col] = None
 
     df = df[target_cols]
+
+    # 处理同名列（如 对方单位 和 对方单位名称 都映射到 counterparty_name）
+    # 取第一个非空值合并
+    dup_cols = set(c for c in df.columns if list(df.columns).count(c) > 1)
+    for col in dup_cols:
+        cols = [c for c in df.columns if c == col]
+        if len(cols) > 1:
+            df[col] = df[cols].apply(lambda row: next((v for v in row if pd.notna(v) and str(v).strip() != ''), None), axis=1)
+            df = df.loc[:, ~df.columns.duplicated()]
 
     # 清洗数据
     df["self_acct"] = df["self_acct"].apply(lambda x: str(x).strip() if pd.notna(x) else None)
@@ -797,8 +809,9 @@ def main():
     )
     parser.add_argument(
         "--db-password",
-        default=os.getenv("DB_PASSWORD", "postgres"),
-        help="数据库密码",
+        default=os.environ.get("DB_PASSWORD"),
+        required=not bool(os.environ.get("DB_PASSWORD")),
+        help="数据库密码 (required unless DB_PASSWORD env var is set)",
     )
 
     args = parser.parse_args()

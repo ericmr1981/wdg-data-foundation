@@ -25,18 +25,29 @@
 - 运维资料：`ops/`
 
 ## Deploy surfaces（本机）
+<<<<<<< HEAD
 - 本机启动与测试：`docs/LOCAL_STARTUP.md` / `docs/LOCAL_TEST_CHECKLIST.md`
 - 一键开关服务：`scripts/dev.sh`
 - 一键跑链路：`scripts/run_pipeline_oneclick.py`
 
 > VPS / Deploy 材料已归档（本仓库不维护）：见 `docs/VPS_ARCHIVE.md`
+=======
+- UI（dev）：`http://localhost:3000`
+- UI（容器）：`http://localhost:3002`（见 `docker-compose.yml`）
+- Metabase：`http://localhost:${METABASE_PORT:-8082}`
+- Postgres：`127.0.0.1:${DB_PORT:-5432}`
+>>>>>>> origin/main
 
 ## Main workstreams
 1. 数据接入：Excel/CSV → RAW/ODS
 2. 分类治理：rule_map / override / 未分类治理 / 人工匹配
 3. 数据建模：DM 报表层（收入、费用、利润、覆盖率）
 4. 交付展示：UI / Metabase / dashboard
+<<<<<<< HEAD
 5. 运维部署：本机开发（部署/迁移材料已归档）
+=======
+5. 运维部署：本机开发（部署由使用者自行决定）
+>>>>>>> origin/main
 
 ## How to verify
 - 最小验证：`bash scripts/run_drift_check.sh`

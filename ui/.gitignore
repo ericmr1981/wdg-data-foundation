@@ -1,0 +1,16 @@
+# Next
+.next/
+out/
+
+# Node
+node_modules/
+
+# Playwright
+playwright-report/
+test-results/
+
+# E2E
+e2e/storage-states/
+
+# Env
+.env.local

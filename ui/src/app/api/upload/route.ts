@@ -4,6 +4,7 @@ import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { existsSync } from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
+import crypto from 'crypto';
 import pool from '@/lib/db';
 
 // POST /api/upload - 上传文件并触发导入
@@ -29,16 +30,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
     }
 
-    // ── File type validation (whitelist: .xlsx, .xls, .csv) ──
-    const ALLOWED_EXTENSIONS = ['.xlsx', '.xls', '.csv'] as const;
-    const fileExt = '.' + file.name.toLowerCase().split('.').pop()!;
-    if (!ALLOWED_EXTENSIONS.includes(fileExt as typeof ALLOWED_EXTENSIONS[number])) {
-      return NextResponse.json(
-        { success: false, error: `Invalid file type: ${fileExt}. Allowed: ${[...ALLOWED_EXTENSIONS].join(', ')}` },
-        { status: 400 }
-      );
-    }
-
     // 创建上传目录
     const uploadDir = path.join(process.cwd(), '..', 'inputs', brand, store, source, yyyyMM);
     if (!existsSync(uploadDir)) {
@@ -48,8 +39,13 @@ export async function POST(request: Request) {
     // 保存文件
     const fileName = file.name;
     const filePath = path.join(uploadDir, fileName);
-    const buffer = await file.arrayBuffer();
-    await writeFile(filePath, Buffer.from(buffer));
+    const arrayBuffer = await file.arrayBuffer();
+    const fileBuffer = Buffer.from(arrayBuffer);
+
+    // 上传回执：提前计算 SHA-256（与导入脚本的幂等逻辑对齐）
+    const fileHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+
+    await writeFile(filePath, fileBuffer);
 
     let importResult = null;
     let importError = null;
@@ -69,9 +65,11 @@ export async function POST(request: Request) {
         if (source === 'bank') {
           scriptName = 'import_yufeng_bank_txn.py';
         } else if (source === 'sales') {
-          scriptName = 'import_bonjur_sales_daily.py';
-        } else if (source === 'delivery') {
-          scriptName = 'import_xintiandi_delivery.py';
+          // Bonjur 营业数据（自助下载）为日粒度明细，导入到 bonjur_ods.sales_daily_self_service
+          // 旧的 import_bonjur_sales_daily.py 目标是 bonjur_ods.sales_monthly（在 VPS 可能是 view），会导致插入失败
+          scriptName = brand === 'bonjur'
+            ? 'import_bonjur_sales_self_service_daily.py'
+            : 'import_bonjur_sales_daily.py';
         } else {
           return NextResponse.json({ success: false, error: 'Unknown source type' }, { status: 400 });
         }
@@ -122,12 +120,52 @@ export async function POST(request: Request) {
       }
     }
 
+    // 上传回执：尝试回读 raw.ingest_file（无论 triggerImport 与否，只要库里存在就会回显）
+    let sourceFileId: number | null = null;
+    let importStatus: string | null = null;
+    let rowCount: number | null = null;
+    let errorMessage: string | null = null;
+
+    try {
+      const q = await pool.query(
+        `SELECT id, status, row_count, error_message
+         FROM raw.ingest_file
+         WHERE file_hash = $1
+         LIMIT 1`,
+        [fileHash]
+      );
+      if (q.rows?.length) {
+        sourceFileId = Number(q.rows[0].id);
+        importStatus = q.rows[0].status;
+        rowCount = q.rows[0].row_count ?? null;
+        errorMessage = q.rows[0].error_message ?? null;
+      }
+    } catch {
+      // best-effort: do not block upload on receipt query
+    }
+
+    // 导入成功后自动触发分类
+    if (!importError && triggerImport && source === 'bank') {
+      try {
+        const schemaPrefix = ['yufeng', 'bonjur'].includes(brand) ? brand : `brand_${brand}`;
+        await pool.query(`SELECT ${schemaPrefix}_dm.refresh_bank_txn_classified_snapshot(NULL)`);
+        importResult += '\n✅ 分类完成';
+      } catch (classifyErr: any) {
+        importError = `分类失败: ${classifyErr.message}`;
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         filePath,
         fileName,
         fileMonth: yyyyMM,
+        fileHash,
+        sourceFileId,
+        importStatus,
+        rowCount,
+        errorMessage,
         importResult,
         importError
       }
