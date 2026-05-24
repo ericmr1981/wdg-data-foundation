@@ -5,25 +5,6 @@ import { parsePeriod } from '@/app/api/financial/period-utils';
 
 export const dynamic = 'force-dynamic';
 
-interface ChannelMetric {
-  channel: string;
-  qimai_net_amt: string;
-  bank_entry_amt: string;
-  entry_rate: string;
-}
-
-interface MonthlyTrend {
-  month: string;
-  qimai_net_amt: string;
-  bank_entry_amt: string;
-}
-
-interface UnmatchedOrder {
-  channel: string;
-  order_count: string;
-  unentered_amt: string;
-}
-
 // GET /api/gelatomiiix/income/bank-entry-stats?brand=gelatomiiix&period=2026-04&span=month
 export async function GET(request: NextRequest) {
   try {
@@ -36,18 +17,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'brand and period required' }, { status: 400 });
     }
 
-    // Parse period with span to get date range [start, end)
     const range = parsePeriod(period, span);
     if (!range) {
       return NextResponse.json({ success: false, error: 'Invalid period format for span' }, { status: 400 });
     }
-    const [periodStart, periodEnd] = range;
-    // periodEnd is exclusive (first day of next period), so subtract 1 day for <= comparison
-    const periodEndInclusive = `(${periodEnd}::DATE - INTERVAL '1 day')::DATE`;
+    const [, periodEnd] = range;
+    // periodEnd is exclusive (first day of next period) — subtract 1 day to get the last day
+    const periodEndInclusive = new Date(new Date(periodEnd + 'T00:00:00').getTime() - 86400000)
+      .toISOString().slice(0, 10);
 
     // --- channelMetrics ---
-    // Qimai net amounts grouped by payment channel up to period end date (cumulative)
-    const channelMetricsQuery = `
+    const channelMetricsResult = await pool.query(`
       SELECT
         CASE
           WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
@@ -60,13 +40,13 @@ export async function GET(request: NextRequest) {
       FROM gelatomiiix_ods.income_detail
       WHERE NOT is_refund
         AND NOT is_member_payment
-        AND biz_date <= ${periodEndInclusive}
+        AND biz_date <= $1::DATE
       GROUP BY channel
       ORDER BY channel
-    `;
+    `, [periodEndInclusive]);
 
-    // Bank entry amounts by channel (lvl2_code) up to period end date (cumulative)
-    const bankEntryQuery = `
+    // --- bank entry by channel ---
+    const bankEntryResult = await pool.query(`
       SELECT
         r.lvl2_code AS channel,
         COALESCE(SUM(t.amount), 0) AS bank_entry_amt
@@ -75,45 +55,35 @@ export async function GET(request: NextRequest) {
         ON t.counterparty_name ILIKE '%' || r.match_value || '%'
       WHERE r.direction = 'in'
         AND r.lvl1_code = 'REV_BIZ'
-        AND t.txn_date <= ${periodEndInclusive}
+        AND t.txn_date <= $1::DATE
       GROUP BY r.lvl2_code
-    `;
+    `, [periodEndInclusive]);
 
     // --- monthlyTrend ---
-    // Monthly Qimai net vs bank entry (full outer join so months with only one side still show)
-    const monthlyTrendQuery = `
+    const monthlyTrendResult = await pool.query(`
       WITH qimai_monthly AS (
-        SELECT
-          to_char(biz_date, 'YYYY-MM') AS month,
-          SUM(net_amt) AS qimai_net_amt
+        SELECT to_char(biz_date, 'YYYY-MM') AS month, SUM(net_amt) AS qimai_net_amt
         FROM gelatomiiix_ods.income_detail
-        WHERE NOT is_refund
-          AND NOT is_member_payment
-        GROUP BY to_char(biz_date, 'YYYY-MM')
+        WHERE NOT is_refund AND NOT is_member_payment
+        GROUP BY 1
       ),
       bank_monthly AS (
-        SELECT
-          to_char(txn_date, 'YYYY-MM') AS month,
-          SUM(t.amount) AS bank_entry_amt
+        SELECT to_char(txn_date, 'YYYY-MM') AS month, SUM(t.amount) AS bank_entry_amt
         FROM brand_gelatomiiix_ods.v_bank_txn t
         JOIN brand_gelatomiiix_cfg.bank_rule_map r
           ON t.counterparty_name ILIKE '%' || r.match_value || '%'
-        WHERE r.direction = 'in'
-          AND r.lvl1_code = 'REV_BIZ'
-        GROUP BY to_char(txn_date, 'YYYY-MM')
+        WHERE r.direction = 'in' AND r.lvl1_code = 'REV_BIZ'
+        GROUP BY 1
       )
-      SELECT
-        COALESCE(q.month, b.month) AS month,
-        COALESCE(q.qimai_net_amt, 0) AS qimai_net_amt,
-        COALESCE(b.bank_entry_amt, 0) AS bank_entry_amt
-      FROM qimai_monthly q
-      FULL OUTER JOIN bank_monthly b ON q.month = b.month
-      ORDER BY month
-    `;
+      SELECT COALESCE(q.month, b.month) AS month,
+             COALESCE(q.qimai_net_amt, 0) AS qimai_net_amt,
+             COALESCE(b.bank_entry_amt, 0) AS bank_entry_amt
+      FROM qimai_monthly q FULL OUTER JOIN bank_monthly b ON q.month = b.month
+      ORDER BY 1
+    `);
 
     // --- unmatchedOrders ---
-    // Qimai orders with no third_party_txn_no (bank entry expected but not yet entered)
-    const unmatchedOrdersQuery = `
+    const unmatchedOrdersResult = await pool.query(`
       SELECT
         CASE
           WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
@@ -128,32 +98,23 @@ export async function GET(request: NextRequest) {
       WHERE third_party_txn_no IS NULL
         AND NOT is_refund
         AND NOT is_member_payment
-        AND biz_date <= ${periodEndInclusive}
+        AND biz_date <= $1::DATE
       GROUP BY channel
       ORDER BY channel
-    `;
+    `, [periodEndInclusive]);
 
-    const [channelMetricsResult, bankEntryResult, monthlyTrendResult, unmatchedOrdersResult] = await Promise.all([
-      pool.query(channelMetricsQuery),
-      pool.query(bankEntryQuery),
-      pool.query(monthlyTrendQuery),
-      pool.query(unmatchedOrdersQuery),
-    ]);
-
-    // Build channel metrics by joining Qimai channels with bank entry channels
+    // Build channel metrics
     const qimaiByChannel = new Map<string, number>();
     for (const row of channelMetricsResult.rows as { channel: string; qimai_net_amt: string }[]) {
       qimaiByChannel.set(row.channel, parseFloat(row.qimai_net_amt));
     }
-
     const bankByChannel = new Map<string, number>();
     for (const row of bankEntryResult.rows as { channel: string; bank_entry_amt: string }[]) {
       bankByChannel.set(row.channel, parseFloat(row.bank_entry_amt));
     }
 
     const allChannels = new Set([...qimaiByChannel.keys(), ...bankByChannel.keys()]);
-    const channelMetrics: ChannelMetric[] = [];
-
+    const channelMetrics = [];
     let totalQimai = 0;
     let totalBank = 0;
 
@@ -162,54 +123,36 @@ export async function GET(request: NextRequest) {
       const bankAmt = bankByChannel.get(channel) || 0;
       totalQimai += qimaiAmt;
       totalBank += bankAmt;
-      const rate = qimaiAmt > 0 ? ((bankAmt / qimaiAmt) * 100).toFixed(2) : '0.00';
       channelMetrics.push({
         channel,
         qimai_net_amt: qimaiAmt.toFixed(2),
         bank_entry_amt: bankAmt.toFixed(2),
-        entry_rate: rate,
+        entry_rate: qimaiAmt > 0 ? (bankAmt / qimaiAmt * 100).toFixed(2) : '0.00',
       });
     }
 
-    // Add TOTAL row
-    const totalRate = totalQimai > 0 ? ((totalBank / totalQimai) * 100).toFixed(2) : '0.00';
     channelMetrics.push({
       channel: 'TOTAL',
       qimai_net_amt: totalQimai.toFixed(2),
       bank_entry_amt: totalBank.toFixed(2),
-      entry_rate: totalRate,
+      entry_rate: totalQimai > 0 ? (totalBank / totalQimai * 100).toFixed(2) : '0.00',
     });
 
-    // Build monthly trend
-    const monthlyTrend: MonthlyTrend[] = (monthlyTrendResult.rows as {
-      month: string;
-      qimai_net_amt: string;
-      bank_entry_amt: string;
-    }[]).map(r => ({
-      month: r.month,
-      qimai_net_amt: parseFloat(r.qimai_net_amt).toFixed(2),
-      bank_entry_amt: parseFloat(r.bank_entry_amt).toFixed(2),
-    }));
+    const monthlyTrend = (monthlyTrendResult.rows as { month: string; qimai_net_amt: string; bank_entry_amt: string }[])
+      .map(r => ({
+        month: r.month,
+        qimai_net_amt: parseFloat(r.qimai_net_amt).toFixed(2),
+        bank_entry_amt: parseFloat(r.bank_entry_amt).toFixed(2),
+      }));
 
-    // Build unmatched orders
-    const unmatchedOrders: UnmatchedOrder[] = (unmatchedOrdersResult.rows as {
-      channel: string;
-      order_count: string;
-      unentered_amt: string;
-    }[]).map(r => ({
-      channel: r.channel,
-      order_count: r.order_count,
-      unentered_amt: parseFloat(r.unentered_amt).toFixed(2),
-    }));
+    const unmatchedOrders = (unmatchedOrdersResult.rows as { channel: string; order_count: string; unentered_amt: string }[])
+      .map(r => ({
+        channel: r.channel,
+        order_count: r.order_count,
+        unentered_amt: parseFloat(r.unentered_amt).toFixed(2),
+      }));
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        channelMetrics,
-        monthlyTrend,
-        unmatchedOrders,
-      },
-    });
+    return NextResponse.json({ success: true, data: { channelMetrics, monthlyTrend, unmatchedOrders } });
   } catch (error: unknown) {
     const pgError = error as Record<string, string>;
     if (pgError?.code === '42P01') {
