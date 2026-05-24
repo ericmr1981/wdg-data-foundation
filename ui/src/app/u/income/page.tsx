@@ -29,6 +29,20 @@ interface TxnDetail {
   lvl2_name: string | null;
 }
 
+interface IncomeLvl1 {
+  lvl1_code: string;
+  lvl1_name: string;
+  amount: number;
+}
+
+interface IncomeLvl2 {
+  lvl1_code: string;
+  lvl1_name: string;
+  lvl2_code: string;
+  lvl2_name: string;
+  amount: number;
+}
+
 export default function PaymentPage() {
   const { brand } = useBrand();
   const [counterparties, setCounterparties] = useState<CounterpartySummary[]>([]);
@@ -44,6 +58,10 @@ export default function PaymentPage() {
   const [store, setStore] = useState('all');
   const [stores, setStores] = useState<{ code: string; name: string }[]>([]);
   const [search, setSearch] = useState('');
+
+  // Income metrics
+  const [metrics, setMetrics] = useState<{ total_in: number; by_lvl1: IncomeLvl1[]; by_lvl2: IncomeLvl2[] } | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
 
   const periodOptions = useMemo(() => {
     const base = ['all'] as string[];
@@ -65,13 +83,31 @@ export default function PaymentPage() {
       .catch(() => {});
   }, [brand]);
 
+  // Fetch income metrics
+  useEffect(() => {
+    if (!brand) return;
+    setMetricsLoading(true);
+    fetch(`/api/financial/income-metrics?brand=${brand}&period=${period}&span=${span}&store=${store}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data) setMetrics(json.data);
+        else console.error('income-metrics fetch failed', json);
+      })
+      .catch(err => console.error('income-metrics fetch error', err))
+      .finally(() => setMetricsLoading(false));
+  }, [brand, period, span, store]);
+
   // Fetch counterparty list
   useEffect(() => {
     async function fetchList() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/financial/counterparty?brand=${brand}&direction=in`);
+        const params = new URLSearchParams({ brand, direction: 'in' });
+        if (period !== 'all') params.set('period', period);
+        if (span) params.set('span', span);
+        if (store !== 'all') params.set('store', store);
+        const res = await fetch(`/api/financial/counterparty?${params}`);
         const json = await res.json();
         if (json.success) setCounterparties(json.data.counterparties || []);
         else setError(json.error);
@@ -82,7 +118,7 @@ export default function PaymentPage() {
       }
     }
     fetchList();
-  }, [brand]);
+  }, [brand, period, span, store]);
 
   // Fetch detail when counterparty selected
   useEffect(() => {
@@ -150,6 +186,59 @@ export default function PaymentPage() {
           </select>
         </div>
       </div>
+
+      {/* Income Metrics */}
+      {metrics && !metricsLoading && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="text-xs text-gray-500 uppercase tracking-wider">收款总金额</div>
+              <div className="text-2xl font-bold text-gray-900 mt-1">
+                {metrics.total_in.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">元</div>
+            </div>
+            {metrics.by_lvl1.slice(0, 2).map(item => {
+              const pct = metrics.total_in > 0 ? ((item.amount / metrics.total_in) * 100).toFixed(1) : '0';
+              return (
+                <div key={item.lvl1_code} className="bg-white border border-gray-200 rounded-lg p-4">
+                  <div className="text-xs text-gray-500 uppercase tracking-wider">{item.lvl1_name}</div>
+                  <div className="text-xl font-bold text-gray-900 mt-1">
+                    {item.amount.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-0.5">占比 {pct}%</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Lvl2 Breakdown Table */}
+          {metrics.by_lvl2.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">按二级分类</h3>
+              <div className="space-y-2">
+                {metrics.by_lvl2.map(item => {
+                  const pct = metrics.total_in > 0 ? (item.amount / metrics.total_in) * 100 : 0;
+                  return (
+                    <div key={`${item.lvl1_code}:${item.lvl2_code}`} className="flex items-center gap-3">
+                      <span className="text-xs text-gray-600 w-32 truncate" title={`${item.lvl1_name} / ${item.lvl2_name}`}>
+                        {item.lvl1_name} / {item.lvl2_name}
+                      </span>
+                      <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                        <div className="bg-blue-500 h-full rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-xs text-gray-500 w-20 text-right">
+                        {item.amount.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-xs text-gray-400 w-12 text-right">{pct.toFixed(1)}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ===== 银行入账率区块 ===== */}
       {brand === 'gelatomiiix' && (
@@ -339,7 +428,6 @@ function BankEntryRateSection({ brand, span, period, periodOptions }: {
   if (!data) return null;
 
   const displayChannels = data.channels.filter(c => c.channel !== 'TOTAL' && c.channel !== 'OTHER');
-  const displayUnmatched = data.unmatched_orders.filter(o => o.channel !== 'OTHER');
 
   return (
     <div className="space-y-6">
@@ -380,34 +468,6 @@ function BankEntryRateSection({ brand, span, period, periodOptions }: {
         </ResponsiveContainer>
       )}
 
-      {/* Unmatched orders table */}
-      {displayUnmatched.length > 0 && (
-        <div className="border rounded-lg overflow-hidden">
-          <div className="bg-gray-50 px-4 py-2 text-sm font-semibold">未入账订单明细</div>
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">订单月份</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">渠道</th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">未入账订单数</th>
-                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">未入账金额（元）</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {displayUnmatched.map(row => (
-                <tr key={`${row.month}-${row.channel}`} className="hover:bg-gray-50">
-                  <td className="px-4 py-2">{row.month}</td>
-                  <td className="px-4 py-2">{CHANNEL_LABELS[row.channel] ?? row.channel}</td>
-                  <td className="px-4 py-2 text-right font-mono">{row.order_count.toLocaleString('zh-CN')}</td>
-                  <td className="px-4 py-2 text-right font-mono text-red-600">
-                    {row.unentered_amt.toLocaleString('zh-CN', { minimumFractionDigits: 2 })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 }
