@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useBrand } from '@/lib/brand-context';
+import { getErrorMessage } from '@/lib/query-types';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
@@ -316,7 +317,7 @@ function BankEntryRateSection({ brand, span, period, periodOptions }: {
           setError(json.error ?? '加载失败');
         }
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+      .catch((err: unknown) => setError(getErrorMessage(err)))
       .finally(() => setLoading(false));
   }, [brand, effectivePeriod]);
 
