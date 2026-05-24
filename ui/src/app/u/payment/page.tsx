@@ -81,8 +81,11 @@ export default function PaymentPage() {
     setMetricsLoading(true);
     fetch(`/api/financial/payment-metrics?brand=${brand}&period=${period}&span=${span}&store=${store}`)
       .then(r => r.json())
-      .then(json => { if (json.success) setMetrics(json.data); })
-      .catch(() => {})
+      .then(json => {
+        if (json.success && json.data) setMetrics(json.data);
+        else console.error('payment-metrics fetch failed', json);
+      })
+      .catch(err => console.error('payment-metrics fetch error', err))
       .finally(() => setMetricsLoading(false));
   }, [brand, period, span, store]);
 
@@ -229,10 +232,11 @@ export default function PaymentPage() {
             <div className="flex items-end gap-1 h-32">
               {metrics.monthly_trend.map(p => {
                 const maxAmt = Math.max(...metrics.monthly_trend.map(x => x.amount), 1);
-                const h = (p.amount / maxAmt) * 100;
+                const barMaxH = 100;
+                const hPx = Math.max((p.amount / maxAmt) * barMaxH, 2);
                 return (
                   <div key={p.month} className="flex-1 flex flex-col items-center gap-1 min-w-0" title={`${p.month}: ${p.amount.toLocaleString()}`}>
-                    <div className="w-full bg-blue-100 rounded-t hover:bg-blue-400 transition-colors" style={{ height: `${h}%` }} />
+                    <div className="w-full bg-blue-500 rounded-t hover:bg-blue-600 transition-colors" style={{ height: `${hPx}px` }} />
                     <span className="text-[9px] text-gray-400 truncate w-full text-center">{p.month.substring(5)}月</span>
                   </div>
                 );
