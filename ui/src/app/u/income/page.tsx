@@ -332,7 +332,7 @@ function BankEntryRateSection({ brand, span, period, periodOptions }: {
   if (error) return <div className="text-red-600 text-sm">{error}</div>;
   if (!data) return null;
 
-  const displayChannels = data.channels.filter(c => c.channel !== 'TOTAL');
+  const displayChannels = data.channels.filter(c => c.channel !== 'TOTAL' && c.channel !== 'OTHER');
 
   return (
     <div className="space-y-6">
