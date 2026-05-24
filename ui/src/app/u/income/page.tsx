@@ -130,7 +130,7 @@ export default function PaymentPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">付款分析</h1>
+        <h1 className="text-2xl font-bold text-gray-900">收入分析</h1>
         <div className="flex items-center gap-3">
           <select value={span} onChange={e => setSpan(e.target.value as any)} className="border rounded px-2 py-1 text-sm bg-white">
             <option value="month">按月</option>

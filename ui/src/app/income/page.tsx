@@ -25,7 +25,7 @@ interface TxnDetail {
   lvl2_name: string | null;
 }
 
-export default function PaymentPage() {
+export default function IncomePage() {
   const { brand } = useBrand();
   const [counterparties, setCounterparties] = useState<CounterpartySummary[]>([]);
   const [selected, setSelected] = useState('');
@@ -130,7 +130,7 @@ export default function PaymentPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">付款分析</h1>
+        <h1 className="text-2xl font-bold text-gray-900">收入分析</h1>
         <div className="flex items-center gap-3">
           <select value={span} onChange={e => setSpan(e.target.value as any)} className="border rounded px-2 py-1 text-sm bg-white">
             <option value="month">按月</option>
@@ -188,7 +188,7 @@ export default function PaymentPage() {
         {/* Right: detail */}
         <div className="flex-1 min-w-0">
           {!selected ? (
-            <div className="flex justify-center py-20 text-gray-400">请从左侧列表选择付款对方</div>
+            <div className="flex justify-center py-20 text-gray-400">请从左侧列表选择收款对方</div>
           ) : detailLoading ? (
             <div className="flex justify-center py-20 text-gray-500">加载中...</div>
           ) : (
