@@ -262,18 +262,24 @@ const CHANNEL_COLORS: Record<string, string> = {
   ALIPAY: 'bg-blue-50 border-blue-200 text-blue-800',
   MEITUAN: 'bg-orange-50 border-orange-200 text-orange-800',
   UNIONPAY: 'bg-gray-50 border-gray-200 text-gray-800',
+  DOUYIN: 'bg-pink-50 border-pink-200 text-pink-800',
+  ELEME: 'bg-yellow-50 border-yellow-200 text-yellow-800',
+  JD: 'bg-red-50 border-red-200 text-red-800',
 };
 const CHANNEL_LABELS: Record<string, string> = {
   WECHAT: '微信支付',
   ALIPAY: '支付宝',
   MEITUAN: '美团/蜜可诗',
   UNIONPAY: '云闪付',
+  DOUYIN: '抖音团购券',
+  ELEME: '饿了么',
+  JD: '京东',
 };
 
 interface BankEntryData {
   channels: { channel: string; qimai_net_amt: number; bank_entry_amt: number; entry_rate: number }[];
   monthly_trend: { month: string; qimai_net_amt: number; bank_entry_amt: number }[];
-  unmatched_orders: { channel: string; order_count: number; unentered_amt: number }[];
+  unmatched_orders: { month: string; channel: string; order_count: number; unentered_amt: number }[];
 }
 
 function BankEntryRateSection({ brand, span, period, periodOptions }: {
@@ -308,13 +314,13 @@ function BankEntryRateSection({ brand, span, period, periodOptions }: {
               bank_entry_amt: parseFloat(r.bank_entry_amt) || 0,
             })),
             unmatched_orders: (d.unmatchedOrders || []).map((r: any) => ({
+              month: r.month,
               channel: r.channel,
               order_count: parseInt(r.order_count) || 0,
               unentered_amt: parseFloat(r.unentered_amt) || 0,
             })),
           });
         } else if (json.data === null && json.note) {
-          // graceful degradation: view not ready yet
           setData(null);
         } else {
           setError(json.error ?? '加载失败');
@@ -333,6 +339,7 @@ function BankEntryRateSection({ brand, span, period, periodOptions }: {
   if (!data) return null;
 
   const displayChannels = data.channels.filter(c => c.channel !== 'TOTAL' && c.channel !== 'OTHER');
+  const displayUnmatched = data.unmatched_orders.filter(o => o.channel !== 'OTHER');
 
   return (
     <div className="space-y-6">
@@ -374,20 +381,22 @@ function BankEntryRateSection({ brand, span, period, periodOptions }: {
       )}
 
       {/* Unmatched orders table */}
-      {data.unmatched_orders && data.unmatched_orders.filter(o => o.channel !== 'OTHER').length > 0 && (
+      {displayUnmatched.length > 0 && (
         <div className="border rounded-lg overflow-hidden">
           <div className="bg-gray-50 px-4 py-2 text-sm font-semibold">未入账订单明细</div>
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">订单月份</th>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">渠道</th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">未入账订单数</th>
                 <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">未入账金额（元）</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {data.unmatched_orders.filter(o => o.channel !== 'OTHER').map(row => (
-                <tr key={row.channel} className="hover:bg-gray-50">
+              {displayUnmatched.map(row => (
+                <tr key={`${row.month}-${row.channel}`} className="hover:bg-gray-50">
+                  <td className="px-4 py-2">{row.month}</td>
                   <td className="px-4 py-2">{CHANNEL_LABELS[row.channel] ?? row.channel}</td>
                   <td className="px-4 py-2 text-right font-mono">{row.order_count.toLocaleString('zh-CN')}</td>
                   <td className="px-4 py-2 text-right font-mono text-red-600">

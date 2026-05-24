@@ -104,6 +104,7 @@ WITH lvl2(lvl1_code, lvl2_code, lvl2_name, sort_order) AS (
     ('REV_BIZ','JD','京东',40),
     ('REV_BIZ','WECHAT','微信/财付通',50),
     ('REV_BIZ','ALIPAY','支付宝',60),
+    ('REV_BIZ','UNIONPAY','银联云闪付',65),
     ('REV_BIZ','OTHER_CH','其他渠道',70),
 
     -- REV_OTHER
@@ -177,6 +178,7 @@ WITH lvl2(lvl1_code, lvl2_code, lvl2_name, sort_order) AS (
     ('REV_BIZ','JD','京东',40),
     ('REV_BIZ','WECHAT','微信/财付通',50),
     ('REV_BIZ','ALIPAY','支付宝',60),
+    ('REV_BIZ','UNIONPAY','银联云闪付',65),
     ('REV_BIZ','OTHER_CH','其他渠道',70),
 
     -- REV_OTHER

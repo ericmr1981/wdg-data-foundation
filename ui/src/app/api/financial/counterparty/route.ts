@@ -29,7 +29,7 @@ export async function GET(request: Request) {
 
     // If no counterparty specified, return the list
     if (!counterparty) {
-      const isAll = period === 'all';
+      const isAll = period === 'all' || period === '';
       if (!isAll) {
         if (!['month', 'quarter', 'year'].includes(span)) {
           return NextResponse.json({ success: false, error: 'Invalid span' }, { status: 400 });
@@ -86,7 +86,7 @@ export async function GET(request: Request) {
     }
 
     // "全部" = no date filter
-    const isAll = period === 'all';
+    const isAll = period === 'all' || period === '';
     if (!isAll) {
       if (!['month', 'quarter', 'year'].includes(span)) {
         return NextResponse.json({ success: false, error: 'Invalid span' }, { status: 400 });
@@ -128,7 +128,7 @@ export async function GET(request: Request) {
              t.summary,
              t.memo,
              t.purpose,
-             ${isIn ? 't.in_amt as amount' : 't.out_amt as amount'},
+             ${isIn ? 't.in_amt as amount' : 't.out_amt as out_amt'},
              t.balance_amt,
              t.store_code,
              c.lvl1_code,

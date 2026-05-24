@@ -34,6 +34,9 @@ export async function GET(request: NextRequest) {
           WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
           WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
           WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
+          WHEN '抖音团购券' = ANY(payment_methods) THEN 'DOUYIN'
+          WHEN '饿了么' = ANY(payment_methods) THEN 'ELEME'
+          WHEN '京东支付' = ANY(payment_methods) THEN 'JD'
           ELSE 'OTHER'
         END AS channel,
         COALESCE(SUM(net_amt), 0) AS qimai_net_amt
@@ -85,11 +88,15 @@ export async function GET(request: NextRequest) {
     // --- unmatchedOrders ---
     const unmatchedOrdersResult = await pool.query(`
       SELECT
+        to_char(biz_date, 'YYYY-MM') AS month,
         CASE
           WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
           WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
           WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
           WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
+          WHEN '抖音团购券' = ANY(payment_methods) THEN 'DOUYIN'
+          WHEN '饿了么' = ANY(payment_methods) THEN 'ELEME'
+          WHEN '京东支付' = ANY(payment_methods) THEN 'JD'
           ELSE 'OTHER'
         END AS channel,
         COUNT(*) AS order_count,
@@ -99,8 +106,8 @@ export async function GET(request: NextRequest) {
         AND NOT is_refund
         AND NOT is_member_payment
         AND biz_date <= $1::DATE
-      GROUP BY channel
-      ORDER BY channel
+      GROUP BY month, channel
+      ORDER BY month DESC, channel
     `, [periodEndInclusive]);
 
     // Build channel metrics
@@ -145,8 +152,9 @@ export async function GET(request: NextRequest) {
         bank_entry_amt: parseFloat(r.bank_entry_amt).toFixed(2),
       }));
 
-    const unmatchedOrders = (unmatchedOrdersResult.rows as { channel: string; order_count: string; unentered_amt: string }[])
+    const unmatchedOrders = (unmatchedOrdersResult.rows as { month: string; channel: string; order_count: string; unentered_amt: string }[])
       .map(r => ({
+        month: r.month,
         channel: r.channel,
         order_count: r.order_count,
         unentered_amt: parseFloat(r.unentered_amt).toFixed(2),
