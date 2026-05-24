@@ -39,8 +39,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'period must be YYYY-MM' }, { status: 400 });
     }
 
-    // period end = last day of the month
-    const periodEnd = `${period}-01`;
+    // period end = first day of the month (SQL appends '-01' to get last day)
+    const periodEnd = period;
 
     // --- channelMetrics ---
     // Qimai net amounts grouped by payment channel up to period end date
