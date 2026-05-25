@@ -85,7 +85,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ success: false, error: 'role must be admin or operator' }, { status: 400 });
     }
 
-    if (enabled === false && user_id === sessionUser.user_id) {
+    if (enabled === false && sessionUser && user_id === sessionUser.user_id) {
       return NextResponse.json({ success: false, error: 'Cannot disable your own account' }, { status: 400 });
     }
 
@@ -140,7 +140,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ success: false, error: 'user_id required' }, { status: 400 });
     }
 
-    if (user_id === sessionUser.user_id) {
+    if (sessionUser && user_id === sessionUser.user_id) {
       return NextResponse.json({ success: false, error: 'Cannot delete your own account' }, { status: 400 });
     }
 
