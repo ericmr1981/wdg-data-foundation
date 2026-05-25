@@ -18,7 +18,9 @@ jobs:
           script: |
             cd /opt/wdg-data-foundation
             git stash
+            git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/ericmr1981/wdg-data-foundation.git
             git pull origin main
+            git remote set-url origin git@github.com:ericmr1981/wdg-data-foundation.git
             docker network create wdg-data-foundation_default 2>/dev/null || true
             docker stop dataplatform-ui 2>/dev/null || true
             docker rm dataplatform-ui 2>/dev/null || true
