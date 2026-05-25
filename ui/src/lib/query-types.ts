@@ -72,6 +72,46 @@ export interface PipelineRunRow {
   triggered_by: string;
 }
 
+export interface ApprovalProposal {
+  proposal_id:        string;
+  batch_id:           string;
+  source_file_id:     number;
+  bank_txn_id:        number;
+  brand_code:         string;
+  type:               'type1' | 'type2';
+  status:             'pending' | 'approved' | 'rejected' | 'modified' | 'executed' | 'timeout';
+  llm_lvl1_code:      string | null;
+  llm_lvl2_code:      string | null;
+  llm_keyword:        string | null;
+  llm_match_field:    string | null;
+  llm_confidence:     string | null;
+  llm_reasoning:      string | null;
+  llm_missing_fields: string[] | null;
+  final_lvl1_code:    string | null;
+  final_lvl2_code:    string | null;
+  final_keyword:      string | null;
+  final_match_field:  string | null;
+  user_note:          string | null;
+  resolved_by:        string | null;
+  created_at:         string;
+  resolved_at:        string | null;
+}
+
+export interface ApprovalRecord {
+  bank_txn_id: number;
+  type:        'type1' | 'type2';
+  llm_proposal: {
+    lvl1_code:   string;
+    lvl2_code:   string;
+    keyword:     string;
+    match_field: string;
+    confidence:  'high' | 'medium' | 'low';
+    reasoning:   string;
+  } | null;
+  missing_fields?: string[];
+  reasoning:      string;
+}
+
 export interface CountRow {
   cnt: string;
 }
