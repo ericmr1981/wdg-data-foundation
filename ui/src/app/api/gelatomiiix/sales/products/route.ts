@@ -15,10 +15,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
 
-    const pureFilter = pureMode
-      ? `AND order_no NOT IN (SELECT DISTINCT order_no FROM gelatomiiix_ods.income_detail WHERE '自定义结账方式' = ANY(payment_methods) AND store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE)`
-      : '';
-
     const params = [storeCode, `${month}-01`];
     const pureFilterSql = pureMode
       ? ` AND order_no NOT IN (
@@ -31,19 +27,19 @@ export async function GET(request: NextRequest) {
     const bySales = await pool.query(`
       SELECT product_name,
         SUM(COALESCE(qty,0)) AS total_qty,
-        SUM(COALESCE(sales_amt,0)) AS total_sales_amt
+        SUM(COALESCE(received_amt,0)) AS total_received_amt
       FROM gelatomiiix_ods.product_sales_detail
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
       ${pureFilterSql}
       GROUP BY product_name
-      ORDER BY total_sales_amt DESC
+      ORDER BY total_received_amt DESC
       LIMIT 10
     `, params);
 
     const byQty = await pool.query(`
       SELECT product_name,
         SUM(COALESCE(qty,0)) AS total_qty,
-        SUM(COALESCE(sales_amt,0)) AS total_sales_amt
+        SUM(COALESCE(received_amt,0)) AS total_received_amt
       FROM gelatomiiix_ods.product_sales_detail
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
       ${pureFilterSql}

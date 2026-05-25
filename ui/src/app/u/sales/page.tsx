@@ -26,7 +26,7 @@ interface PrevMonthData {
 interface ProductData {
   product_name: string;
   total_qty: number;
-  total_sales_amt: number;
+  total_received_amt: number;
 }
 
 interface ChannelData {
@@ -226,7 +226,7 @@ export default function SalesReportPage() {
                 <XAxis type="number" tick={{ fontSize: 11 }} />
                 <YAxis type="category" dataKey="product_name" tick={{ fontSize: 10 }} width={90} />
                 <Tooltip />
-                <Bar dataKey="total_sales_amt" name="销售额" fill="#2563eb" />
+                <Bar dataKey="total_received_amt" name="实收金额" fill="#2563eb" />
               </BarChart>
             </ResponsiveContainer>
           </div>
