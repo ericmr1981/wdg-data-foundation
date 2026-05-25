@@ -120,7 +120,9 @@ export default function SalesReportPage() {
   }
 
   async function fetchTrend() {
-    const res = await fetch(`/api/gelatomiiix/sales/trend?store_code=${storeCode}`);
+    const params = new URLSearchParams({ store_code: storeCode });
+    if (pureMode) params.set('pure_mode', 'true');
+    const res = await fetch(`/api/gelatomiiix/sales/trend?${params}`);
     const json = await res.json();
     if (json.success) setTrend(json.data);
   }

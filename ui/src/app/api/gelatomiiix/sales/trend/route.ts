@@ -8,10 +8,13 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const storeCode = searchParams.get('store_code');
+    const pureMode = searchParams.get('pure_mode') === 'true';
 
     if (!storeCode) {
       return NextResponse.json({ success: false, error: 'store_code required' }, { status: 400 });
     }
+
+    const pureFilter = pureMode ? `AND NOT ('自定义结账方式' = ANY(payment_methods))` : '';
 
     const result = await pool.query(`
       SELECT
@@ -22,6 +25,7 @@ export async function GET(request: NextRequest) {
       FROM gelatomiiix_ods.income_detail
       WHERE store_code = $1
         AND NOT is_refund
+        ${pureFilter}
         AND biz_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '12 months')
       GROUP BY DATE_TRUNC('month', biz_date)::DATE
       ORDER BY month
