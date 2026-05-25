@@ -9,8 +9,7 @@ interface CashRegisterRow {
   revenue_amt: number;
   discount_amt: number;
   net_amt: number;
-  txn_qty: number;
-  payment_method: string;
+  payment_methods: string[];
 }
 
 interface ProductRow {
@@ -178,7 +177,7 @@ export default function SalesDetailsPage() {
                 <td className="p-3 text-right">¥{Number(row.revenue_amt).toFixed(2)}</td>
                 <td className="p-3 text-right">¥{Number(row.discount_amt || 0).toFixed(2)}</td>
                 <td className="p-3 text-right">¥{Number(row.net_amt).toFixed(2)}</td>
-                <td className="p-3 text-right">{row.payment_method || '-'}</td>
+                <td className="p-3 text-right">{(row.payment_methods || []).join(', ') || '-'}</td>
               </tr>
             )) : productData.map((row, i) => (
               <tr key={i} className="border-b last:border-0 hover:bg-gray-50">

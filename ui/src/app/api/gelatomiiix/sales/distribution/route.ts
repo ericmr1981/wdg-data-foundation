@@ -20,9 +20,10 @@ export async function GET(request: NextRequest) {
         SELECT
           floor(COALESCE(gross_amt, 0) / 20) * 20 AS bin_start,
           COUNT(*) AS order_cnt
-        FROM gelatomiiix_ods.cash_register_detail
+        FROM gelatomiiix_ods.income_detail
         WHERE store_code = $1
           AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
+          AND NOT is_refund
         GROUP BY floor(COALESCE(gross_amt, 0) / 20) * 20
       )
       SELECT

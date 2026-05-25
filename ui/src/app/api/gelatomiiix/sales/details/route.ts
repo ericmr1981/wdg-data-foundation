@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
 
-    const excludeCustom = pureMode ? `AND payment_method != '自定义结账方式'` : '';
+    const excludeCustom = pureMode ? `AND NOT ('自定义结账方式' = ANY(payment_methods))` : '';
 
     if (type === 'product') {
       const countResult = await pool.query(`
@@ -48,15 +48,17 @@ export async function GET(request: NextRequest) {
 
     const countResult = await pool.query(`
       SELECT COUNT(*) AS total
-      FROM gelatomiiix_ods.cash_register_detail
+      FROM gelatomiiix_ods.income_detail
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
+        AND NOT is_refund
         ${excludeCustom}
     `, [storeCode, `${month}-01`]);
 
     const dataResult = await pool.query(`
-      SELECT biz_date, order_no, gross_amt, revenue_amt, discount_amt, net_amt, txn_qty, payment_method
-      FROM gelatomiiix_ods.cash_register_detail
+      SELECT biz_date, order_no, gross_amt, revenue_amt, discount_amt, net_amt, payment_methods
+      FROM gelatomiiix_ods.income_detail
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
+        AND NOT is_refund
         ${excludeCustom}
       ORDER BY biz_date DESC, order_no
       LIMIT $3 OFFSET $4
