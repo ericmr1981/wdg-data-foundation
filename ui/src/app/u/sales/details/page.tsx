@@ -68,15 +68,19 @@ export default function SalesDetailsPage() {
   }
 
   useEffect(() => {
-    fetch('/api/gelatomiiix/sales/hourly?store_code=' + storeCode + '&month=' + month)
+    const hParams = new URLSearchParams({ store_code: storeCode, month });
+    if (pureMode) hParams.set('pure_mode', 'true');
+    fetch(`/api/gelatomiiix/sales/hourly?${hParams}`)
       .then(r => r.json())
       .then(j => { if (j.success) setHourlyData(j.data || []); })
       .catch(() => {});
-    fetch('/api/gelatomiiix/sales/distribution?store_code=' + storeCode + '&month=' + month)
+    const dParams = new URLSearchParams({ store_code: storeCode, month });
+    if (pureMode) dParams.set('pure_mode', 'true');
+    fetch(`/api/gelatomiiix/sales/distribution?${dParams}`)
       .then(r => r.json())
       .then(j => { if (j.success) setDistribution(j.data || []); })
       .catch(() => {});
-  }, [storeCode, month]);
+  }, [storeCode, month, pureMode]);
 
   const totalPages = Math.ceil(total / limit);
 

@@ -9,10 +9,15 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const storeCode = searchParams.get('store_code');
     const month = searchParams.get('month');
+    const pureMode = searchParams.get('pure_mode') === 'true';
 
     if (!storeCode || !month) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
+
+    const pureFilter = pureMode
+      ? `AND order_no NOT IN (SELECT order_no FROM gelatomiiix_ods.income_detail WHERE '自定义结账方式' = ANY(payment_methods) AND store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE)`
+      : '';
 
     const result = await pool.query(`
       SELECT order_hour, COUNT(DISTINCT order_no) AS order_cnt
@@ -20,6 +25,7 @@ export async function GET(request: NextRequest) {
       WHERE store_code = $1
         AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
         AND order_hour IS NOT NULL
+        ${pureFilter}
       GROUP BY order_hour
       ORDER BY order_hour
     `, [storeCode, `${month}-01`]);

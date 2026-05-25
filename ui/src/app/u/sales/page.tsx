@@ -104,7 +104,9 @@ export default function SalesReportPage() {
   }
 
   async function fetchProducts() {
-    const res = await fetch(`/api/gelatomiiix/sales/products?store_code=${storeCode}&month=${month}`);
+    const params = new URLSearchParams({ store_code: storeCode, month });
+    if (pureMode) params.set('pure_mode', 'true');
+    const res = await fetch(`/api/gelatomiiix/sales/products?${params}`);
     const json = await res.json();
     if (json.success) setProducts(json.data || { by_sales: [], by_qty: [] });
   }

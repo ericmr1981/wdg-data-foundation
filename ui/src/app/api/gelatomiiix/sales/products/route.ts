@@ -9,10 +9,24 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const storeCode = searchParams.get('store_code');
     const month = searchParams.get('month');
+    const pureMode = searchParams.get('pure_mode') === 'true';
 
     if (!storeCode || !month) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
+
+    const pureFilter = pureMode
+      ? `AND order_no NOT IN (SELECT DISTINCT order_no FROM gelatomiiix_ods.income_detail WHERE '自定义结账方式' = ANY(payment_methods) AND store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE)`
+      : '';
+
+    const params = [storeCode, `${month}-01`];
+    const pureFilterSql = pureMode
+      ? ` AND order_no NOT IN (
+          SELECT order_no FROM gelatomiiix_ods.income_detail
+          WHERE '自定义结账方式' = ANY(payment_methods)
+            AND store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
+        )`
+      : '';
 
     const bySales = await pool.query(`
       SELECT product_name,
@@ -20,10 +34,11 @@ export async function GET(request: NextRequest) {
         SUM(COALESCE(sales_amt,0)) AS total_sales_amt
       FROM gelatomiiix_ods.product_sales_detail
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
+      ${pureFilterSql}
       GROUP BY product_name
       ORDER BY total_sales_amt DESC
       LIMIT 10
-    `, [storeCode, `${month}-01`]);
+    `, params);
 
     const byQty = await pool.query(`
       SELECT product_name,
@@ -31,10 +46,11 @@ export async function GET(request: NextRequest) {
         SUM(COALESCE(sales_amt,0)) AS total_sales_amt
       FROM gelatomiiix_ods.product_sales_detail
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
+      ${pureFilterSql}
       GROUP BY product_name
       ORDER BY total_qty DESC
       LIMIT 10
-    `, [storeCode, `${month}-01`]);
+    `, params);
 
     return NextResponse.json({ success: true, data: { by_sales: bySales.rows, by_qty: byQty.rows } });
   } catch (error: unknown) {

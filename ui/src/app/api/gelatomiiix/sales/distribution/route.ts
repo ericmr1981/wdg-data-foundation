@@ -9,10 +9,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const storeCode = searchParams.get('store_code');
     const month = searchParams.get('month');
+    const pureMode = searchParams.get('pure_mode') === 'true';
 
     if (!storeCode || !month) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
+
+    const pureFilter = pureMode ? `AND NOT ('自定义结账方式' = ANY(payment_methods))` : '';
 
     // Get order amount distribution (20-yuan buckets) from all orders in the month
     const result = await pool.query(`
@@ -24,6 +27,7 @@ export async function GET(request: NextRequest) {
         WHERE store_code = $1
           AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
           AND NOT is_refund
+          ${pureFilter}
         GROUP BY floor(COALESCE(gross_amt, 0) / 20) * 20
       )
       SELECT
