@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import pool from '@/lib/db';
 
 interface BrandRow {
@@ -12,7 +15,12 @@ interface StoreRow {
   store_code: string;
   store_name: string;
   brand_code: string;
+  min_txn: string | null;
   latest_txn: string | null;
+}
+
+interface StoreWithGaps extends StoreRow {
+  gap_dates: string[];
 }
 
 interface DataSource {
@@ -24,9 +32,6 @@ interface DataSource {
   gap_dates: string[];
 }
 
-interface BrandGaps {
-  bank_gaps: string[];
-}
 
 const TABLE_LABELS: Record<string, string> = {
   income_detail: '收入明细',
@@ -88,30 +93,42 @@ export default async function HomePage() {
     FROM ops.brands b WHERE b.enabled = true ORDER BY b.sort_order NULLS LAST, b.brand_code
   `)).rows;
 
-  // Get stores with their latest bank transaction time
-  const stores: StoreRow[] = [];
-  const brandGaps: Record<string, BrandGaps> = {};
+  // Get stores with their bank transaction time range and per-store gaps
+  const stores: StoreWithGaps[] = [];
   for (const brand of brands) {
     const odsSchema = `${brand.schema_prefix}_ods`;
     try {
       const res = await pool.query(`
         SELECT s.store_code, s.store_name, s.brand_code,
+          (SELECT MIN(txn_time)::text FROM ${sanitizeSchema(odsSchema)}.bank_txn WHERE store_code = s.store_code) as min_txn,
           (SELECT MAX(txn_time)::text FROM ${sanitizeSchema(odsSchema)}.bank_txn WHERE store_code = s.store_code) as latest_txn
         FROM ops.stores s
         WHERE s.brand_code = $1 AND s.enabled = true
         ORDER BY s.sort_order NULLS LAST
       `, [brand.brand_code]);
-      stores.push(...res.rows);
 
-      // Check bank txn date gaps per brand
-      const gapRes = await pool.query(`
-        SELECT DISTINCT txn_time::date::text AS d FROM ${sanitizeSchema(odsSchema)}.bank_txn ORDER BY d
+      // 计算每行门店的 txn_time 日期缺口
+      const storeGapRes = await pool.query(`
+        SELECT store_code, ARRAY_AGG(d::text ORDER BY d) as dates
+        FROM (
+          SELECT DISTINCT store_code, txn_time::date AS d
+          FROM ${sanitizeSchema(odsSchema)}.bank_txn
+        ) sub
+        GROUP BY store_code
       `);
-      const dates: string[] = (gapRes.rows as { d: string }[]).map(r => r.d);
-      brandGaps[brand.brand_code] = { bank_gaps: findGaps(dates) };
+      const storeGapMap: Record<string, string[]> = {};
+      for (const row of storeGapRes.rows as { store_code: string; dates: string[] }[]) {
+        storeGapMap[row.store_code] = findGaps(row.dates);
+      }
+
+      // 构造 StoreWithGaps 对象（immutable）
+      const storeRows: StoreRow[] = res.rows;
+      stores.push(...storeRows.map(s => ({
+        ...s,
+        gap_dates: storeGapMap[s.store_code] || [],
+      })));
     } catch {
-      stores.push({ store_code: '', store_name: '', brand_code: brand.brand_code, latest_txn: null });
-      brandGaps[brand.brand_code] = { bank_gaps: [] };
+      stores.push({ store_code: '', store_name: '', brand_code: brand.brand_code, min_txn: null, latest_txn: null, gap_dates: [] });
     }
   }
 
@@ -151,7 +168,6 @@ export default async function HomePage() {
     ...brand,
     stores: stores.filter(s => s.brand_code === brand.brand_code),
     sources: allSources.filter(s => s.schema.startsWith(brand.brand_code)),
-    gaps: brandGaps[brand.brand_code] || { bank_gaps: [] },
   }));
 
   return (
@@ -159,49 +175,56 @@ export default async function HomePage() {
       <h1 className="text-2xl font-bold">数据概览</h1>
 
       {grouped.map(brand => (
-        <div key={brand.brand_code} className="bg-white border rounded-lg p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">{brand.brand_name}</h2>
-            <span className="text-sm text-gray-500">
-              已导入 {brand.file_count} 个文件
-              {brand.latest_import && (
-                <span className="ml-3">
-                  最近导入: {new Date(brand.latest_import).toLocaleString('zh-CN')}
-                </span>
-              )}
-            </span>
-          </div>
-
+        <BrandCard key={brand.brand_code} brand={brand}>
           {/* 银行流水 */}
           <div className="mb-4">
             <div className="flex items-center mb-2">
               <h3 className="text-sm font-medium text-gray-700">银行流水</h3>
-              <GapBadge gapCount={brand.gaps.bank_gaps.length} />
             </div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-gray-500">
                   <th className="py-2 font-medium">门店</th>
-                  <th className="py-2 font-medium">最近银行流水</th>
+                  <th className="py-2 font-medium">数据范围</th>
+                  <th className="py-2 font-medium">完整性</th>
                 </tr>
               </thead>
               <tbody>
-                {brand.stores.map(store => (
-                  <tr key={store.store_code} className="border-b last:border-0">
-                    <td className="py-2.5">{store.store_name}</td>
-                    <td className="py-2.5 text-gray-600">
-                      {store.latest_txn
-                        ? new Date(store.latest_txn).toLocaleString('zh-CN')
-                        : '暂无数据'}
-                    </td>
-                  </tr>
-                ))}
+                {brand.stores.map(store => {
+                  const hasGaps = store.gap_dates.length > 0;
+                  return (
+                    <tr key={store.store_code} className="border-b last:border-0">
+                      <td className="py-2.5">{store.store_name}</td>
+                      <td className="py-2.5 text-gray-600">
+                        {store.min_txn && store.latest_txn
+                          ? `${store.min_txn.slice(0, 10)} ~ ${store.latest_txn.slice(0, 10)}`
+                          : '暂无数据'}
+                      </td>
+                      <td className="py-2.5">
+                        {hasGaps ? (
+                          <span className="text-amber-600 text-xs">缺 {store.gap_dates.length} 天</span>
+                        ) : (
+                          <span className="text-green-600 text-xs">连续</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {brand.stores.length === 0 && (
-                  <tr><td colSpan={2} className="py-3 text-gray-400">暂未配置门店</td></tr>
+                  <tr><td colSpan={3} className="py-3 text-gray-400">暂未配置门店</td></tr>
                 )}
               </tbody>
             </table>
-            <GapDetail gaps={brand.gaps.bank_gaps} />
+            {(() => {
+              const storesWithGaps = brand.stores.filter(s => s.gap_dates.length > 0);
+              return storesWithGaps.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {storesWithGaps.map(s => (
+                    <GapDetail key={s.store_code} gaps={s.gap_dates} />
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           {/* 其他数据源 */}
@@ -245,16 +268,19 @@ export default async function HomePage() {
                   })}
                 </tbody>
               </table>
-              {brand.sources.some(s => s.gap_dates.length > 0) && (
-                <div className="mt-2 space-y-1">
-                  {brand.sources.filter(s => s.gap_dates.length > 0).map(src => (
-                    <GapDetail key={src.table} gaps={src.gap_dates} />
-                  ))}
-                </div>
-              )}
+              {(() => {
+                const sourcesWithGaps = brand.sources.filter(s => s.gap_dates.length > 0);
+                return sourcesWithGaps.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {sourcesWithGaps.map(src => (
+                      <GapDetail key={src.table} gaps={src.gap_dates} />
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           )}
-        </div>
+        </BrandCard>
       ))}
     </div>
   );
@@ -262,4 +288,35 @@ export default async function HomePage() {
 
 function sanitizeSchema(name: string): string {
   return name.replace(/[^a-z0-9_]/g, '');
+}
+
+function BrandCard({
+  brand,
+  children,
+}: {
+  brand: { brand_code: string; brand_name: string; file_count: number; latest_import: string | null };
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="bg-white border rounded-lg">
+      <button
+        className="w-full flex items-center justify-between p-5 text-left hover:bg-gray-50 transition"
+        onClick={() => setOpen(o => !o)}
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-lg font-semibold">{brand.brand_name}</span>
+          <span className="text-sm text-gray-500">已导入 {brand.file_count} 个文件</span>
+          {brand.latest_import && (
+            <span className="text-sm text-gray-400">
+              最近: {new Date(brand.latest_import).toLocaleString('zh-CN')}
+            </span>
+          )}
+        </div>
+        <span className="text-gray-400 text-lg">{open ? '▼' : '▶'}</span>
+      </button>
+      {open && <div className="px-5 pb-5">{children}</div>}
+    </div>
+  );
 }
