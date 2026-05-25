@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
 
-    const excludeCustom = pureMode ? `AND NOT ('自定义结账方式' = ANY(payment_methods))` : '';
+    const excludeCustom = pureMode ? `AND payment_methods IS NOT NULL AND NOT ('自定义结账方式' = ANY(payment_methods))` : '';
 
     const kpiResult = await pool.query(`
       SELECT

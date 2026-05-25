@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
 
-    const pureFilter = pureMode ? `AND NOT ('自定义结账方式' = ANY(payment_methods))` : '';
+    const pureFilter = pureMode ? `AND payment_methods IS NOT NULL AND NOT ('自定义结账方式' = ANY(payment_methods))` : '';
 
     // Get order amount distribution (20-yuan buckets) from all orders in the month
     const result = await pool.query(`

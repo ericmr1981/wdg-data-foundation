@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
 
-    const excludeCustom = pureMode ? `AND pm != '自定义结账方式'` : '';
+    const excludeCustom = pureMode ? `AND pm IS NOT NULL AND pm != '自定义结账方式'` : '';
 
     const result = await pool.query(`
       SELECT
