@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
 
-    const excludeCustom = pureMode ? `AND payment_method != '自定义结账方式'` : '';
+    const excludeCustom = pureMode ? `AND NOT ('自定义结账方式' = ANY(payment_methods))` : '';
 
     const kpiResult = await pool.query(`
       SELECT
@@ -29,10 +29,11 @@ export async function GET(request: NextRequest) {
           THEN ROUND(SUM(COALESCE(gross_amt,0)) / COUNT(DISTINCT order_no), 2)
           ELSE NULL
         END AS avg_order_amt
-      FROM gelatomiiix_ods.cash_register_detail
+      FROM gelatomiiix_ods.income_detail
       WHERE store_code = $1
         AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
-        AND ($3::text IS NULL OR payment_method = $3)
+        AND ($3::text IS NULL OR $3 = ANY(payment_methods))
+        AND NOT is_refund
         ${excludeCustom}
     `, [storeCode, `${month}-01`, paymentMethod || null]);
 
@@ -42,10 +43,11 @@ export async function GET(request: NextRequest) {
         SUM(COALESCE(gross_amt,0)) AS gross_sales_amt,
         SUM(COALESCE(revenue_amt,0)) AS revenue_amt,
         COUNT(DISTINCT order_no) AS order_cnt
-      FROM gelatomiiix_ods.cash_register_detail
+      FROM gelatomiiix_ods.income_detail
       WHERE store_code = $1
         AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
-        AND ($3::text IS NULL OR payment_method = $3)
+        AND ($3::text IS NULL OR $3 = ANY(payment_methods))
+        AND NOT is_refund
         ${excludeCustom}
       GROUP BY biz_date
       ORDER BY biz_date
@@ -55,10 +57,11 @@ export async function GET(request: NextRequest) {
       SELECT
         COALESCE(SUM(COALESCE(gross_amt,0)),0) AS gross_sales_amt,
         COUNT(DISTINCT order_no) AS order_cnt
-      FROM gelatomiiix_ods.cash_register_detail
+      FROM gelatomiiix_ods.income_detail
       WHERE store_code = $1
         AND DATE_TRUNC('month', biz_date)::DATE = ($2::DATE - INTERVAL '1 month')::DATE
-        AND ($3::text IS NULL OR payment_method = $3)
+        AND ($3::text IS NULL OR $3 = ANY(payment_methods))
+        AND NOT is_refund
         ${excludeCustom}
     `, [storeCode, `${month}-01`, paymentMethod || null]);
 

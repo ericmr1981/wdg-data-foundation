@@ -22,18 +22,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
 
-    const excludeCustom = pureMode ? `AND payment_method != '自定义结账方式'` : '';
+    const excludeCustom = pureMode ? `AND pm != '自定义结账方式'` : '';
 
     const result = await pool.query(`
       SELECT
-        payment_method,
+        pm AS payment_method,
         COUNT(*) AS txn_cnt,
         SUM(COALESCE(gross_amt,0)) AS gross_amt,
         SUM(COALESCE(revenue_amt,0)) AS revenue_amt
-      FROM gelatomiiix_ods.cash_register_detail
+      FROM gelatomiiix_ods.income_detail,
+      LATERAL unnest(payment_methods) AS pm
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
+        AND NOT is_refund
         ${excludeCustom}
-      GROUP BY payment_method
+      GROUP BY pm
       ORDER BY gross_amt DESC
     `, [storeCode, `${month}-01`]);
 

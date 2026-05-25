@@ -19,8 +19,9 @@ export async function GET(request: NextRequest) {
         SUM(COALESCE(gross_amt,0)) AS gross_sales_amt,
         SUM(COALESCE(revenue_amt,0)) AS revenue_amt,
         COUNT(DISTINCT order_no) AS order_cnt
-      FROM gelatomiiix_ods.cash_register_detail
+      FROM gelatomiiix_ods.income_detail
       WHERE store_code = $1
+        AND NOT is_refund
         AND biz_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '12 months')
       GROUP BY DATE_TRUNC('month', biz_date)::DATE
       ORDER BY month
