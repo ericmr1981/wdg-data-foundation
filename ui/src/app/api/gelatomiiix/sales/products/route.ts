@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const params = [storeCode, `${month}-01`];
     const pureFilterSql = pureMode
       ? ` AND order_no NOT IN (
-          SELECT order_no FROM gelatomiiix_ods.income_detail
+          SELECT order_no_clean FROM gelatomiiix_ods.income_detail
           WHERE '自定义结账方式' = ANY(payment_methods)
             AND store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
         )`
