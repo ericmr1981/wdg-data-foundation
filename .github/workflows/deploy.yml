@@ -17,6 +17,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             cd /opt/wdg-data-foundation
+            git stash
             git pull origin main
             docker network create wdg-data-foundation_default 2>/dev/null || true
             docker stop dataplatform-ui 2>/dev/null || true
