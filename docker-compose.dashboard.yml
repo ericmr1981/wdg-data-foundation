@@ -46,6 +46,10 @@ services:
       - "${UI_PORT:-3002}:3000"
     restart: unless-stopped
 
+networks:
+  default:
+    name: wdg-data-foundation_default
+
 volumes:
   dataplatform_pg_data:
   metabase_data:
