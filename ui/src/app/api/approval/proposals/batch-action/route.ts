@@ -29,12 +29,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Missing required field: resolved_by' }, { status: 400 });
     }
 
-    const brand = normalizeBrand(brandParam || 'yufeng') || 'yufeng';
-    const cfgSchema = getCfgSchema(brand);
-    const dmSchema = getDmSchema(brand);
-    const bankTxnTable = getOdsBankTxnTable(brand);
-    const ruleTable = getCfgRuleTable(brand);
-
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -58,6 +52,14 @@ export async function POST(request: Request) {
         await client.query('COMMIT');
         return NextResponse.json({ success: true, executed: 0, rejected: 0, pending_waiting_info: 0, note: 'no pending proposals found' });
       }
+
+      // Determine brand: use param, or fall back to brand_code from first proposal
+      const defaultBrand = pending[0].brand_code || 'yufeng';
+      const brand = normalizeBrand(brandParam || defaultBrand) || defaultBrand;
+      const cfgSchema = getCfgSchema(brand);
+      const dmSchema = getDmSchema(brand);
+      const bankTxnTable = getOdsBankTxnTable(brand);
+      const ruleTable = getCfgRuleTable(brand);
 
       let executed = 0;
       let rejected = 0;
@@ -135,19 +137,24 @@ export async function POST(request: Request) {
           );
           const newPriority = priRes.rows[0].new_priority;
 
-          // Write rule
-          const ruleRes = await client.query(
-            `
-            INSERT INTO ${ruleTable}
-            (enabled, priority, match_field, match_type, match_value,
-             match_field2, match_value2, direction, lvl1_code, lvl2_code, note)
-            VALUES (true, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            RETURNING rule_id
-            `,
-            [newPriority, matchField, matchType, keyword, matchField2, matchValue2, direction, lvl1Code, lvl2Code, `Approval 沉淀: txn ${proposal.bank_txn_id}`]
-          );
-
-          const createdRule = ruleRes.rows[0];
+          // Write rule (10 columns, 10 params)
+          let ruleId: number | null = null;
+          try {
+            const ruleRes = await client.query(
+              `
+              INSERT INTO ${ruleTable}
+              (enabled, priority, match_field, match_type, match_value,
+               match_field2, match_value2, direction, lvl1_code, lvl2_code, note)
+              VALUES (true, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+              RETURNING rule_id
+              `,
+              [newPriority, matchField, matchType, keyword, matchField2, matchValue2, direction, lvl1Code, lvl2Code, `Approval 沉淀: txn ${proposal.bank_txn_id}`]
+            );
+            ruleId = ruleRes.rows[0]?.rule_id ?? null;
+          } catch (e: any) {
+            console.error('Rule INSERT failed:', e.message, { proposal_id: proposal.proposal_id, keyword, matchField, brand });
+            throw e;
+          }
 
           // Write override
           await client.query(
