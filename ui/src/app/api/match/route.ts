@@ -49,6 +49,13 @@ export async function GET(request: Request) {
       params.push(month);
     }
 
+    const sourceFileId = searchParams.get('source_file_id');
+    if (sourceFileId) {
+      const placeholders = month ? ' AND source_file_id = $' + (params.length + 1) : ' WHERE source_file_id = $' + (params.length + 1);
+      query += placeholders;
+      params.push(parseInt(sourceFileId));
+    }
+
     query += ' ORDER BY txn_time DESC LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
     params.push(pageSize, (page - 1) * pageSize);
 
@@ -56,10 +63,16 @@ export async function GET(request: Request) {
 
     // 获取总数
     let countQuery = `SELECT COUNT(*) as total FROM ${schema}.v_unclassified_detail`;
+    const countParams: any[] = [];
     if (month) {
       countQuery += ' WHERE month = $1';
+      countParams.push(month);
     }
-    const countResult = await pool.query(countQuery, month ? [month] : []);
+    if (sourceFileId) {
+      countQuery += month ? ' AND source_file_id = $' + (countParams.length + 1) : ' WHERE source_file_id = $1';
+      countParams.push(parseInt(sourceFileId));
+    }
+    const countResult = await pool.query(countQuery, countParams);
     const total = parseInt(countResult.rows[0].total);
 
     return NextResponse.json({
