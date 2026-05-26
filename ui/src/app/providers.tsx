@@ -117,6 +117,7 @@ function NavBar() {
                     <Link href="/admin/pipeline" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Pipeline 监控</Link>
                     <Link href="/admin/rules" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">规则管理</Link>
                     <Link href="/admin/match" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">人工匹配</Link>
+                    <Link href="/u/approvals" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">分类审批</Link>
                     <Link href="/admin/upload" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">文件上传</Link>
                     <Link href="/admin/config" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">配置</Link>
                     <Link href="/admin/users" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">账号管理</Link>
