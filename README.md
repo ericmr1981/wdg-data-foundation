@@ -1,49 +1,119 @@
 # WDG Data Foundation
 
-Code repo for WDG（营业日报 + 银行流水 + 配送明细 → 清洗/分类/建模 → UI/Metabase）。
+Code repo for WDG — bank transactions + daily sales + delivery manifests → clean/classify/model → UI/Metabase.
 
-## 当前新增能力
+## Tech Stack
 
-- `/upload` 已支持第三类数据源：`配送明细`
-- 配送明细上传后可走 `import_xintiandi_delivery.py` 导入链路
-- 新天地门店可查看专用看板：`/xintiandi`
-- Metabase 已可生成新天地配送看板
+- **ETL**: Python (psycopg2, pandas) — `scripts/`
+- **DB**: PostgreSQL (Supabase) — `sql/` (layered: raw → ods → cfg → dm → views)
+- **UI**: Next.js 14 + React 18 + TypeScript + TailwindCSS — `ui/`
+- **BI**: Metabase
 
-### 配送明细预期字段
+## Brands
 
-- 配送单号
-- 门店编码
-- 门店名称
-- 创建时间
-- 品项名称
-- 品项编码
-- 品项分类
-- 订货数量
-- 审核数量
-- 发货数量
-- 送达数量
-- 订货金额
+| Brand | Schema prefix | Source data |
+|-------|--------------|-------------|
+| Gelatomiiix (`gelatomiiix`) | `brand_gelatomiiix_*` | Bank txns, cash register, income detail, product sales |
+| Bonjur (`bonjur`) | `bonjur_*` | Daily sales, bank txns |
+| Xintiandi (`xintiandi`) | `xintiandi_*` | Delivery manifests |
 
-## Local dev
+## Data Sources
 
-```bash
-cd /Users/ericmr/Documents/GitHub/wdg-data-foundation
+| Type | Upload | Processing |
+|------|--------|-------------|
+| 银行流水 (bank transactions) | `/upload` → `import_*_bank_txn.py` | Rule-based classification → `fn_classify_bank_txn_v2` |
+| 营业数据 (daily sales) | `/upload` → `import_*_sales_daily.py` | Materialized views → financial statements |
+| 配送明细 (delivery manifests) | `/upload` → `import_xintiandi_delivery.py` | Xintiandi dashboard at `/xintiandi` |
+
+## Bank Txn Classification Workflow
+
+```
+Upload → import script → raw.ingest_file + ods.bank_txn
+                              ↓
+                        fn_classify_bank_txn_v2 (rule-based)
+                              ↓
+                        dm.bank_txn_classified_snapshot
+                              ↓
+                     Unclassified? → MCP: submit_approval_proposal
+                                               ↓
+                                        Approval UI (/u/approvals)
+                                               ↓
+                                   Approve → settle as bank_rule_map rule
+                                              + bank_txn_override
+                                              + refresh snapshot
 ```
 
-- Local startup: `docs/LOCAL_STARTUP.md`
-- End-to-end acceptance: `docs/ACCEPTANCE_RUNBOOK.md`
-- One-click init: `scripts/init_local_env.sh`
-- 新天地模块说明：`docs/XINTIANDI_MODULE.md`
+**Key paths**:
+- Upload API: `ui/src/app/api/upload/route.ts`
+- Classification SQL: `sql/10_*_fn_classify.sql` (per brand)
+- Approval flow: `ui/src/app/u/approvals/`
+- Batch action API: `ui/src/app/api/approval/proposals/batch-action/route.ts`
 
-## Upload / 验收补充
+## MCP Server (Agent Tools)
 
-- 入口：`/upload`
-- 数据源类型：`银行流水` / `营业数据` / `配送明细`
-- 选择 `配送明细` 并勾选“触发导入”后，会自动进入配送导入脚本
-- 导入成功后：
-  - `/upload` 页面会显示导入摘要
-  - `/xintiandi` 可查看月总览、趋势、品项分析
+Agent-accessible via `POST /api/mcp` (JSON-RPC 2.0). Tools:
 
-## Project records
+| Tool | Purpose |
+|------|---------|
+| `get_brand_stores` | Brand + store metadata (code → name) |
+| `upload_bank_txn_file` | Upload + trigger import, returns coverage stats |
+| `get_unclassified_transactions` | Paginated list of unclassified txns |
+| `get_existing_rules` | Current classification rules for brand |
+| `submit_approval_proposal` | Submit LLM-generated proposals to approval queue |
+| `query_approval_status` | Poll batch approval status |
+| `get_transaction_detail` | Single txn detail + candidates |
+| `get_candidates` | Keyword candidates for a txn |
 
-Project governance / task board / acceptance evidence are maintained in Obsidian (not tracked in this repo).
+MCP connection: `http://localhost:4100/api/mcp`
+
+## Key Conventions
+
+### Python
+- Module-level DB config: `os.environ["DB_PASSWORD"]` (fail-fast, not `os.getenv`)
+- Pipeline steps: `with pipeline_step(run_id, "step_name", conn)` from `ops_logger`
+- DB: `psycopg2`, schema per brand
+
+### TypeScript / Next.js
+- DB: `@/lib/db` exports a `pg.Pool` instance
+- Brand resolution: `normalizeBrand()` / `getDmSchemaSafe()` from `@/lib/brand-server`
+- Auth: `getSessionUser()` / `assertRole()` from `@/lib/auth-server`
+- Parameterized queries only: `pool.query(sql, params)` — no string interpolation
+
+### SQL
+- Numeric prefix = layer: `00_*` (infra) → `10_*` (cfg) → `20_*` (ods) → `30_*` (dm) → `40_*` (views) → `50_*` (analysis) → `60_*` (fixes)
+- Idempotent: `IF NOT EXISTS` / `OR REPLACE`
+
+## Development Commands
+
+```bash
+# Python (ETL)
+cd /path/to/wdg-data-foundation
+source .venv/bin/activate
+pytest tests/ -v
+python scripts/run_pipeline_oneclick.py --brand all --dry-run
+
+# UI (Next.js)
+cd ui
+npm run dev        # Dev server on port 4100
+npm run build      # Production build
+npm run lint       # ESLint
+
+# Docker (full stack)
+docker compose up -d
+
+# Bootstrap
+bash init.sh
+bash scripts/init_local_env.sh  # See docs/LOCAL_STARTUP.md
+```
+
+## Docs
+
+- `docs/LOCAL_STARTUP.md` — local environment setup
+- `docs/ACCEPTANCE_RUNBOOK.md` — end-to-end acceptance criteria
+- `docs/XINTIANDI_MODULE.md` — Xintiandi module details
+- `docs/productdata_schema.svg` — data model diagram
+- `~/.claude/skills/wdg-bank-workflow/SKILL.md` — MCP/Agent workflow spec
+
+## Project Governance
+
+Task board / acceptance evidence maintained in Obsidian (not tracked in this repo).
