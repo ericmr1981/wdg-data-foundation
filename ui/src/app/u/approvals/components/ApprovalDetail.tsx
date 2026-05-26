@@ -102,12 +102,12 @@ export default function ApprovalDetail({ proposal, onUpdate, onApprove, onReject
     onUpdate(proposal.proposal_id, { final_lvl1_code: lvl1Code, final_lvl2_code: lvl2Code, final_keyword: kw, final_match_field: mf, final_match_field2: localMatchField2 || null, final_match_value2: localMatchValue2 || null });
   }
 
-  function applyCondition2(mf2: string, mv2: string) {
+  function applyCondition2(mf2: string, newValue2: string) {
     setLocalMatchField2(mf2);
-    setLocalMatchValue2(mv2);
+    setLocalMatchValue2(newValue2);
     const lvl1Code = lvl1NameToCode(localLvl1Name);
     const lvl2Code = localLvl2Name ? lvl2NameToCode(lvl1Code, localLvl2Name) : null;
-    onUpdate(proposal.proposal_id, { final_lvl1_code: lvl1Code, final_lvl2_code: lvl2Code, final_keyword: localKeyword, final_match_field: localMatchField, final_match_field2: mf2 || null, final_match_value2: mv2 || null });
+    onUpdate(proposal.proposal_id, { final_lvl1_code: lvl1Code, final_lvl2_code: lvl2Code, final_keyword: localKeyword, final_match_field: localMatchField, final_match_field2: mf2 || null, final_match_value2: newValue2 || null });
   }
 
   const canApprove = isType1
@@ -246,8 +246,16 @@ export default function ApprovalDetail({ proposal, onUpdate, onApprove, onReject
               <label className="block text-xs font-medium text-gray-600 mb-1">关键词</label>
               <input
                 type="text"
-                value={effectiveKeyword}
-                onChange={e => applyKeyword(e.target.value, effectiveMatchField)}
+                value={localKeyword}
+                onChange={e => {
+                  setLocalKeyword(e.target.value);
+                  onUpdate(proposal.proposal_id, {
+                    final_keyword: e.target.value,
+                    final_match_field: localMatchField,
+                    final_match_field2: localMatchField2 || null,
+                    final_match_value2: localMatchValue2 || null
+                  });
+                }}
                 disabled={isDone}
                 placeholder="匹配关键词"
                 className="w-full border rounded px-2 py-1.5 text-sm disabled:bg-gray-100"
@@ -257,8 +265,16 @@ export default function ApprovalDetail({ proposal, onUpdate, onApprove, onReject
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">匹配字段</label>
               <select
-                value={effectiveMatchField}
-                onChange={e => applyKeyword(effectiveKeyword, e.target.value)}
+                value={proposal.final_match_field ?? proposal.llm_match_field ?? 'summary'}
+                onChange={e => {
+                  setLocalMatchField(e.target.value);
+                  onUpdate(proposal.proposal_id, {
+                    final_keyword: localKeyword,
+                    final_match_field: e.target.value,
+                    final_match_field2: localMatchField2 || null,
+                    final_match_value2: localMatchValue2 || null
+                  });
+                }}
                 disabled={isDone}
                 className="w-full border rounded px-2 py-1.5 text-sm bg-white disabled:bg-gray-100"
               >
@@ -272,8 +288,24 @@ export default function ApprovalDetail({ proposal, onUpdate, onApprove, onReject
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">条件2字段</label>
               <select
-                value={effectiveMatchField2}
-                onChange={e => applyCondition2(e.target.value, effectiveMatchValue2)}
+                value={localMatchField2 || proposal.final_match_field2 ?? proposal.llm_match_field2 ?? ''}
+                onChange={e => {
+                  const field2 = e.target.value;
+                  setLocalMatchField2(field2);
+                  // Auto-fill keyword from the corresponding transaction field
+                  const field2Value = field2 === 'summary' ? proposal.summary
+                    : field2 === 'memo' ? proposal.memo
+                    : field2 === 'purpose' ? (proposal as any).purpose
+                    : field2 === 'counterparty_name' ? proposal.counterparty_name
+                    : '';
+                  setLocalMatchValue2(field2Value ?? '');
+                  onUpdate(proposal.proposal_id, {
+                    final_keyword: localKeyword,
+                    final_match_field: localMatchField,
+                    final_match_field2: field2 || null,
+                    final_match_value2: field2Value || null
+                  });
+                }}
                 disabled={isDone}
                 className="w-full border rounded px-2 py-1.5 text-sm bg-white disabled:bg-gray-100"
               >
@@ -289,9 +321,17 @@ export default function ApprovalDetail({ proposal, onUpdate, onApprove, onReject
               <label className="block text-xs font-medium text-gray-600 mb-1">条件2关键词</label>
               <input
                 type="text"
-                value={effectiveMatchValue2}
-                onChange={e => applyCondition2(effectiveMatchField2, e.target.value)}
-                disabled={isDone || !effectiveMatchField2}
+                value={localMatchValue2}
+                onChange={e => {
+                  setLocalMatchValue2(e.target.value);
+                  onUpdate(proposal.proposal_id, {
+                    final_keyword: localKeyword,
+                    final_match_field: localMatchField,
+                    final_match_field2: localMatchField2 || null,
+                    final_match_value2: e.target.value || null
+                  });
+                }}
+                disabled={isDone || !proposal.final_match_field2 && !proposal.llm_match_field2}
                 placeholder="AND 第二条件"
                 className="w-full border rounded px-2 py-1.5 text-sm disabled:bg-gray-100"
               />
