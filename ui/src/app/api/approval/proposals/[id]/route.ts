@@ -32,8 +32,10 @@ export async function GET(
         p.proposal_id, p.batch_id, p.source_file_id, p.bank_txn_id, p.brand_code,
         p.type, p.status,
         p.llm_lvl1_code, p.llm_lvl2_code, p.llm_keyword, p.llm_match_field,
+        p.llm_match_field2, p.llm_match_value2,
         p.llm_confidence, p.llm_reasoning, p.llm_missing_fields,
         p.final_lvl1_code, p.final_lvl2_code, p.final_keyword, p.final_match_field,
+        p.final_match_field2, p.final_match_value2,
         p.user_note, p.resolved_by,
         p.created_at, p.resolved_at,
         t.txn_time, t.summary, t.memo, t.counterparty_name, t.in_amt, t.out_amt
@@ -74,7 +76,7 @@ export async function PUT(
 
     const { id } = await params;
     const body = await request.json();
-    const { final_lvl1_code, final_lvl2_code, final_keyword, final_match_field, user_note } = body;
+    const { final_lvl1_code, final_lvl2_code, final_keyword, final_match_field, final_match_field2, final_match_value2, user_note } = body;
 
     const result = await pool.query(
       `
@@ -84,11 +86,13 @@ export async function PUT(
           final_lvl2_code = COALESCE($2, final_lvl2_code),
           final_keyword = COALESCE($3, final_keyword),
           final_match_field = COALESCE($4, final_match_field),
-          user_note = COALESCE($5, user_note)
-      WHERE proposal_id = $6
-      RETURNING proposal_id, status, final_lvl1_code, final_lvl2_code, final_keyword, final_match_field, user_note
+          final_match_field2 = $5,
+          final_match_value2 = $6,
+          user_note = COALESCE($7, user_note)
+      WHERE proposal_id = $8
+      RETURNING proposal_id, status, final_lvl1_code, final_lvl2_code, final_keyword, final_match_field, final_match_field2, final_match_value2, user_note
       `,
-      [final_lvl1_code, final_lvl2_code, final_keyword, final_match_field, user_note, id]
+      [final_lvl1_code, final_lvl2_code, final_keyword, final_match_field, final_match_field2, final_match_value2, user_note, id]
     );
 
     if (result.rows.length === 0) {

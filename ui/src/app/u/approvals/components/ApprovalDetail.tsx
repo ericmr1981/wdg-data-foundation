@@ -6,7 +6,7 @@ import { LVL1_OPTIONS, LVL2_OPTIONS, txnDirection, allowedLvl1ByDirection } from
 
 interface ApprovalDetailProps {
   proposal: ProposalRow;
-  onUpdate: (proposal_id: string, patch: Partial<Pick<ProposalRow, 'final_lvl1_code' | 'final_lvl2_code' | 'final_keyword' | 'final_match_field' | 'use_llm'>>, note?: string) => void;
+  onUpdate: (proposal_id: string, patch: Partial<Pick<ProposalRow, 'final_lvl1_code' | 'final_lvl2_code' | 'final_keyword' | 'final_match_field' | 'final_match_field2' | 'final_match_value2' | 'use_llm'>>, note?: string) => void;
   onApprove: (proposal_id: string) => void;
   onReject: (proposal_id: string) => void;
   saving?: boolean;
@@ -29,8 +29,16 @@ export function lvl2NameToCode(lvl1Name: string, lvl2Name: string): string {
   return lvl2s.find(o => o.name === lvl2Name)?.code ?? lvl2Name;
 }
 
+// Maps (lvl1_code, lvl2_code) → lvl2_name, using LVL1_OPTIONS + LVL2_OPTIONS
+function lvl2CodeToName(lvl1Code: string | null, lvl2Code: string | null): string {
+  if (!lvl1Code || !lvl2Code) return '';
+  const lvl1Name = lvl1CodeToName(lvl1Code);
+  const lvl2s = LVL2_OPTIONS[lvl1Name] ?? [];
+  return lvl2s.find(o => o.code === lvl2Code)?.name ?? lvl2Code;
+}
+
 // All lvl1 options with code+name
-export const LVL1_WITH_CODE = LVL1_OPTIONS;
+export { LVL1_OPTIONS };
 
 export default function ApprovalDetail({ proposal, onUpdate, onApprove, onReject, saving }: ApprovalDetailProps) {
   const isType1 = proposal.type === 'type1';
@@ -39,7 +47,11 @@ export default function ApprovalDetail({ proposal, onUpdate, onApprove, onReject
     proposal.final_lvl1_code ? lvl1CodeToName(proposal.final_lvl1_code) : (isType1 && proposal.llm_lvl1_code ? lvl1CodeToName(proposal.llm_lvl1_code) : '')
   );
   const [localLvl2Name, setLocalLvl2Name] = useState(() =>
-    proposal.final_lvl2_code ? lvl1CodeToName(proposal.final_lvl2_code) : (isType1 && proposal.llm_lvl2_code ? lvl1CodeToName(proposal.llm_lvl2_code) : '')
+    proposal.final_lvl2_code
+      ? lvl2CodeToName(proposal.final_lvl1_code || proposal.llm_lvl1_code, proposal.final_lvl2_code)
+      : (isType1 && proposal.llm_lvl2_code
+        ? lvl2CodeToName(proposal.llm_lvl1_code, proposal.llm_lvl2_code)
+        : '')
   );
   const [localKeyword, setLocalKeyword] = useState(
     proposal.final_keyword ?? proposal.llm_keyword ?? ''
@@ -47,12 +59,20 @@ export default function ApprovalDetail({ proposal, onUpdate, onApprove, onReject
   const [localMatchField, setLocalMatchField] = useState(
     proposal.final_match_field ?? proposal.llm_match_field ?? 'summary'
   );
+  const [localMatchField2, setLocalMatchField2] = useState(
+    proposal.final_match_field2 ?? proposal.llm_match_field2 ?? ''
+  );
+  const [localMatchValue2, setLocalMatchValue2] = useState(
+    proposal.final_match_value2 ?? proposal.llm_match_value2 ?? ''
+  );
   const [localNote, setLocalNote] = useState(proposal.user_note ?? '');
 
   const effectiveLvl1Name = useLlm && isType1 ? lvl1CodeToName(proposal.llm_lvl1_code) : localLvl1Name;
-  const effectiveLvl2Name = useLlm && isType1 ? lvl1CodeToName(proposal.llm_lvl2_code) : localLvl2Name;
+  const effectiveLvl2Name = useLlm && isType1 ? lvl2CodeToName(proposal.llm_lvl1_code, proposal.llm_lvl2_code) : localLvl2Name;
   const effectiveKeyword = useLlm && isType1 ? proposal.llm_keyword ?? '' : localKeyword;
   const effectiveMatchField = useLlm && isType1 ? (proposal.llm_match_field ?? 'summary') : localMatchField;
+  const effectiveMatchField2 = useLlm && isType1 ? (proposal.llm_match_field2 ?? '') : localMatchField2;
+  const effectiveMatchValue2 = useLlm && isType1 ? (proposal.llm_match_value2 ?? '') : localMatchValue2;
 
   const txnDir = txnDirection(proposal as any);
   const allowedLvl1 = allowedLvl1ByDirection(txnDir as any);
@@ -79,7 +99,15 @@ export default function ApprovalDetail({ proposal, onUpdate, onApprove, onReject
     setLocalMatchField(mf);
     const lvl1Code = lvl1NameToCode(localLvl1Name);
     const lvl2Code = localLvl2Name ? lvl2NameToCode(lvl1Code, localLvl2Name) : null;
-    onUpdate(proposal.proposal_id, { final_lvl1_code: lvl1Code, final_lvl2_code: lvl2Code, final_keyword: kw, final_match_field: mf });
+    onUpdate(proposal.proposal_id, { final_lvl1_code: lvl1Code, final_lvl2_code: lvl2Code, final_keyword: kw, final_match_field: mf, final_match_field2: localMatchField2 || null, final_match_value2: localMatchValue2 || null });
+  }
+
+  function applyCondition2(mf2: string, mv2: string) {
+    setLocalMatchField2(mf2);
+    setLocalMatchValue2(mv2);
+    const lvl1Code = lvl1NameToCode(localLvl1Name);
+    const lvl2Code = localLvl2Name ? lvl2NameToCode(lvl1Code, localLvl2Name) : null;
+    onUpdate(proposal.proposal_id, { final_lvl1_code: lvl1Code, final_lvl2_code: lvl2Code, final_keyword: localKeyword, final_match_field: localMatchField, final_match_field2: mf2 || null, final_match_value2: mv2 || null });
   }
 
   const canApprove = isType1
@@ -129,11 +157,14 @@ export default function ApprovalDetail({ proposal, onUpdate, onApprove, onReject
           <div className="text-green-700 mb-1">
             <span className="font-semibold">{lvl1CodeToName(proposal.llm_lvl1_code)}</span>
             {proposal.llm_lvl2_code && (
-              <> / <span>{lvl1CodeToName(proposal.llm_lvl2_code)}</span></>
+              <> / <span>{lvl2CodeToName(proposal.llm_lvl1_code, proposal.llm_lvl2_code)}</span></>
             )}
           </div>
           <div className="text-xs text-green-600">关键词: {proposal.llm_keyword || '-'}</div>
           <div className="text-xs text-green-600">匹配字段: {proposal.llm_match_field || '-'}</div>
+          {proposal.llm_match_field2 && proposal.llm_match_value2 && (
+            <div className="text-xs text-green-600">条件2: {proposal.llm_match_field2} 含 "{proposal.llm_match_value2}"</div>
+          )}
           <div className="text-xs text-green-600">置信度: {proposal.llm_confidence || '-'}</div>
           {proposal.llm_reasoning && (
             <div className="mt-2 text-xs text-green-700 bg-green-100 rounded p-2">
@@ -170,7 +201,7 @@ export default function ApprovalDetail({ proposal, onUpdate, onApprove, onReject
               </label>
               {useLlm && (
                 <span className="text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded">
-                  将使用: {lvl1CodeToName(proposal.llm_lvl1_code)} {proposal.llm_lvl2_code ? `/${lvl1CodeToName(proposal.llm_lvl2_code)}` : ''}
+                  将使用: {lvl1CodeToName(proposal.llm_lvl1_code)} {proposal.llm_lvl2_code ? `/${lvl2CodeToName(proposal.llm_lvl1_code, proposal.llm_lvl2_code)}` : ''}
                 </span>
               )}
               {!useLlm && (
@@ -236,6 +267,34 @@ export default function ApprovalDetail({ proposal, onUpdate, onApprove, onReject
                 <option value="purpose">用途</option>
                 <option value="counterparty_name">对方单位</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">条件2字段</label>
+              <select
+                value={effectiveMatchField2}
+                onChange={e => applyCondition2(e.target.value, effectiveMatchValue2)}
+                disabled={isDone}
+                className="w-full border rounded px-2 py-1.5 text-sm bg-white disabled:bg-gray-100"
+              >
+                <option value="">（无）</option>
+                <option value="summary">摘要</option>
+                <option value="memo">附言</option>
+                <option value="purpose">用途</option>
+                <option value="counterparty_name">对方单位</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">条件2关键词</label>
+              <input
+                type="text"
+                value={effectiveMatchValue2}
+                onChange={e => applyCondition2(effectiveMatchField2, e.target.value)}
+                disabled={isDone || !effectiveMatchField2}
+                placeholder="AND 第二条件"
+                className="w-full border rounded px-2 py-1.5 text-sm disabled:bg-gray-100"
+              />
             </div>
           </div>
 

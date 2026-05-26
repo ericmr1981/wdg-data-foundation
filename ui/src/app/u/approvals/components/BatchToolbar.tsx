@@ -9,7 +9,7 @@ interface BatchToolbarProps {
   selectedProposals: ProposalRow[];
   onBatchApprove: () => void;
   onBatchReject: () => void;
-  onBatchSetClassification: (lvl1Code: string, lvl2Code: string | null, keyword: string, matchField: string) => void;
+  onBatchSetClassification: (lvl1Code: string, lvl2Code: string | null, keyword: string, matchField: string, matchField2: string, matchValue2: string) => void;
   batchLoading: boolean;
 }
 
@@ -24,6 +24,8 @@ export default function BatchToolbar({
   const [lvl2Name, setLvl2Name] = useState('');
   const [keyword, setKeyword] = useState('');
   const [matchField, setMatchField] = useState('summary');
+  const [matchField2, setMatchField2] = useState('');
+  const [matchValue2, setMatchValue2] = useState('');
 
   if (selectedProposals.length === 0) return null;
 
@@ -38,7 +40,7 @@ export default function BatchToolbar({
     if (!lvl1Name) return;
     const lvl1Code = lvl1NameToCode(lvl1Name);
     const lvl2Code = lvl2Name ? lvl2NameToCode(lvl1Code, lvl2Name) : null;
-    onBatchSetClassification(lvl1Code, lvl2Code, keyword, matchField);
+    onBatchSetClassification(lvl1Code, lvl2Code, keyword, matchField, matchField2, matchValue2);
   }
 
   return (
@@ -96,6 +98,26 @@ export default function BatchToolbar({
             <option value="purpose">用途</option>
             <option value="counterparty_name">对方</option>
           </select>
+
+          <select
+            value={matchField2}
+            onChange={e => setMatchField2(e.target.value)}
+            className="border rounded px-2 py-1.5 text-sm bg-white w-24"
+          >
+            <option value="">（无）</option>
+            <option value="summary">摘要</option>
+            <option value="memo">附言</option>
+            <option value="purpose">用途</option>
+            <option value="counterparty_name">对方</option>
+          </select>
+
+          <input
+            type="text"
+            value={matchValue2}
+            onChange={e => setMatchValue2(e.target.value)}
+            placeholder="条件2关键词"
+            className="border rounded px-2 py-1.5 text-sm w-28"
+          />
 
           <button
             onClick={handleApplyToSelected}

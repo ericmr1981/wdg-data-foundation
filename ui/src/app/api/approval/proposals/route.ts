@@ -45,9 +45,10 @@ export async function POST(request: Request) {
           INSERT INTO ops.approval_proposal (
             batch_id, source_file_id, bank_txn_id, brand_code, type, status,
             llm_lvl1_code, llm_lvl2_code, llm_keyword, llm_match_field,
-            llm_confidence, llm_reasoning, llm_missing_fields
+            llm_confidence, llm_reasoning, llm_missing_fields,
+            llm_match_field2, llm_match_value2
           )
-          VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9, $10, $11, $12)
+          VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9, $10, $11, $12, $13, $14)
           `,
           [
             batch_id,
@@ -61,7 +62,9 @@ export async function POST(request: Request) {
             record.llm_proposal?.match_field || null,
             record.llm_proposal?.confidence || null,
             record.llm_proposal?.reasoning || null,
-            record.llm_proposal ? JSON.stringify(record.llm_proposal) : null
+            record.missing_fields ? JSON.stringify(record.missing_fields) : null,
+            record.llm_proposal?.match_field2 || null,
+            record.llm_proposal?.match_value2 || null,
           ]
         );
       }
@@ -118,8 +121,10 @@ export async function GET(request: Request) {
         p.proposal_id, p.batch_id, p.source_file_id, p.bank_txn_id, p.brand_code,
         p.type, p.status,
         p.llm_lvl1_code, p.llm_lvl2_code, p.llm_keyword, p.llm_match_field,
+        p.llm_match_field2, p.llm_match_value2,
         p.llm_confidence, p.llm_reasoning, p.llm_missing_fields,
         p.final_lvl1_code, p.final_lvl2_code, p.final_keyword, p.final_match_field,
+        p.final_match_field2, p.final_match_value2,
         p.user_note, p.resolved_by,
         p.created_at, p.resolved_at,
         t.txn_time, t.summary, t.memo, t.counterparty_name, t.in_amt, t.out_amt

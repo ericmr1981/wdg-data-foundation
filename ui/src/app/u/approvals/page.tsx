@@ -99,7 +99,7 @@ function ApprovalsContent() {
   // Update a single proposal (patch)
   async function handleUpdate(
     proposal_id: string,
-    patch: Partial<Pick<ProposalRow, 'final_lvl1_code' | 'final_lvl2_code' | 'final_keyword' | 'final_match_field' | 'use_llm'>>,
+    patch: Partial<Pick<ProposalRow, 'final_lvl1_code' | 'final_lvl2_code' | 'final_keyword' | 'final_match_field' | 'final_match_field2' | 'final_match_value2' | 'use_llm'>>,
     _note?: string
   ) {
     setSavingIds(prev => new Set(prev).add(proposal_id));
@@ -112,6 +112,8 @@ function ApprovalsContent() {
           final_lvl2_code: patch.final_lvl2_code,
           final_keyword: patch.final_keyword,
           final_match_field: patch.final_match_field,
+          final_match_field2: patch.final_match_field2,
+          final_match_value2: patch.final_match_value2,
         }),
       });
       const json = await res.json();
@@ -257,18 +259,18 @@ function ApprovalsContent() {
 
   // Batch-set classification on selected rows
   const handleBatchSetClassification = useCallback(
-    (lvl1Code: string, lvl2Code: string | null, keyword: string, matchField: string) => {
+    (lvl1Code: string, lvl2Code: string | null, keyword: string, matchField: string, matchField2: string, matchValue2: string) => {
       const ids = Array.from(selectedIds);
       setProposals(prev =>
         prev.map(p =>
           selectedIds.has(p.proposal_id)
-            ? { ...p, final_lvl1_code: lvl1Code, final_lvl2_code: lvl2Code, final_keyword: keyword, final_match_field: matchField }
+            ? { ...p, final_lvl1_code: lvl1Code, final_lvl2_code: lvl2Code, final_keyword: keyword, final_match_field: matchField, final_match_field2: matchField2 || null, final_match_value2: matchValue2 || null }
             : p
         )
       );
       // Persist each in background
       ids.forEach(id => {
-        handleUpdate(id, { final_lvl1_code: lvl1Code, final_lvl2_code: lvl2Code, final_keyword: keyword, final_match_field: matchField });
+        handleUpdate(id, { final_lvl1_code: lvl1Code, final_lvl2_code: lvl2Code, final_keyword: keyword, final_match_field: matchField, final_match_field2: matchField2 || null, final_match_value2: matchValue2 || null });
       });
     },
     [selectedIds]

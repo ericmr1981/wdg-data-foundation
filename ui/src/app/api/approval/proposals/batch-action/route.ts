@@ -44,7 +44,9 @@ export async function POST(request: Request) {
       const result = await client.query(
         `SELECT proposal_id, bank_txn_id, brand_code, type, status,
                 llm_lvl1_code, llm_lvl2_code, llm_keyword, llm_match_field,
-                final_lvl1_code, final_lvl2_code, final_keyword, final_match_field
+                llm_match_field2, llm_match_value2,
+                final_lvl1_code, final_lvl2_code, final_keyword, final_match_field,
+                final_match_field2, final_match_value2
          FROM ops.approval_proposal
          WHERE proposal_id = ANY($1)
            AND status = 'pending'`,
@@ -84,6 +86,8 @@ export async function POST(request: Request) {
           const lvl2Code = proposal.final_lvl2_code || proposal.llm_lvl2_code;
           const keyword = proposal.final_keyword || proposal.llm_keyword;
           const matchField = proposal.final_match_field || proposal.llm_match_field || 'summary';
+          const matchField2 = proposal.final_match_field2 || proposal.llm_match_field2 || null;
+          const matchValue2 = proposal.final_match_value2 || proposal.llm_match_value2 || null;
 
           if (!lvl1Code || !keyword) {
             // Incomplete → keep pending
@@ -135,11 +139,12 @@ export async function POST(request: Request) {
           const ruleRes = await client.query(
             `
             INSERT INTO ${ruleTable}
-            (enabled, priority, match_field, match_type, match_value, direction, lvl1_code, lvl2_code, note)
-            VALUES (true, $1, $2, $3, $4, $5, $6, $7, $8)
+            (enabled, priority, match_field, match_type, match_value,
+             match_field2, match_value2, direction, lvl1_code, lvl2_code, note)
+            VALUES (true, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING rule_id
             `,
-            [newPriority, matchField, matchType, keyword, direction, lvl1Code, lvl2Code, `Approval 沉淀: txn ${proposal.bank_txn_id}`]
+            [newPriority, matchField, matchType, keyword, matchField2, matchValue2, direction, lvl1Code, lvl2Code, `Approval 沉淀: txn ${proposal.bank_txn_id}`]
           );
 
           const createdRule = ruleRes.rows[0];

@@ -84,6 +84,8 @@ export interface ApprovalProposal {
   llm_lvl2_code:      string | null;
   llm_keyword:        string | null;
   llm_match_field:    string | null;
+  llm_match_field2:   string | null;
+  llm_match_value2:  string | null;
   llm_confidence:     string | null;
   llm_reasoning:      string | null;
   llm_missing_fields: string[] | null;
@@ -91,6 +93,8 @@ export interface ApprovalProposal {
   final_lvl2_code:    string | null;
   final_keyword:      string | null;
   final_match_field:  string | null;
+  final_match_field2: string | null;
+  final_match_value2:string | null;
   user_note:          string | null;
   resolved_by:        string | null;
   created_at:         string;
@@ -105,6 +109,8 @@ export interface ApprovalRecord {
     lvl2_code:   string;
     keyword:     string;
     match_field: string;
+    match_field2?: string;
+    match_value2?: string;
     confidence:  'high' | 'medium' | 'low';
     reasoning:   string;
   } | null;
