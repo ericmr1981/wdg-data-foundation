@@ -104,10 +104,11 @@ function ApprovalsContent() {
   ) {
     setSavingIds(prev => new Set(prev).add(proposal_id));
     try {
-      const res = await fetch(`/api/approval/proposals/${proposal_id}`, {
-        method: 'PUT',
+      const res = await fetch('/api/approval/proposals', {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          proposal_id,
           final_lvl1_code: patch.final_lvl1_code,
           final_lvl2_code: patch.final_lvl2_code,
           final_keyword: patch.final_keyword,
