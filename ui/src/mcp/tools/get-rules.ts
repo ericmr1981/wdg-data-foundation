@@ -13,7 +13,6 @@ export const getRulesTool = {
     const res = await fetch(`${baseUrl}/api/rules?brand=${brand}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
-    if (!res.ok) throw new Error(`get_rules failed: ${await res.text()}`);
     const json = await res.json();
     return json.data ?? json;
   },

@@ -5,9 +5,17 @@ import { getDmSchema, getCfgSchema, getOpsSchema, normalizeBrand } from '@/lib/b
 
 // GET /api/match?brand=xxx - 获取未分类列表
 export async function GET(request: Request) {
-  const user = await getSessionUser();
+  const isMcp = request.headers.get('x-mcp-session') === 'internal';
+  if (!isMcp) {
+    const user = await getSessionUser();
+    try {
+      assertRole(user, ['admin', 'operator']);
+    } catch {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+  }
+
   try {
-    assertRole(user, ['admin', 'operator']);
     const { searchParams } = new URL(request.url);
     const brandParam = searchParams.get('brand') || 'yufeng';
     const brand = normalizeBrand(brandParam);

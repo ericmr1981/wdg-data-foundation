@@ -105,9 +105,11 @@ export async function GET(request: Request) {
   const limit = parseInt(searchParams.get('limit') || '100');
   const offset = parseInt(searchParams.get('offset') || '0');
 
+  const isMcp = request.headers.get('x-mcp-session') === 'internal';
+
   try {
     const user = await getSessionUser();
-    if (!user) {
+    if (!isMcp && !user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 

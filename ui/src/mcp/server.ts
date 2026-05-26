@@ -25,8 +25,13 @@ const TOOLS: Record<string, ToolModule> = {
   get_candidates:         getCandidatesTool,
   get_existing_rules:     getRulesTool,
   submit_approval_proposal: submitProposalTool,
-  query_approval_status:  queryStatusTool,
+  query_approval_status:   queryStatusTool,
 };
+
+/** Try short-name match, then long-name match */
+function resolveTool(name: string): ToolModule | undefined {
+  return TOOLS[name] ?? Object.values(TOOLS).find(t => t.name === name);
+}
 
 // JSON-RPC 2.0 request shape
 const JsonRpcRequestSchema = z.object({
@@ -69,7 +74,7 @@ async function handleToolsCall(id: string | number | null, params: Record<string
     return jsonRpcError(id, -32600, 'Invalid Request: missing "name" in params');
   }
 
-  const tool = TOOLS[toolName];
+  const tool = resolveTool(toolName);
   if (!tool) {
     return jsonRpcError(id, -32602, `Method not found: ${toolName}`);
   }

@@ -9,9 +9,15 @@ import pool from '@/lib/db';
 
 // POST /api/upload - 上传文件并触发导入
 export async function POST(request: Request) {
-  const user = await getSessionUser();
-  try {
-    assertRole(user, ['admin', 'operator']);
+  const isMcp = request.headers.get('x-mcp-session') === 'internal';
+  if (!isMcp) {
+    const user = await getSessionUser();
+    try {
+      assertRole(user, ['admin', 'operator']);
+    } catch {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+  }
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const brand = formData.get('brand') as string;

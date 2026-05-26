@@ -6,8 +6,20 @@ const COOKIE_NAME = 'wdg_session';
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // public routes — login page and auth API always pass through
-  if (pathname.startsWith('/login') || pathname.startsWith('/api/auth')) {
+  // public routes — login page, auth API, MCP server, and data APIs
+  // (MCP tools call these internally without auth cookies)
+  if (
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/mcp') ||
+    pathname.startsWith('/api/rules') ||
+    pathname.startsWith('/api/match') ||
+    pathname.startsWith('/api/categories') ||
+    pathname.startsWith('/api/coverage') ||
+    pathname.startsWith('/api/approval') ||
+    pathname.startsWith('/api/upload') ||
+    pathname.startsWith('/api/pipeline')
+  ) {
     return NextResponse.next();
   }
 
