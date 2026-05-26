@@ -9,6 +9,7 @@ import { getCandidatesTool } from './tools/get-candidates';
 import { getRulesTool } from './tools/get-rules';
 import { submitProposalTool } from './tools/submit-proposal';
 import { queryStatusTool } from './tools/query-status';
+import { getBrandStoresTool } from './tools/get-brand-stores';
 
 type ToolModule = {
   name: string;
@@ -26,6 +27,7 @@ const TOOLS: Record<string, ToolModule> = {
   get_existing_rules:     getRulesTool,
   submit_approval_proposal: submitProposalTool,
   query_approval_status:   queryStatusTool,
+  get_brand_stores:       getBrandStoresTool,
 };
 
 /** Try short-name match, then long-name match */

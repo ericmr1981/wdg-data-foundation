@@ -4,9 +4,7 @@
  * 作者：Claude Code
  */
 
-import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
-import { getDmSchema, normalizeBrand } from '@/lib/brand-server';
 
 // 中文停用词表
 const CHINESE_STOPWORDS = new Set([
@@ -184,7 +182,7 @@ export async function previewMatchValue(
       c.lvl2,
       COALESCE(t.in_amt, 0) + COALESCE(t.out_amt, 0) as amt
     FROM ${dmSchema}.v_bank_txn_classified c
-    INNER JOIN yufeng_ods.bank_txn t ON c.bank_txn_id = t.id
+    INNER JOIN ${dmSchema.replace('_dm', '_ods')}.bank_txn t ON c.bank_txn_id = t.id
     WHERE t.counterparty_name ILIKE '%' || $1 || '%'
        OR t.summary ILIKE '%' || $1 || '%'
        OR t.memo ILIKE '%' || $1 || '%'

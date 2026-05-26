@@ -4,7 +4,7 @@ const GetUnclassifiedInput = z.object({
   brand: z.string().describe('Brand code: yufeng | gelatomiiix | bonjur').optional().default('yufeng'),
   month: z.string().describe('Period in YYYY-MM or YYYY-MM-01 format').optional(),
   page:  z.number().int().positive().optional().default(1),
-  pageSize: z.number().int().positive().max(100).optional().default(20),
+  pageSize: z.number().int().positive().max(200).optional().default(100),
 });
 
 export const getUnclassifiedTool = {
@@ -12,7 +12,7 @@ export const getUnclassifiedTool = {
   description: 'Fetch unclassified bank transactions for a brand. Returns transactions that need classification rules.',
   inputSchema: GetUnclassifiedInput,
   async execute(params: z.infer<typeof GetUnclassifiedInput>) {
-    const { brand = 'yufeng', month, page = 1, pageSize = 20 } = params;
+    const { brand = 'yufeng', month, page = 1, pageSize = 100 } = params;
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:4100';
     const qs = new URLSearchParams({ brand, page: String(page), pageSize: String(pageSize) });
     if (month) qs.set('month', month);

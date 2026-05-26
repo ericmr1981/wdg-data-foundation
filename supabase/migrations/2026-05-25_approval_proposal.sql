@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS ops.approval_proposal (
   llm_confidence        TEXT,
   llm_reasoning         TEXT,
   -- LLM 标记（type2）
-  llm_missing_fields    TEXT[],
+  llm_missing_fields    TEXT,
 
   -- 用户最终决策
   final_lvl1_code       TEXT,

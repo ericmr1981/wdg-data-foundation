@@ -14,11 +14,14 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api/mcp') ||
     pathname.startsWith('/api/rules') ||
     pathname.startsWith('/api/match') ||
+    pathname.startsWith('/api/match/candidates') ||
     pathname.startsWith('/api/categories') ||
     pathname.startsWith('/api/coverage') ||
     pathname.startsWith('/api/approval') ||
     pathname.startsWith('/api/upload') ||
-    pathname.startsWith('/api/pipeline')
+    pathname.startsWith('/api/pipeline') ||
+    pathname.startsWith('/api/brands') ||
+    pathname.startsWith('/api/stores')
   ) {
     return NextResponse.next();
   }

@@ -76,9 +76,7 @@ export async function GET(request: Request) {
   const isInternal = request.headers.get('x-mcp-session') === 'internal';
   if (!isInternal) {
     const user = await getSessionUser();
-    if (user && user.role !== 'anonymous') {
-      assertRole(user, ['admin', 'operator']);
-    }
+    assertRole(user, ['admin', 'operator']);
   }
 
   try {

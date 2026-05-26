@@ -118,15 +118,15 @@ export async function POST(request: Request) {
             lvl2Name = lvl2Res.rows.length > 0 ? lvl2Res.rows[0].lvl2_name : null;
           }
 
-          // Get txn direction
-          let direction = 'any';
+          // Get txn direction — prioritize in_amt, then out_amt; neither >0 means edge case → default to out
+          let direction: 'in' | 'out' = 'out';
           const txnRes = await client.query(
             `SELECT in_amt, out_amt FROM ${bankTxnTable} WHERE id = $1`,
             [proposal.bank_txn_id]
           );
           if (txnRes.rows.length > 0) {
-            if (txnRes.rows[0].in_amt > 0) direction = 'in';
-            else if (txnRes.rows[0].out_amt > 0) direction = 'out';
+            if ((txnRes.rows[0].in_amt ?? 0) > 0) direction = 'in';
+            else if ((txnRes.rows[0].out_amt ?? 0) > 0) direction = 'out';
           }
 
           const matchType = matchField === 'counterparty_name' ? 'exact' : 'contains';

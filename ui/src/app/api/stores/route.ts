@@ -4,10 +4,17 @@ import { getSessionUser, assertRole } from '@/lib/auth-server';
 
 // GET /api/stores?brand=yufeng
 export async function GET(request: Request) {
-  const user = await getSessionUser();
-  try {
-    assertRole(user, ['admin', 'operator']);
+  const isMcp = request.headers.get('x-mcp-session') === 'internal';
+  if (!isMcp) {
+    const user = await getSessionUser();
+    try {
+      assertRole(user, ['admin', 'operator']);
+    } catch {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+  }
 
+  try {
     const { searchParams } = new URL(request.url);
     const brand = String(searchParams.get('brand') || '').trim();
     if (!brand) {
@@ -15,12 +22,10 @@ export async function GET(request: Request) {
     }
 
     const res = await pool.query(
-      `
-      SELECT store_code, store_name
-      FROM ops.stores
-      WHERE brand_code=$1 AND enabled=true
-      ORDER BY sort_order NULLS LAST, store_code
-      `,
+      `SELECT store_code, store_name
+       FROM ops.stores
+       WHERE brand_code=$1 AND enabled=true
+       ORDER BY sort_order NULLS LAST, store_code`,
       [brand]
     );
 

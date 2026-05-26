@@ -18,166 +18,201 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
   }
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const brand = formData.get('brand') as string;
-    const store = formData.get('store') as string;
-    const source = formData.get('source') as string;
-    // month 不再从表单接收，改用系统当前时间（Asia/Shanghai）
-    const triggerImport = formData.get('triggerImport') === 'true';
 
-    // 使用系统当前时间（上海时区）
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const yyyyMM = `${year}-${month}`;
+  const formData = await request.formData();
+  const file = formData.get('file') as File;
+  const brand = formData.get('brand') as string;
+  const store = formData.get('store') as string;
+  const source = formData.get('source') as string;
+  const triggerImport = formData.get('triggerImport') === 'true';
 
-    if (!file || !brand || !store || !source) {
-      return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
-    }
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyyMM = `${year}-${month}`;
 
-    // 创建上传目录
-    const uploadDir = path.join(process.cwd(), '..', 'inputs', brand, store, source, yyyyMM);
-    if (!existsSync(uploadDir)) {
-      await mkdir(uploadDir, { recursive: true });
-    }
+  if (!file || !brand || !store || !source) {
+    return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
+  }
 
-    // 保存文件
-    const fileName = file.name;
-    const filePath = path.join(uploadDir, fileName);
-    const arrayBuffer = await file.arrayBuffer();
-    const fileBuffer = Buffer.from(arrayBuffer);
+  const uploadDir = path.join(process.cwd(), '..', 'inputs', brand, store, source, yyyyMM);
+  if (!existsSync(uploadDir)) {
+    await mkdir(uploadDir, { recursive: true });
+  }
 
-    // 上传回执：提前计算 SHA-256（与导入脚本的幂等逻辑对齐）
-    const fileHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+  const fileName = file.name;
+  const filePath = path.join(uploadDir, fileName);
+  const arrayBuffer = await file.arrayBuffer();
+  const fileBuffer = Buffer.from(arrayBuffer);
+  const fileHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
 
-    await writeFile(filePath, fileBuffer);
+  await writeFile(filePath, fileBuffer);
 
-    let importResult = null;
-    let importError = null;
+  let importResult: string | null = null;
+  let importError: string | null = null;
 
-    // 触发导入脚本
-    if (triggerImport) {
-      try {
-        // Resolve scripts directory with Docker-friendly defaults
-        const defaultScriptsDir = path.join(process.cwd(), '..', 'scripts');
-        const scriptsDir =
-          process.env.SCRIPTS_DIR ||
-          (existsSync(defaultScriptsDir) ? defaultScriptsDir : existsSync('/scripts') ? '/scripts' : defaultScriptsDir);
+  if (triggerImport) {
+    try {
+      const defaultScriptsDir = path.join(process.cwd(), '..', 'scripts');
+      const scriptsDir =
+        process.env.SCRIPTS_DIR ||
+        (existsSync(defaultScriptsDir) ? defaultScriptsDir : existsSync('/scripts') ? '/scripts' : defaultScriptsDir);
 
-        let scriptName = '';
-        let scriptArgs = [filePath];
+      let scriptName = '';
+      const scriptArgs = [filePath];
 
-        if (source === 'bank') {
-          scriptName = 'import_yufeng_bank_txn.py';
-        } else if (source === 'sales') {
-          // Bonjur 营业数据（自助下载）为日粒度明细，导入到 bonjur_ods.sales_daily_self_service
-          // 旧的 import_bonjur_sales_daily.py 目标是 bonjur_ods.sales_monthly（在 VPS 可能是 view），会导致插入失败
-          scriptName = brand === 'bonjur'
-            ? 'import_bonjur_sales_self_service_daily.py'
-            : 'import_bonjur_sales_daily.py';
-        } else {
-          return NextResponse.json({ success: false, error: 'Unknown source type' }, { status: 400 });
-        }
+      if (source === 'bank') {
+        scriptName = 'import_yufeng_bank_txn.py';
+      } else if (source === 'sales') {
+        scriptName = brand === 'bonjur'
+          ? 'import_bonjur_sales_self_service_daily.py'
+          : 'import_bonjur_sales_daily.py';
+      } else {
+        return NextResponse.json({ success: false, error: 'Unknown source type' }, { status: 400 });
+      }
 
-        const scriptPath = path.join(scriptsDir, scriptName);
+      const scriptPath = path.join(scriptsDir, scriptName);
 
-        // 运行导入脚本
-        const importOutput = await new Promise<string>((resolve, reject) => {
-          // Robust python binary selection: env var > venv (if exists) > python3
-          const projectRoot = path.join(process.cwd(), '..');
-          const venvPython = path.join(projectRoot, '.venv', 'bin', 'python');
-          const pythonBin =
-            process.env.PYTHON_BIN ||
-            (existsSync(venvPython) ? venvPython : 'python3');
+      const importOutput = await new Promise<string>((resolve, reject) => {
+        const projectRoot = path.join(process.cwd(), '..');
+        const venvPython = path.join(projectRoot, '.venv', 'bin', 'python');
+        const pythonBin =
+          process.env.PYTHON_BIN ||
+          (existsSync(venvPython) ? venvPython : 'python3');
 
-          const childProcess = spawn(pythonBin, [scriptPath, ...scriptArgs], {
-            cwd: projectRoot,
-            env: { ...process.env }
-          });
-
-          let stdout = '';
-          let stderr = '';
-
-          childProcess.stdout.on('data', (data) => {
-            stdout += data.toString();
-          });
-
-          childProcess.stderr.on('data', (data) => {
-            stderr += data.toString();
-          });
-
-          childProcess.on('close', (code) => {
-            if (code === 0) {
-              resolve(stdout);
-            } else {
-              reject(new Error(stderr || `Process exited with code ${code}`));
-            }
-          });
-
-          childProcess.on('error', (err) => {
-            reject(err);
-          });
+        const childProcess = spawn(pythonBin, [scriptPath, ...scriptArgs], {
+          cwd: projectRoot,
+          env: { ...process.env }
         });
 
-        importResult = importOutput;
-      } catch (error: any) {
-        importError = error.message;
-      }
+        let stdout = '';
+        let stderr = '';
+
+        childProcess.stdout.on('data', (data) => { stdout += data.toString(); });
+        childProcess.stderr.on('data', (data) => { stderr += data.toString(); });
+
+        childProcess.on('close', (code) => {
+          if (code === 0) {
+            resolve(stdout);
+          } else {
+            reject(new Error(stderr || `Process exited with code ${code}`));
+          }
+        });
+
+        childProcess.on('error', (err) => { reject(err); });
+      });
+
+      importResult = importOutput;
+    } catch (error: any) {
+      importError = error.message;
     }
+  }
 
-    // 上传回执：尝试回读 raw.ingest_file（无论 triggerImport 与否，只要库里存在就会回显）
-    let sourceFileId: number | null = null;
-    let importStatus: string | null = null;
-    let rowCount: number | null = null;
-    let errorMessage: string | null = null;
+  let sourceFileId: number | null = null;
+  let importStatus: string | null = null;
+  let rowCount: number | null = null;
+  let errorMessage: string | null = null;
 
+  try {
+    const q = await pool.query(
+      `SELECT id, status, row_count, error_message
+       FROM raw.ingest_file
+       WHERE file_hash = $1
+       LIMIT 1`,
+      [fileHash]
+    );
+    if (q.rows?.length) {
+      sourceFileId = Number(q.rows[0].id);
+      importStatus = q.rows[0].status;
+      rowCount = q.rows[0].row_count ?? null;
+      errorMessage = q.rows[0].error_message ?? null;
+    }
+  } catch {
+    // best-effort
+  }
+
+  if (!importError && triggerImport && source === 'bank') {
     try {
-      const q = await pool.query(
-        `SELECT id, status, row_count, error_message
-         FROM raw.ingest_file
-         WHERE file_hash = $1
-         LIMIT 1`,
-        [fileHash]
+      const schemaPrefix = ['yufeng', 'bonjur'].includes(brand) ? brand : `brand_${brand}`;
+      await pool.query(`SELECT ${schemaPrefix}_dm.refresh_bank_txn_classified_snapshot(NULL)`);
+      importResult = (importResult || '') + '\n✅ 分类完成';
+    } catch (classifyErr: any) {
+      importError = `分类失败: ${classifyErr.message}`;
+    }
+  }
+
+  // Build coverage stats for bank uploads
+  let unclassifiedThisFile: number | null = null;
+  let unclassifiedThisBrandMonth: number | null = null;
+  let totalThisBrandMonth: number | null = null;
+  let coveragePct: number | null = null;
+
+  if (source === 'bank' && sourceFileId && !importError) {
+    const schemaPrefix = ['yufeng', 'bonjur'].includes(brand) ? brand : `brand_${brand}`;
+    try {
+      // Get the month from ingest_file (set by import script from file path)
+      const metaRow = await pool.query(
+        `SELECT month::date AS file_month FROM raw.ingest_file WHERE id = $1`,
+        [sourceFileId]
       );
-      if (q.rows?.length) {
-        sourceFileId = Number(q.rows[0].id);
-        importStatus = q.rows[0].status;
-        rowCount = q.rows[0].row_count ?? null;
-        errorMessage = q.rows[0].error_message ?? null;
+      const fileMonth = metaRow.rows[0]?.file_month;
+
+      // Count unclassified in this file
+      const thisFileRes = await pool.query(
+        `SELECT COUNT(*) AS cnt FROM ${schemaPrefix}_dm.v_bank_txn_classified
+         WHERE source_file_id = $1 AND classified_source = 'unclassified'`,
+        [sourceFileId]
+      );
+      unclassifiedThisFile = parseInt(thisFileRes.rows[0]?.cnt ?? '0');
+
+      if (fileMonth) {
+        const dmSchema = `${schemaPrefix}_dm`;
+        const [monthTotalRes, monthUnclassRes] = await Promise.all([
+          pool.query(
+            `SELECT COUNT(*) AS cnt FROM ${dmSchema}.v_bank_txn_classified
+             WHERE source_file_id IN (
+               SELECT id FROM raw.ingest_file
+               WHERE brand_code = $1 AND source_type = 'bank' AND month::date = $2
+             )`,
+            [brand, fileMonth]
+          ),
+          pool.query(
+            `SELECT COUNT(*) AS cnt FROM ${dmSchema}.v_bank_txn_classified
+             WHERE source_file_id IN (
+               SELECT id FROM raw.ingest_file
+               WHERE brand_code = $1 AND source_type = 'bank' AND month::date = $2
+             ) AND classified_source = 'unclassified'`,
+            [brand, fileMonth]
+          ),
+        ]);
+        totalThisBrandMonth = parseInt(monthTotalRes.rows[0]?.cnt ?? '0');
+        unclassifiedThisBrandMonth = parseInt(monthUnclassRes.rows[0]?.cnt ?? '0');
+        if (totalThisBrandMonth > 0) {
+          coveragePct = Math.round((1 - unclassifiedThisBrandMonth / totalThisBrandMonth) * 10000) / 100;
+        }
       }
     } catch {
-      // best-effort: do not block upload on receipt query
+      // best-effort, don't fail the upload
     }
-
-    // 导入成功后自动触发分类
-    if (!importError && triggerImport && source === 'bank') {
-      try {
-        const schemaPrefix = ['yufeng', 'bonjur'].includes(brand) ? brand : `brand_${brand}`;
-        await pool.query(`SELECT ${schemaPrefix}_dm.refresh_bank_txn_classified_snapshot(NULL)`);
-        importResult += '\n✅ 分类完成';
-      } catch (classifyErr: any) {
-        importError = `分类失败: ${classifyErr.message}`;
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        filePath,
-        fileName,
-        fileMonth: yyyyMM,
-        fileHash,
-        sourceFileId,
-        importStatus,
-        rowCount,
-        errorMessage,
-        importResult,
-        importError
-      }
-    });
-  } catch (error: any) {
-    console.error('Error uploading file:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
+
+  return NextResponse.json({
+    success: true,
+    data: {
+      filePath,
+      fileName,
+      fileMonth: yyyyMM,
+      fileHash,
+      sourceFileId,
+      importStatus,
+      rowCount,
+      errorMessage,
+      importResult,
+      importError,
+      unclassifiedThisFile,
+      unclassifiedThisBrandMonth,
+      totalThisBrandMonth,
+      coveragePct
+    }
+  });
 }

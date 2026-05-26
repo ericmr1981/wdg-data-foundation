@@ -62,15 +62,22 @@ BEGIN
               OR (r.direction = 'out' AND v_out_amt IS NOT NULL AND v_out_amt > 0)
           )
           AND v_summary ILIKE '%' || r.match_value || '%'
+          AND (
+              r.match_field2 IS NULL
+              OR (r.match_field2 = 'summary'         AND v_summary         ILIKE '%' || r.match_value2 || '%')
+              OR (r.match_field2 = 'memo'           AND v_memo            ILIKE '%' || r.match_value2 || '%')
+              OR (r.match_field2 = 'purpose'         AND v_purpose          ILIKE '%' || r.match_value2 || '%')
+              OR (r.match_field2 = 'counterparty_name' AND v_counterparty_name ILIKE '%' || r.match_value2 || '%')
+          )
         ORDER BY r.priority ASC
         LIMIT 1;
-        
+
         IF FOUND THEN
             v_classified_source := 'rule';
             RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, v_classified_source);
         END IF;
     END IF;
-    
+
     -- ==================== Step 2: memo 字段匹配（contains） ====================
     IF v_memo IS NOT NULL AND LENGTH(TRIM(v_memo)) > 0 THEN
         SELECT r.rule_id, r.lvl1_code, r.lvl2_code
@@ -85,15 +92,22 @@ BEGIN
               OR (r.direction = 'out' AND v_out_amt IS NOT NULL AND v_out_amt > 0)
           )
           AND v_memo ILIKE '%' || r.match_value || '%'
+          AND (
+              r.match_field2 IS NULL
+              OR (r.match_field2 = 'summary'         AND v_summary         ILIKE '%' || r.match_value2 || '%')
+              OR (r.match_field2 = 'memo'           AND v_memo            ILIKE '%' || r.match_value2 || '%')
+              OR (r.match_field2 = 'purpose'         AND v_purpose          ILIKE '%' || r.match_value2 || '%')
+              OR (r.match_field2 = 'counterparty_name' AND v_counterparty_name ILIKE '%' || r.match_value2 || '%')
+          )
         ORDER BY r.priority ASC
         LIMIT 1;
-        
+
         IF FOUND THEN
             v_classified_source := 'rule';
             RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, v_classified_source);
         END IF;
     END IF;
-    
+
     -- ==================== Step 3: purpose 字段匹配（contains） ====================
     IF v_purpose IS NOT NULL AND LENGTH(TRIM(v_purpose)) > 0 THEN
         SELECT r.rule_id, r.lvl1_code, r.lvl2_code
@@ -108,9 +122,16 @@ BEGIN
               OR (r.direction = 'out' AND v_out_amt IS NOT NULL AND v_out_amt > 0)
           )
           AND v_purpose ILIKE '%' || r.match_value || '%'
+          AND (
+              r.match_field2 IS NULL
+              OR (r.match_field2 = 'summary'         AND v_summary         ILIKE '%' || r.match_value2 || '%')
+              OR (r.match_field2 = 'memo'           AND v_memo            ILIKE '%' || r.match_value2 || '%')
+              OR (r.match_field2 = 'purpose'         AND v_purpose          ILIKE '%' || r.match_value2 || '%')
+              OR (r.match_field2 = 'counterparty_name' AND v_counterparty_name ILIKE '%' || r.match_value2 || '%')
+          )
         ORDER BY r.priority ASC
         LIMIT 1;
-        
+
         IF FOUND THEN
             v_classified_source := 'rule';
             RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, v_classified_source);
@@ -134,14 +155,21 @@ BEGIN
               OR (r.direction = 'out' AND v_out_amt IS NOT NULL AND v_out_amt > 0)
           )
           AND v_counterparty_name ILIKE '%' || r.match_value || '%'
+          AND (
+              r.match_field2 IS NULL
+              OR (r.match_field2 = 'summary'         AND v_summary         ILIKE '%' || r.match_value2 || '%')
+              OR (r.match_field2 = 'memo'           AND v_memo            ILIKE '%' || r.match_value2 || '%')
+              OR (r.match_field2 = 'purpose'         AND v_purpose          ILIKE '%' || r.match_value2 || '%')
+              OR (r.match_field2 = 'counterparty_name' AND v_counterparty_name ILIKE '%' || r.match_value2 || '%')
+          )
         ORDER BY r.priority ASC
         LIMIT 1;
-        
+
         IF FOUND THEN
             v_classified_source := 'rule';
             RETURN ROW(v_rule_id, v_lvl1_code, v_lvl2_code, v_classified_source);
         END IF;
-        
+
         -- 4b: 再试 exact（兜底）
         SELECT r.rule_id, r.lvl1_code, r.lvl2_code
         INTO v_rule_id, v_lvl1_code, v_lvl2_code
@@ -155,6 +183,13 @@ BEGIN
               OR (r.direction = 'out' AND v_out_amt IS NOT NULL AND v_out_amt > 0)
           )
           AND v_counterparty_name = r.match_value
+          AND (
+              r.match_field2 IS NULL
+              OR (r.match_field2 = 'summary'         AND v_summary         ILIKE '%' || r.match_value2 || '%')
+              OR (r.match_field2 = 'memo'           AND v_memo            ILIKE '%' || r.match_value2 || '%')
+              OR (r.match_field2 = 'purpose'         AND v_purpose          ILIKE '%' || r.match_value2 || '%')
+              OR (r.match_field2 = 'counterparty_name' AND v_counterparty_name ILIKE '%' || r.match_value2 || '%')
+          )
         ORDER BY r.priority ASC
         LIMIT 1;
         

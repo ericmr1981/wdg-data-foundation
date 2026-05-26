@@ -36,3 +36,27 @@ node_modules/
 
 # mac
 .DS_Store
+
+# temp artifacts (screenshots, logs from debugging)
+*.log
+*.png
+*.jpeg
+Report/
+UI_Check.md
+login-page-view.txt
+put-request-body.json
+
+# local dev artifacts
+artifacts/
+docs/productdata_schema.svg
+docs/superpowers/
+scripts/restore_to_supabase.sh
+scripts/load_bonjur_batches.mjs
+
+# playwright / MCP dev files
+.playwright-mcp/
+.superpowers/
+
+# supabase local dev temp files
+supabase/.branches/
+supabase/.temp/

@@ -12,7 +12,7 @@ interface BrandContextType {
 const BrandContext = createContext<BrandContextType | undefined>(undefined);
 
 export function BrandProvider({ children }: { children: ReactNode }) {
-  const [brand, setBrand] = useState<Brand>('gelatomiiix');
+  const [brand, setBrand] = useState<Brand>('bonjur');
 
   return (
     <BrandContext.Provider value={{ brand, setBrand }}>

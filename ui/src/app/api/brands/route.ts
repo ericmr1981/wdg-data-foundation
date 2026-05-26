@@ -3,10 +3,18 @@ import pool from '@/lib/db';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 
 // GET /api/brands - list enabled brands for selector
-export async function GET() {
-  const user = await getSessionUser();
+export async function GET(request: Request) {
+  const isMcp = request.headers.get('x-mcp-session') === 'internal';
+  if (!isMcp) {
+    const user = await getSessionUser();
+    try {
+      assertRole(user, ['admin', 'operator']);
+    } catch {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+  }
+
   try {
-    assertRole(user, ['admin', 'operator']);
     const res = await pool.query(
       `SELECT brand_code, brand_name
        FROM ops.brands

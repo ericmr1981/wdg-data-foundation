@@ -158,6 +158,7 @@ function ApprovalsContent() {
               : p
           )
         );
+        await fetchProposals();
       }
     } finally {
       setSavingIds(prev => {
@@ -188,6 +189,7 @@ function ApprovalsContent() {
             p.proposal_id === proposal_id ? { ...p, status: 'rejected' } : p
           )
         );
+        await fetchProposals();
       }
     } finally {
       setSavingIds(prev => {
@@ -223,6 +225,7 @@ function ApprovalsContent() {
           )
         );
         setSelectedIds(new Set());
+        await fetchProposals();
       }
     } finally {
       setBatchLoading(false);
@@ -251,6 +254,7 @@ function ApprovalsContent() {
           )
         );
         setSelectedIds(new Set());
+        await fetchProposals();
       }
     } finally {
       setBatchLoading(false);
