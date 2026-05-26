@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       match_value,
       match_field2,
       match_value2,
-      direction = 'any',
+      direction = 'out',
       priority,
       note
     } = body;

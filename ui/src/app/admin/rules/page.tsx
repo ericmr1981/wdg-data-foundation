@@ -5,7 +5,7 @@ import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-type Lvl1Option = { lvl1_code: string; lvl1_name: string; direction: 'in'|'out'|'any' };
+type Lvl1Option = { lvl1_code: string; lvl1_name: string; direction: 'in'|'out' };
 type Lvl2Option = { lvl2_code: string; lvl2_name: string };
 
 import { useBrand } from '@/lib/brand-context';
@@ -72,7 +72,7 @@ function SortableRuleRow({
       </td>
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{rule.priority}</td>
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-        {rule.direction === 'in' ? '收入' : rule.direction === 'out' ? '支出' : '任意'}
+        {rule.direction === 'in' ? '收入' : '支出'}
       </td>
       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
         {rule.match_field === 'counterparty_name' ? '对方单位' :
@@ -177,9 +177,9 @@ export default function RulesPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
 
   const allowedLvl1Options = useMemo(() => {
-    const dir = formData.direction as 'in'|'out'|'any';
-    if (!dir || dir === 'any') return lvl1Options;
-    return lvl1Options.filter(o => o.direction === dir || o.direction === 'any');
+    const dir = formData.direction as 'in'|'out';
+    if (!dir) return lvl1Options;
+    return lvl1Options.filter(o => o.direction === dir);
   }, [lvl1Options, formData.direction]);
   const [rerunLoading, setRerunLoading] = useState(false);
   const [reorderMode, setReorderMode] = useState(false);
@@ -914,9 +914,7 @@ export default function RulesPage() {
                     const direction = e.target.value;
                     setFormData(prev => {
                       // 若切换方向后当前 lvl1 不合法，则清空 lvl1/lvl2
-                      const allowed = direction === 'any'
-                        ? true
-                        : lvl1Options.some(o => (o.direction === direction || o.direction === 'any') && o.lvl1_code === prev.lvl1_code);
+                      const allowed = lvl1Options.some(o => o.direction === direction && o.lvl1_code === prev.lvl1_code);
                       return {
                         ...prev,
                         direction,
@@ -929,7 +927,6 @@ export default function RulesPage() {
                 >
                   <option value="in">收入</option>
                   <option value="out">支出</option>
-                  <option value="any">任意</option>
                 </select>
               </div>
 
