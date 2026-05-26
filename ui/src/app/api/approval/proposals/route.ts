@@ -172,6 +172,74 @@ export async function GET(request: Request) {
   }
 }
 
+// PATCH /api/approval/proposals - Update a proposal (lvl1/lvl2/keyword/field overrides)
+export async function PATCH(request: Request) {
+  const isMcp = request.headers.get('x-mcp-session') === 'internal';
+  if (!isMcp) {
+    const user = await getSessionUser();
+    try {
+      assertRole(user, ['admin', 'operator']);
+    } catch {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+  }
+
+  try {
+    const body = await request.json();
+    const { proposal_id, brand, ...patch } = body as {
+      proposal_id: string;
+      brand?: string;
+      final_lvl1_code?: string | null;
+      final_lvl2_code?: string | null;
+      final_keyword?: string | null;
+      final_match_field?: string | null;
+      final_match_field2?: string | null;
+      final_match_value2?: string | null;
+      user_note?: string;
+    };
+
+    if (!proposal_id) {
+      return NextResponse.json({ success: false, error: 'Missing required field: proposal_id' }, { status: 400 });
+    }
+
+    const fields: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    const nullableFields = ['final_lvl1_code', 'final_lvl2_code', 'final_keyword', 'final_match_field', 'final_match_field2', 'final_match_value2', 'user_note'];
+    for (const field of nullableFields) {
+      if (field in patch) {
+        fields.push(`${field} = $${idx++}`);
+        values.push(patch[field as keyof typeof patch] ?? null);
+      }
+    }
+
+    if (fields.length === 0) {
+      return NextResponse.json({ success: false, error: 'No fields to update' }, { status: 400 });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('wdg.user', $1, true)`, [isMcp ? 'mcp' : 'ui']);
+      const result = await client.query(
+        `UPDATE ops.approval_proposal SET ${fields.join(', ')} WHERE proposal_id = $${idx} RETURNING proposal_id`,
+        [...values, proposal_id]
+      );
+      await client.query('COMMIT');
+      return NextResponse.json({ success: true, updated: result.rowCount });
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (error: any) {
+    console.error('Error updating proposal:', error);
+    return NextResponse.json({ success: false, error: 'Failed to update proposal' }, { status: 500 });
+  }
+}
+
 function getTxnTable(brand: string | null): string {
   if (!brand) return 'yufeng_ods.bank_txn';
   if (brand === 'yufeng' || brand === 'bonjur') return `${brand}_ods.bank_txn`;
