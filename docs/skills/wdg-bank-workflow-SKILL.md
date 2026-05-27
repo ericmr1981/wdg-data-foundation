@@ -37,7 +37,8 @@ Agent (Claude Code / Hermes / 其他 MCP Client)
 
 ── 企迈数据管理流程 ──
   │
-  ▼ upload_gelatomiiix_income_detail()     上传收入明细 CSV
+  ▼ upload_gelatomiiix_income_detail()     上传 Gelatomiiix 收入明细 CSV
+  │   upload_bonjur_income_detail()        上传 Bonjur 收入明细 CSV
   │   upload_bonjur_sales_self_service()   上传自助销售 CSV
   │
   ▼ query_gelatomiiix_income()             查询收入明细（汇总/明细模式）
@@ -413,7 +414,73 @@ LLM 推理时，**必须优先根据借贷方向判断一级分类**：
 
 ---
 
-### 9. upload_bonjur_sales_self_service
+### 9. upload_bonjur_income_detail
+
+**用途**: 上传 Bonjur 企迈收入明细表 CSV 到 `bonjur_ods.income_detail`。
+
+**上传前确认流程**:
+1. 先调用 `get_brand_stores({"brand": "bonjur"})` 获取门店列表
+2. 向用户确认品牌、门店、文件路径后再执行上传
+
+**参数**:
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `file_path` | 是 | 企迈收入明细 CSV 文件绝对路径 |
+| `store` | 是 | 门店代码（如 `wz_wxc`） |
+
+**返回**:
+```json
+{
+  "success": true,
+  "sourceFileId": 789,
+  "fileName": "企迈 收入明细表 2025-05-01 至 2025-05-31.csv",
+  "totalRows": 2000,
+  "insertedRows": 1980,
+  "skipped": false
+}
+```
+
+**幂等性**: 通过 `file_hash` 去重，重复上传返回 `skipped: true`，不会重复导入。
+
+**使用场景**: 用户说「上传 Bonjur 的企迈收入明细」时使用。
+
+---
+
+### 10. upload_bonjur_product_sales
+
+**用途**: 上传 Bonjur 企迈商品销售明细表 CSV 到 `bonjur_ods.product_sales_detail`。
+
+**上传前确认流程**:
+1. 先调用 `get_brand_stores({"brand": "bonjur"})` 获取门店列表
+2. 向用户确认品牌、门店、文件路径后再执行上传
+
+**参数**:
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `file_path` | 是 | 商品销售明细 CSV 文件绝对路径 |
+| `store` | 是 | 门店代码（如 `wz_wxc`） |
+
+**返回**:
+```json
+{
+  "success": true,
+  "sourceFileId": 789,
+  "fileName": "商品销售明细表 2025-05.csv",
+  "totalRows": 3000,
+  "insertedRows": 2980,
+  "skipped": false
+}
+```
+
+**幂等性**: 通过 `file_hash` 去重，重复上传返回 `skipped: true`，不会重复导入。
+
+**使用场景**: 用户说「上传 Bonjur 的企迈商品销售明细」时使用。
+
+---
+
+### 11. upload_bonjur_sales_self_service
 
 **用途**: 上传 Bonjur 自助销售 CSV 到 `bonjur_ods.sales_daily_self_service`。
 
@@ -440,7 +507,7 @@ LLM 推理时，**必须优先根据借贷方向判断一级分类**：
 
 ---
 
-### 10. query_gelatomiiix_income
+### 12. query_gelatomiiix_income
 
 **用途**: 查询 Gelatomiiix 企迈收入明细记录。
 
@@ -500,7 +567,7 @@ LLM 推理时，**必须优先根据借贷方向判断一级分类**：
 
 ---
 
-### 11. query_bonjur_qimai_sales
+### 13. query_bonjur_qimai_sales
 
 **用途**: 查询 Bonjur 企迈 POS 渠道销售数据（微信支付-企迈数店POS / 支付宝支付-企迈数店POS）。
 
@@ -545,7 +612,7 @@ LLM 推理时，**必须优先根据借贷方向判断一级分类**：
 
 ---
 
-### 12. get_qimai_entry_rate
+### 14. get_qimai_entry_rate
 
 **用途**: Gelatomiiix 企迈入账率分析 — 对比企迈收入与银行流水入账。
 

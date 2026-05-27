@@ -14,6 +14,8 @@ import { getBrandStoresTool } from './tools/get-brand-stores';
 import { getQimaiEntryRateTool } from './tools/get-qimai-entry-rate';
 import { queryBonjurQimaiSalesTool } from './tools/query-bonjur-qimai-sales';
 import { queryGelatomiiixIncomeTool } from './tools/query-gelatomiiix-income';
+import { uploadBonjurIncomeDetailTool } from './tools/upload-bonjur-income-detail';
+import { uploadBonjurProductSalesTool } from './tools/upload-bonjur-product-sales';
 import { uploadBonjurSalesSelfServiceTool } from './tools/upload-bonjur-sales-self-service';
 
 type ToolModule = {
@@ -27,6 +29,8 @@ type ToolModule = {
 const TOOLS: Record<string, ToolModule> = {
   upload_bank_txn_file:   uploadBankTxnTool,
   upload_gelatomiiix_income_detail: uploadGelatomiiixIncomeDetailTool,
+  upload_bonjur_income_detail: uploadBonjurIncomeDetailTool,
+  upload_bonjur_product_sales: uploadBonjurProductSalesTool,
   upload_bonjur_sales_self_service: uploadBonjurSalesSelfServiceTool,
   get_unclassified:       getUnclassifiedTool,
   get_transaction_detail: getTxnDetailTool,
