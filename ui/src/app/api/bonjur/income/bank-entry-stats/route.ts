@@ -25,18 +25,20 @@ export async function GET(request: NextRequest) {
 
     // --- channelMetrics ---
     const channelMetricsResult = await pool.query(`
-      SELECT
-        CASE
-          WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
-          WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
-          WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
-          WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
-          WHEN '抖音团购券' = ANY(payment_methods) THEN 'DOUYIN'
-          ELSE 'OTHER'
-        END AS channel,
-        COALESCE(SUM(net_amt), 0) AS qimai_net_amt
-      FROM bonjur_ods.income_detail
-      WHERE biz_date <= $1::DATE
+      SELECT channel, SUM(net_amt) AS qimai_net_amt FROM (
+        SELECT
+          CASE
+            WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
+            WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
+            WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
+            WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
+            WHEN '抖音团购券' = ANY(payment_methods) THEN 'DOUYIN'
+            ELSE 'OTHER'
+          END AS channel,
+          net_amt
+        FROM bonjur_ods.income_detail
+        WHERE biz_date <= $1::DATE
+      ) sub
       GROUP BY channel
       ORDER BY channel
     `, [periodEndInclusive]);
@@ -79,21 +81,22 @@ export async function GET(request: NextRequest) {
 
     // --- unmatchedOrders ---
     const unmatchedOrdersResult = await pool.query(`
-      SELECT
-        to_char(biz_date, 'YYYY-MM') AS month,
-        CASE
-          WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
-          WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
-          WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
-          WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
-          WHEN '抖音团购券' = ANY(payment_methods) THEN 'DOUYIN'
-          ELSE 'OTHER'
-        END AS channel,
-        COUNT(*) AS order_count,
-        COALESCE(SUM(net_amt), 0) AS unentered_amt
-      FROM bonjur_ods.income_detail
-      WHERE third_party_txn_no IS NULL
-        AND biz_date <= $1::DATE
+      SELECT month, channel, COUNT(*) AS order_count, SUM(net_amt) AS unentered_amt FROM (
+        SELECT
+          to_char(biz_date, 'YYYY-MM') AS month,
+          CASE
+            WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
+            WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
+            WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
+            WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
+            WHEN '抖音团购券' = ANY(payment_methods) THEN 'DOUYIN'
+            ELSE 'OTHER'
+          END AS channel,
+          net_amt
+        FROM bonjur_ods.income_detail
+        WHERE third_party_txn_no IS NULL
+          AND biz_date <= $1::DATE
+      ) sub
       GROUP BY month, channel
       ORDER BY month DESC, channel
     `, [periodEndInclusive]);
