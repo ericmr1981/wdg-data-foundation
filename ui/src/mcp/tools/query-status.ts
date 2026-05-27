@@ -10,7 +10,7 @@ export const queryStatusTool = {
   description: 'Query approval proposal status counts grouped by status (pending / approved / rejected) for a brand or batch.',
   inputSchema: QueryStatusInput,
   async execute({ brand = 'yufeng', batch_id }: z.infer<typeof QueryStatusInput>) {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:4100';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand });
     if (batch_id) qs.set('batch_id', batch_id);
     const res = await fetch(`${baseUrl}/api/approval/proposals?${qs}`, {

@@ -10,7 +10,7 @@ export const getTxnDetailTool = {
   description: 'Fetch full detail for a specific bank transaction including counterparty, summary, memo, purpose, and keyword candidates for classification.',
   inputSchema: GetTxnDetailInput,
   async execute({ brand = 'yufeng', bank_txn_id }: z.infer<typeof GetTxnDetailInput>) {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:4100';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
     // Fetch candidates and the full unclassified list (filter locally for this txn)
     const [candRes, listRes] = await Promise.all([

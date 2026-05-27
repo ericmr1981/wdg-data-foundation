@@ -9,7 +9,7 @@ export const getBrandStoresTool = {
   description: 'Get brand and store metadata: brand codes, brand names, and store codes with store names. Use this after fetching transactions so you can look up human-readable names for store_code fields before presenting to the user.',
   inputSchema: GetBrandStoresInput,
   async execute(params: z.infer<typeof GetBrandStoresInput>) {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:4100';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
     // Fetch all brands
     const brandsRes = await fetch(`${baseUrl}/api/brands`, {

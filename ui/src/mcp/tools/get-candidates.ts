@@ -10,7 +10,7 @@ export const getCandidatesTool = {
   description: 'Get keyword candidates (match_value fragments) for a specific bank transaction to help write classification rules.',
   inputSchema: GetCandidatesInput,
   async execute({ brand = 'yufeng', bank_txn_id }: z.infer<typeof GetCandidatesInput>) {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:4100';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const res = await fetch(
       `${baseUrl}/api/match/candidates?brand=${brand}&bank_txn_id=${bank_txn_id}`,
       { headers: { 'x-mcp-session': 'internal' } }

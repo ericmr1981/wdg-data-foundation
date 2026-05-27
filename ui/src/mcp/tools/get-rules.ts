@@ -9,7 +9,7 @@ export const getRulesTool = {
   description: 'Fetch all existing bank transaction classification rules for a brand.',
   inputSchema: GetRulesInput,
   async execute({ brand = 'yufeng' }: z.infer<typeof GetRulesInput>) {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:4100';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const res = await fetch(`${baseUrl}/api/rules?brand=${brand}`, {
       headers: { 'x-mcp-session': 'internal' },
     });

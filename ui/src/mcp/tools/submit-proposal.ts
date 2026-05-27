@@ -28,7 +28,7 @@ export const submitProposalTool = {
   description: 'Submit LLM-generated classification proposals for bank transactions into the approval queue.',
   inputSchema: SubmitProposalInput,
   async execute(params: z.infer<typeof SubmitProposalInput>) {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:4100';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
     // Transform flat record fields into the API's nested format
     const apiRecords = params.records.map(r => ({

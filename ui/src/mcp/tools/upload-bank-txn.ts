@@ -30,7 +30,7 @@ export const uploadBankTxnTool = {
   async execute({ brand, store, file_path }: z.infer<typeof UploadBankTxnInput>) {
     const { readFile } = await import('fs/promises');
     const fileBuffer = await readFile(file_path);
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:4100';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const form = new FormData();
     const filename = file_path.split('/').pop() || 'bank_statement.xlsx';
     form.append('file', new Blob([fileBuffer]), filename);
