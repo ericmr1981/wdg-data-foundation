@@ -3,6 +3,7 @@ import { CallToolResult } from '@modelcontextprotocol/sdk/types';
 
 // Tool registry — keyed by method name, same as tool.name
 import { uploadBankTxnTool } from './tools/upload-bank-txn';
+import { uploadGelatomiiixIncomeDetailTool } from './tools/upload-gelatomiiix-income-detail';
 import { getUnclassifiedTool } from './tools/get-unclassified';
 import { getTxnDetailTool } from './tools/get-txn-detail';
 import { getCandidatesTool } from './tools/get-candidates';
@@ -21,6 +22,7 @@ type ToolModule = {
 
 const TOOLS: Record<string, ToolModule> = {
   upload_bank_txn_file:   uploadBankTxnTool,
+  upload_gelatomiiix_income_detail: uploadGelatomiiixIncomeDetailTool,
   get_unclassified:       getUnclassifiedTool,
   get_transaction_detail: getTxnDetailTool,
   get_candidates:         getCandidatesTool,
