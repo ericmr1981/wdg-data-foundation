@@ -241,7 +241,7 @@ export default function PaymentPage() {
       )}
 
       {/* ===== 银行入账率区块 ===== */}
-      {brand === 'gelatomiiix' && (
+      {(brand === 'gelatomiiix' || brand === 'bonjur') && (
         <div className="mt-8 pt-8 border-t">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">银行入账率</h2>
           <BankEntryRateSection brand={brand} span={span} period={period} periodOptions={periodOptions} />
