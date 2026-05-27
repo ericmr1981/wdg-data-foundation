@@ -30,6 +30,12 @@ export async function GET(request: NextRequest) {
     const bankStoreSql = store ? `AND t.store_code = '${esc(store)}'` : '';
     const trendStoreSql = store ? `WHERE store_code = '${esc(store)}'` : '';
 
+    // --- health check ---
+    const hc = await pool.query('SELECT 1 AS ok');
+    if (!hc.rows[0]?.ok) {
+      return NextResponse.json({ success: false, error: 'db health check failed' }, { status: 500 });
+    }
+
     // --- channelMetrics ---
     const channelMetricsResult = await pool.query(
       `SELECT channel, SUM(net_amt) AS qimai_net_amt FROM (
