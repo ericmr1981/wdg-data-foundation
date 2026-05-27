@@ -11,6 +11,7 @@ import { getRulesTool } from './tools/get-rules';
 import { submitProposalTool } from './tools/submit-proposal';
 import { queryStatusTool } from './tools/query-status';
 import { getBrandStoresTool } from './tools/get-brand-stores';
+import { getQimaiEntryRateTool } from './tools/get-qimai-entry-rate';
 import { queryBonjurQimaiSalesTool } from './tools/query-bonjur-qimai-sales';
 import { queryGelatomiiixIncomeTool } from './tools/query-gelatomiiix-income';
 import { uploadBonjurSalesSelfServiceTool } from './tools/upload-bonjur-sales-self-service';
@@ -31,6 +32,7 @@ const TOOLS: Record<string, ToolModule> = {
   get_transaction_detail: getTxnDetailTool,
   get_candidates:         getCandidatesTool,
   get_existing_rules:     getRulesTool,
+  get_qimai_entry_rate:   getQimaiEntryRateTool,
   submit_approval_proposal: submitProposalTool,
   query_approval_status:   queryStatusTool,
   query_bonjur_qimai_sales: queryBonjurQimaiSalesTool,

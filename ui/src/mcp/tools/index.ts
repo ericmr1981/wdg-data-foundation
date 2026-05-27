@@ -8,5 +8,6 @@ export { getRulesTool } from './get-rules';
 export { submitProposalTool } from './submit-proposal';
 export { queryStatusTool } from './query-status';
 export { getBrandStoresTool } from './get-brand-stores';
+export { getQimaiEntryRateTool } from './get-qimai-entry-rate';
 export { queryBonjurQimaiSalesTool } from './query-bonjur-qimai-sales';
 export { queryGelatomiiixIncomeTool } from './query-gelatomiiix-income';
