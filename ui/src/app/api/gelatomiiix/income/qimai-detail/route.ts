@@ -125,7 +125,11 @@ export async function GET(request: NextRequest) {
         ORDER BY SUM(net_amt) DESC NULLS LAST
       `, params);
 
-      const byChannel = byChannelRes.rows; // already mapped with channel codes
+      const byChannel = byChannelRes.rows.map((r: { channel: string; order_count: string; net_amt: string }) => ({
+        channel: r.channel,
+        order_count: parseInt(r.order_count),
+        net_amt: parseFloat(r.net_amt),
+      }));
 
       const s = summaryRes.rows[0];
       return NextResponse.json({
