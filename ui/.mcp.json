@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "wdg-bank-agent": {
-      "url": "http://localhost:4100/api/mcp",
-      "description": "WDG bank transaction upload and approval workflow. Upload bank statements, get unclassified transactions, submit LLM-generated classification proposals for human review, poll approval status."
+      "url": "http://localhost:3000/api/mcp",
+      "description": "WDG data platform MCP server. Bank transaction classification (upload, classify, approve) + Qimai data management (import income detail and sales CSVs, query records, entry rate analysis). Covers Gelatomiiix and Bonjur brands."
     }
   }
 }
