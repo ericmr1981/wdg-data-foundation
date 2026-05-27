@@ -1,7 +1,112 @@
 import { NextRequest, NextResponse } from 'next/server';
+import pool from '@/lib/db';
+import { getErrorMessage } from '@/lib/query-types';
+import { parsePeriod } from '@/app/api/financial/period-utils';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  return NextResponse.json({ success: true, data: { message: 'no db needed' } });
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const period = searchParams.get('period');
+    const span = searchParams.get('span') || 'month';
+    const store = searchParams.get('store') || '';
+
+    if (!period) {
+      return NextResponse.json({ success: false, error: 'period required' }, { status: 400 });
+    }
+
+    const range = parsePeriod(period, span);
+    if (!range) {
+      return NextResponse.json({ success: false, error: 'Invalid period format for span' }, { status: 400 });
+    }
+    const [, periodEnd] = range;
+    const periodEndInclusive = new Date(new Date(periodEnd + 'T00:00:00').getTime() - 86400000)
+      .toISOString().slice(0, 10);
+
+    const esc = (s: string) => s.replace(/'/g, "''");
+    const d = esc(periodEndInclusive);
+    const st = store ? esc(store) : '';
+    const storeWhere = store ? `AND store_code = '${st}'` : '';
+    const bankStoreWhere = store ? `AND t.store_code = '${st}'` : '';
+    const trendStoreWhere = store ? `WHERE store_code = '${st}'` : '';
+
+    const channelMetricsResult = await pool.query(`SELECT channel, SUM(net_amt) AS qimai_net_amt FROM (
+      SELECT CASE WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
+        WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
+        WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
+        WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
+        WHEN '抖音团购券' = ANY(payment_methods) THEN 'DOUYIN'
+        ELSE 'OTHER' END AS channel, net_amt
+      FROM bonjur_ods.income_detail
+      WHERE biz_date <= '${d}'::DATE ${storeWhere}
+    ) sub GROUP BY channel ORDER BY channel`);
+
+    const bankEntryResult = await pool.query(`SELECT r.lvl2_code AS channel, COALESCE(SUM(t.in_amt),0) AS bank_entry_amt
+      FROM bonjur_dm.v_bank_txn_classified_v2 t
+      JOIN bonjur_cfg.bank_rule_map r ON t.counterparty_name ILIKE '%' || r.match_value || '%'
+      WHERE r.direction='in' AND r.lvl1_code='REV_BIZ' AND t.txn_time::date<='${d}'::DATE ${bankStoreWhere}
+      GROUP BY r.lvl2_code`);
+
+    const monthlyTrendQimai = await pool.query(
+      `SELECT to_char(biz_date,'YYYY-MM') AS month,SUM(net_amt) AS qimai_net_amt
+       FROM bonjur_ods.income_detail ${trendStoreWhere} GROUP BY 1 ORDER BY 1`);
+    const monthlyTrendBank = await pool.query(
+      `SELECT to_char(txn_time::date,'YYYY-MM') AS month,SUM(t.in_amt) AS bank_entry_amt
+       FROM bonjur_dm.v_bank_txn_classified_v2 t
+       JOIN bonjur_cfg.bank_rule_map r ON t.counterparty_name ILIKE '%' || r.match_value || '%'
+       WHERE r.direction='in' AND r.lvl1_code='REV_BIZ' ${bankStoreWhere} GROUP BY 1 ORDER BY 1`);
+
+    const trendMap = new Map<string, { q: number; b: number }>();
+    for (const r of monthlyTrendQimai.rows as { month: string; qimai_net_amt: string }[]) {
+      trendMap.set(r.month, { q: parseFloat(r.qimai_net_amt), b: 0 });
+    }
+    for (const r of monthlyTrendBank.rows as { month: string; bank_entry_amt: string }[]) {
+      const e = trendMap.get(r.month) || { q: 0, b: 0 };
+      e.b = parseFloat(r.bank_entry_amt);
+      trendMap.set(r.month, e);
+    }
+    const monthlyTrend = [...trendMap.entries()].sort(([a],[b]) => a.localeCompare(b))
+      .map(([m, v]) => ({ month: m, qimai_net_amt: v.q.toFixed(2), bank_entry_amt: v.b.toFixed(2) }));
+
+    const unmatchedOrdersResult = await pool.query(`SELECT month,ch,COUNT(*) oc,SUM(net_amt) ua FROM (
+      SELECT to_char(biz_date,'YYYY-MM') AS month,
+        CASE WHEN '微信支付'=ANY(payment_methods) THEN 'WECHAT' WHEN '支付宝支付'=ANY(payment_methods) THEN 'ALIPAY'
+          WHEN '美团团购券'=ANY(payment_methods) THEN 'MEITUAN' WHEN '云闪付'=ANY(payment_methods) THEN 'UNIONPAY'
+          WHEN '抖音团购券'=ANY(payment_methods) THEN 'DOUYIN' ELSE 'OTHER' END AS ch, net_amt
+      FROM bonjur_ods.income_detail
+      WHERE third_party_txn_no IS NULL AND biz_date<='${d}'::DATE ${storeWhere}
+    ) sub GROUP BY month,ch ORDER BY month DESC,ch`);
+
+    const qimaiByChannel = new Map<string, number>();
+    for (const r of channelMetricsResult.rows as { channel: string; qimai_net_amt: string }[]) {
+      qimaiByChannel.set(r.channel, parseFloat(r.qimai_net_amt));
+    }
+    const bankByChannel = new Map<string, number>();
+    for (const r of bankEntryResult.rows as { channel: string; bank_entry_amt: string }[]) {
+      bankByChannel.set(r.channel, parseFloat(r.bank_entry_amt));
+    }
+    const allChannels = new Set([...qimaiByChannel.keys(), ...bankByChannel.keys()]);
+    const channelMetrics: any[] = [];
+    let tq = 0, tb = 0;
+    for (const ch of allChannels) {
+      const qa = qimaiByChannel.get(ch) || 0;
+      const ba = bankByChannel.get(ch) || 0;
+      tq += qa; tb += ba;
+      channelMetrics.push({ channel: ch, qimai_net_amt: qa.toFixed(2), bank_entry_amt: ba.toFixed(2), entry_rate: qa > 0 ? (ba / qa * 100).toFixed(2) : '0.00' });
+    }
+    channelMetrics.push({ channel: 'TOTAL', qimai_net_amt: tq.toFixed(2), bank_entry_amt: tb.toFixed(2), entry_rate: tq > 0 ? (tb / tq * 100).toFixed(2) : '0.00' });
+
+    const unmatchedOrders = (unmatchedOrdersResult.rows as any[]).map((r: any) => ({
+      month: r.month, channel: r.ch, order_count: r.oc, unentered_amt: parseFloat(r.ua).toFixed(2),
+    }));
+
+    return NextResponse.json({ success: true, data: { channelMetrics, monthlyTrend, unmatchedOrders } });
+  } catch (error: unknown) {
+    const pgError = error as Record<string, string>;
+    if (pgError?.code === '42P01') {
+      return NextResponse.json({ success: true, data: null, note: 'view not ready' });
+    }
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+  }
 }
