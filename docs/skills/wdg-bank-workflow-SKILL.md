@@ -1,11 +1,11 @@
 ---
 name: wdg-bank-workflow
-description: 当用户提到银行流水上传、分类审批、或需要 Agent 代理处理财务数据时触发。完整覆盖 bank txn 上传 → LLM 推理 → 人工审批 → 执行生效的端到端流程。
+description: 当用户提到银行流水上传、分类审批、企迈数据导入查询、或需要 Agent 代理处理财务数据时触发。覆盖 bank txn 上传→分类审批 和 Qimai(企迈)数据导入→查询→入账率分析的端到端流程。
 ---
 
-# WDG 银行流水分类审批工作流
+# WDG 数据平台工作流（银行流水 + 企迈数据）
 
-当用户要求上传银行流水、自动分类、或处理未匹配的交易时，加载此技能。
+当用户要求上传银行流水、自动分类、处理未匹配交易，或导入/查询企迈数据时，加载此技能。
 
 ## 系统架构
 
@@ -34,6 +34,15 @@ Agent (Claude Code / Hermes / 其他 MCP Client)
   ▼ MCP: query_approval_status()            轮询审批结果
   │
   ▼ 向用户汇报完成情况
+
+── 企迈数据管理流程 ──
+  │
+  ▼ upload_gelatomiiix_income_detail()     上传收入明细 CSV
+  │   upload_bonjur_sales_self_service()   上传自助销售 CSV
+  │
+  ▼ query_gelatomiiix_income()             查询收入明细（汇总/明细模式）
+  ▼ query_bonjur_qimai_sales()             查询 POS 渠道销售
+  ▼ get_qimai_entry_rate()                 企迈 vs 银行入账率分析
 ```
 
 ## 严禁：禁止直接连接数据库
@@ -45,15 +54,16 @@ Agent (Claude Code / Hermes / 其他 MCP Client)
 - 禁止通过 Docker 容器内 bash 查询数据
 
 **正确做法**：所有数据查询必须通过 MCP 工具或 HTTP API
-- 数据查询 → `get_unclassified_transactions`、`get_transaction_detail`、`get_candidates` 等 MCP 工具
-- 数据操作（审批、沉淀规则）→ `submit_approval_proposal` 等 MCP 工具
+- 数据查询 → `get_unclassified_transactions`、`get_transaction_detail`、`get_candidates`、`query_gelatomiiix_income`、`query_bonjur_qimai_sales` 等 MCP 工具
+- 数据导入 → `upload_bank_txn_file`、`upload_gelatomiiix_income_detail`、`upload_bonjur_sales_self_service` 等 MCP 工具
+- 数据分析 → `get_qimai_entry_rate` 等 MCP 工具
 - 数据库连接字符串等敏感信息仅存在于服务端，Agent 无法直接访问
 
 **为什么**：数据库连接字符串在服务器端环境变量中，Agent 不应尝试绕过 MCP 层直接访问数据。
 
 ## MCP 工具清单
 
-所有工具均通过 `POST http://localhost:4100/api/mcp` 调用，JSON-RPC 2.0 格式。
+所有工具均通过 `POST http://localhost:3000/api/mcp` 调用，JSON-RPC 2.0 格式。
 
 ### 0. get_brand_stores（必调）
 
@@ -294,7 +304,7 @@ LLM 推理时，**必须优先根据借贷方向判断一级分类**：
   "batch_id": "550e8400-e29b-41d4-a716-446655440000",
   "count": 2,
   "created_at": "2026-05-25T15:30:00Z",
-  "detail_url": "http://localhost:4100/u/approvals?batch=550e8400-e29b-41d4-a716-446655440000"
+  "detail_url": "http://localhost:3000/u/approvals?batch=550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
@@ -332,7 +342,7 @@ LLM 推理时，**必须优先根据借贷方向判断一级分类**：
   "approved": 8,
   "rejected": 2,
   "modified": 1,
-  "detail_url": "http://localhost:4100/u/approvals?batch=550e8400-e29b-41d4-a716-446655440000"
+  "detail_url": "http://localhost:3000/u/approvals?batch=550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
@@ -357,6 +367,8 @@ LLM 推理时，**必须优先根据借贷方向判断一级分类**：
 
 ---
 
+---
+
 ### 7. get_candidates（辅助）
 
 **用途**: 获取某条交易的关键词候选，用于 LLM 推理时的参考。
@@ -368,7 +380,233 @@ LLM 推理时，**必须优先根据借贷方向判断一级分类**：
 
 ---
 
-## 完整工作流示例
+## 企迈数据 MCP 工具
+
+以下工具用于管理企迈数店数据（收入明细和渠道销售），覆盖 Gelatomiiix 和 Bonjur 两个品牌。
+
+### 8. upload_gelatomiiix_income_detail
+
+**用途**: 上传 Gelatomiiix 企迈收入明细表 CSV 到 `gelatomiiix_ods.income_detail`。
+
+**参数**:
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `file_path` | 是 | 企迈收入明细 CSV 文件绝对路径（文件名格式: 企迈 收入明细表 YYYY-MM-DD 至 YYYY-MM-DD.csv） |
+| `store` | 否 | 门店代码，默认 `sh_xtd` |
+
+**返回**:
+```json
+{
+  "success": true,
+  "sourceFileId": 123,
+  "fileName": "企迈 收入明细表 2026-04-01 至 2026-04-30.csv",
+  "totalRows": 1500,
+  "insertedRows": 1480,
+  "skipped": false
+}
+```
+
+**幂等性**: 通过 `file_hash` 去重，重复上传返回 `skipped: true`，不会重复导入。
+
+**使用场景**: 用户说「上传 Gelatomiiix 的企迈收入明细」时使用。
+
+---
+
+### 9. upload_bonjur_sales_self_service
+
+**用途**: 上传 Bonjur 自助销售 CSV 到 `bonjur_ods.sales_daily_self_service`。
+
+**参数**:
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `file_path` | 是 | 自助销售 CSV 文件绝对路径 |
+| `store` | 是 | 门店代码（如 `wz_oh_wxc`） |
+
+**返回**:
+```json
+{
+  "success": true,
+  "sourceFileId": 456,
+  "fileName": "bonjur_sales_2026-04.csv",
+  "totalRows": 30,
+  "insertedRows": 30,
+  "skipped": false
+}
+```
+
+**使用场景**: 用户说「上传 Bonjur 的销售数据」时使用。
+
+---
+
+### 10. query_gelatomiiix_income
+
+**用途**: 查询 Gelatomiiix 企迈收入明细记录。
+
+**参数**:
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `month` | 条件 | YYYY-MM 格式，不传时需提供 date_from/date_to |
+| `date_from` | 条件 | 起始日期 YYYY-MM-DD |
+| `date_to` | 条件 | 截止日期 YYYY-MM-DD |
+| `channel` | 否 | 支付渠道筛选：WECHAT / ALIPAY / MEITUAN / UNIONPAY / DOUYIN / ELEME / JD / OTHER |
+| `store` | 否 | 门店筛选 |
+| `summary_only` | 否 | 设为 true 返回聚合汇总而非明细，默认 false |
+| `page` | 否 | 页码（非汇总模式），默认 1 |
+| `page_size` | 否 | 每页条数，默认 100，最大 200 |
+
+**明细模式返回**:
+```json
+{
+  "count": 1500,
+  "items": [
+    {
+      "biz_date": "2026-04-15",
+      "order_no": "D001234",
+      "channel": "WECHAT",
+      "net_amt": 88.00,
+      "revenue_amt": 100.00,
+      "third_party_txn_no": "wx123456",
+      "biz_source": "企迈数店POS",
+      "payment_methods": ["微信支付"],
+      "is_member_payment": false
+    }
+  ],
+  "page": 1,
+  "pageSize": 100
+}
+```
+
+**汇总模式返回**:
+```json
+{
+  "summary": {
+    "total_net_amt": 109509.43,
+    "total_revenue_amt": 109772.40,
+    "total_gross_amt": 109912.40,
+    "order_count": 2162,
+    "refund_count": 0
+  },
+  "by_channel": [
+    { "channel": "WECHAT", "net_amt": 18218.05, "order_count": 466 },
+    { "channel": "ALIPAY", "net_amt": 11864.58, "order_count": 277 }
+  ]
+}
+```
+
+**使用场景**: 查询特定月份的收入明细、按渠道统计、检查订单详情。
+
+---
+
+### 11. query_bonjur_qimai_sales
+
+**用途**: 查询 Bonjur 企迈 POS 渠道销售数据（微信支付-企迈数店POS / 支付宝支付-企迈数店POS）。
+
+**参数**:
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `month` | 条件 | YYYY-MM 格式 |
+| `date_from` | 条件 | 起始日期 |
+| `date_to` | 条件 | 截止日期 |
+| `store` | 否 | 门店筛选 |
+| `summary_only` | 否 | 聚合模式 |
+
+**明细模式返回**:
+```json
+{
+  "items": [
+    {
+      "biz_date": "2026-04-15",
+      "wechat_pos_gross_amt": 5000.00,
+      "wechat_pos_revenue_amt": 4800.00,
+      "alipay_pos_gross_amt": 3000.00,
+      "alipay_pos_revenue_amt": 2900.00
+    }
+  ]
+}
+```
+
+**汇总模式返回**:
+```json
+{
+  "summary": {
+    "total_wechat_pos_gross": 150000.00,
+    "total_wechat_pos_revenue": 140000.00,
+    "total_alipay_pos_gross": 90000.00,
+    "total_alipay_pos_revenue": 87000.00
+  }
+}
+```
+
+**使用场景**: 查询 Bonjur 企迈 POS 渠道日报、月度汇总。
+
+---
+
+### 12. get_qimai_entry_rate
+
+**用途**: Gelatomiiix 企迈入账率分析 — 对比企迈收入与银行流水入账。
+
+**参数**:
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `period` | 是 | 期间 YYYY-MM |
+| `span` | 否 | 跨度：`month` / `quarter` / `year`，默认 `month` |
+| `store` | 否 | 门店筛选 |
+
+**返回**:
+```json
+{
+  "channel_metrics": [
+    { "channel": "WECHAT", "qimai_net_amt": 80000.00, "bank_entry_amt": 75000.00, "entry_rate": "93.75%" },
+    { "channel": "ALIPAY", "qimai_net_amt": 50000.00, "bank_entry_amt": 48000.00, "entry_rate": "96.00%" }
+  ],
+  "monthly_trend": [
+    { "month": "2026-04", "qimai_net_amt": 130000.00, "bank_entry_amt": 123000.00 }
+  ],
+  "unmatched_orders": [
+    { "month": "2026-04", "channel": "WECHAT", "order_count": 5, "unentered_amt": 800.00 }
+  ]
+}
+```
+
+**使用场景**: 分析 Gelatomiiix 各支付渠道的银行入账率，发现未入账的订单。
+
+---
+
+## 企迈数据工作流示例
+
+```
+用户: "帮我看看 Gelatomiiix 4月份的企迈收入"
+Agent:
+  1. 调用 query_gelatomiiix_income({"month": "2026-04", "summary_only": true})
+     → 返回总净收 109,509.43，2162 笔订单，按渠道汇总
+
+  2. 向用户汇报:
+     "Gelatomiiix 2026年4月企迈收入汇总：
+      - 总收入: 109,509.43 元
+      - 总订单: 2,162 笔
+      - 微信支付: 18,218.05 元 (466 笔)
+      - 支付宝支付: 11,864.58 元 (277 笔)
+      - 美团: 2,663.02 元 (73 笔)
+      - 其他: 46 笔
+      需要查看某渠道的明细或做入账率分析吗？"
+
+用户: "分析一下入账率"
+Agent:
+  3. 调用 get_qimai_entry_rate({"period": "2026-04"})
+     → 返回各渠道入账率对比
+
+  4. 向用户汇报:
+     "2026年4月入账率分析：
+      - 微信支付: 93.75% (入账率偏低，5笔未匹配)
+      - 支付宝支付: 96.00%
+      - 美团: 88.50%
+      需要我列出未入账的订单明细吗？"
+```
 
 ```
 用户: "帮我上传这个月的银行流水"
@@ -416,7 +654,7 @@ Agent:
       品牌+月整体覆盖率 99.31%（289条中2条未匹配，来自历史上传）。
       LLM 分析这 2 条历史遗留记录:
       - 2 条有推荐分类方案（Type1）
-      请打开审批页面查看: http://localhost:4100/u/approvals?batch=xxx"
+      请打开审批页面查看: http://localhost:3000/u/approvals?batch=xxx"
 
   9. 轮询 query_approval_status，直到 pending == 0
 
@@ -441,7 +679,7 @@ Agent:
 OpenClaw 通知用户:
 "📊 银行流水已上传（156 条）
  🏷️ 23 条需要审批
- 👉 点击审批: http://localhost:4100/u/approvals?batch=xxx
+ 👉 点击审批: http://localhost:3000/u/approvals?batch=xxx
  ⏰ 请在 24 小时内处理"
 ```
 
@@ -492,7 +730,7 @@ LLM 推荐时参考以下因素：
 {
   "mcpServers": {
     "wdg-bank-agent": {
-      "url": "http://localhost:4100/api/mcp"
+      "url": "http://localhost:3000/api/mcp"
     }
   }
 }
@@ -502,26 +740,26 @@ LLM 推荐时参考以下因素：
 ### Hermes
 ```bash
 hermes mcp add wdg-bank-agent \
-  --url http://localhost:4100/api/mcp \
+  --url http://localhost:3000/api/mcp \
   --name "WDG 银行流水审批"
 ```
 
 ### 测试 MCP 连接
 ```bash
 # 查看工具列表
-curl -X POST http://localhost:4100/api/mcp \
+curl -X POST http://localhost:3000/api/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 
 # 调用工具
-curl -X POST http://localhost:4100/api/mcp \
+curl -X POST http://localhost:3000/api/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_unclassified_transactions","arguments":{"brand":"yufeng","month":"2026-05"}}}'
 ```
 
 ## 审批页面说明
 
-用户打开 `http://localhost:4100/u/approvals?batch=<batch_id>` 后：
+用户打开 `http://localhost:3000/u/approvals?batch=<batch_id>` 后：
 
 - **Type1（有推荐）**: 默认勾选同意 LLM 推荐，用户可直接批量批准
 - **Type2（待补充）**: 默认不勾选，用户需手动选择分类
