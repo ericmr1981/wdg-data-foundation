@@ -12,6 +12,7 @@ import { submitProposalTool } from './tools/submit-proposal';
 import { queryStatusTool } from './tools/query-status';
 import { getBrandStoresTool } from './tools/get-brand-stores';
 import { queryGelatomiiixIncomeTool } from './tools/query-gelatomiiix-income';
+import { uploadBonjurSalesSelfServiceTool } from './tools/upload-bonjur-sales-self-service';
 
 type ToolModule = {
   name: string;
@@ -24,6 +25,7 @@ type ToolModule = {
 const TOOLS: Record<string, ToolModule> = {
   upload_bank_txn_file:   uploadBankTxnTool,
   upload_gelatomiiix_income_detail: uploadGelatomiiixIncomeDetailTool,
+  upload_bonjur_sales_self_service: uploadBonjurSalesSelfServiceTool,
   get_unclassified:       getUnclassifiedTool,
   get_transaction_detail: getTxnDetailTool,
   get_candidates:         getCandidatesTool,

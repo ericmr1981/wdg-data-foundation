@@ -1,5 +1,6 @@
 export { uploadBankTxnTool } from './upload-bank-txn';
 export { uploadGelatomiiixIncomeDetailTool } from './upload-gelatomiiix-income-detail';
+export { uploadBonjurSalesSelfServiceTool } from './upload-bonjur-sales-self-service';
 export { getUnclassifiedTool } from './get-unclassified';
 export { getTxnDetailTool } from './get-txn-detail';
 export { getCandidatesTool } from './get-candidates';
