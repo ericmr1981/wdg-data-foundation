@@ -244,7 +244,7 @@ export default function PaymentPage() {
       {(brand === 'gelatomiiix' || brand === 'bonjur') && (
         <div className="mt-8 pt-8 border-t">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">银行入账率</h2>
-          <BankEntryRateSection brand={brand} span={span} period={period} periodOptions={periodOptions} />
+          <BankEntryRateSection brand={brand} span={span} period={period} periodOptions={periodOptions} store={store} />
         </div>
       )}
 
@@ -371,8 +371,8 @@ interface BankEntryData {
   unmatched_orders: { month: string; channel: string; order_count: number; unentered_amt: number }[];
 }
 
-function BankEntryRateSection({ brand, span, period, periodOptions }: {
-  brand: string; span: string; period: string; periodOptions: string[];
+function BankEntryRateSection({ brand, span, period, periodOptions, store }: {
+  brand: string; span: string; period: string; periodOptions: string[]; store: string;
 }) {
   const [data, setData] = useState<BankEntryData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -385,7 +385,8 @@ function BankEntryRateSection({ brand, span, period, periodOptions }: {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetch(`/api/${brand}/income/bank-entry-stats?brand=${brand}&period=${effectivePeriod}&span=${span}`)
+    const storeParam = store && store !== 'all' ? `&store=${store}` : '';
+    fetch(`/api/${brand}/income/bank-entry-stats?brand=${brand}&period=${effectivePeriod}&span=${span}${storeParam}`)
       .then(r => r.json())
       .then(json => {
         if (json.success && json.data) {
