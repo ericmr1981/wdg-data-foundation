@@ -21,7 +21,12 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api/upload') ||
     pathname.startsWith('/api/pipeline') ||
     pathname.startsWith('/api/brands') ||
-    pathname.startsWith('/api/stores')
+    pathname.startsWith('/api/stores') ||
+    pathname.startsWith('/api/gelatomiiix/income/qimai-detail') ||
+    pathname.startsWith('/api/gelatomiiix/income/upload-qimai') ||
+    pathname.startsWith('/api/gelatomiiix/income/bank-entry-stats') ||
+    pathname.startsWith('/api/bonjur/sales/qimai-pos') ||
+    pathname.startsWith('/api/bonjur/sales/upload-self-service')
   ) {
     return NextResponse.next();
   }
