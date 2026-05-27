@@ -385,7 +385,7 @@ function BankEntryRateSection({ brand, span, period, periodOptions }: {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetch(`/api/gelatomiiix/income/bank-entry-stats?brand=${brand}&period=${effectivePeriod}&span=${span}`)
+    fetch(`/api/${brand}/income/bank-entry-stats?brand=${brand}&period=${effectivePeriod}&span=${span}`)
       .then(r => r.json())
       .then(json => {
         if (json.success && json.data) {
