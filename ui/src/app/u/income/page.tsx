@@ -385,7 +385,7 @@ function BankEntryRateSection({ brand, span, period, periodOptions, store }: {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    const storeParam = store && store !== 'all' ? `&store=${store}` : '';
+    const storeParam = store && store !== 'all' ? `&store=${encodeURIComponent(store)}` : '';
     fetch(`/api/${brand}/income/bank-entry-stats?brand=${brand}&period=${effectivePeriod}&span=${span}${storeParam}`)
       .then(r => r.json())
       .then(json => {
