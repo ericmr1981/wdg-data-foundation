@@ -42,20 +42,22 @@ export async function GET(request: NextRequest) {
       WHERE biz_date <= '${d}'::DATE ${storeWhere}
     ) sub GROUP BY channel ORDER BY channel`);
 
-    const bankEntryResult = await pool.query(`SELECT r.lvl2_code AS channel, COALESCE(SUM(t.in_amt),0) AS bank_entry_amt
-      FROM bonjur_dm.v_bank_txn_classified_v2 t
-      JOIN bonjur_cfg.bank_rule_map r ON t.counterparty_name ILIKE '%' || r.match_value || '%'
-      WHERE r.direction='in' AND r.lvl1_code='REV_BIZ' AND t.txn_time::date<='${d}'::DATE ${bankStoreWhere}
-      GROUP BY r.lvl2_code`);
+    const bankEntryResult = await pool.query(`SELECT s.lvl2_code AS channel, COALESCE(SUM(t.in_amt),0) AS bank_entry_amt
+      FROM bonjur_dm.bank_txn_classified_snapshot s
+      JOIN bonjur_ods.bank_txn t ON t.id = s.bank_txn_id
+      WHERE s.lvl1_code='REV_BIZ' AND s.classified_source IN ('rule','override')
+        AND t.txn_time::date<='${d}'::DATE ${bankStoreWhere}
+      GROUP BY s.lvl2_code`);
 
     const monthlyTrendQimai = await pool.query(
       `SELECT to_char(biz_date,'YYYY-MM') AS month,SUM(net_amt) AS qimai_net_amt
        FROM bonjur_ods.income_detail ${trendStoreWhere} GROUP BY 1 ORDER BY 1`);
     const monthlyTrendBank = await pool.query(
-      `SELECT to_char(txn_time::date,'YYYY-MM') AS month,SUM(t.in_amt) AS bank_entry_amt
-       FROM bonjur_dm.v_bank_txn_classified_v2 t
-       JOIN bonjur_cfg.bank_rule_map r ON t.counterparty_name ILIKE '%' || r.match_value || '%'
-       WHERE r.direction='in' AND r.lvl1_code='REV_BIZ' ${bankStoreWhere} GROUP BY 1 ORDER BY 1`);
+      `SELECT to_char(t.txn_time::date,'YYYY-MM') AS month,SUM(t.in_amt) AS bank_entry_amt
+       FROM bonjur_dm.bank_txn_classified_snapshot s
+       JOIN bonjur_ods.bank_txn t ON t.id = s.bank_txn_id
+       WHERE s.lvl1_code='REV_BIZ' AND s.classified_source IN ('rule','override') ${bankStoreWhere}
+       GROUP BY 1 ORDER BY 1`);
 
     const trendMap = new Map<string, { q: number; b: number }>();
     for (const r of monthlyTrendQimai.rows as { month: string; qimai_net_amt: string }[]) {
