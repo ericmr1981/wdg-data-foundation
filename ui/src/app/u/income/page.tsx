@@ -418,7 +418,7 @@ function BankEntryRateSection({ brand, span, period, periodOptions, store }: {
       })
       .catch((err: unknown) => setError(getErrorMessage(err)))
       .finally(() => setLoading(false));
-  }, [brand, span, effectivePeriod]);
+  }, [brand, span, effectivePeriod, store]);
 
   if (loading) return (
     <div className="grid grid-cols-4 gap-4">
