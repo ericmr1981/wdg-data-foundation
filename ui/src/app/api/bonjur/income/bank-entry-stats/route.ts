@@ -20,12 +20,14 @@ export async function GET(request: NextRequest) {
     if (!range) {
       return NextResponse.json({ success: false, error: 'Invalid period format for span' }, { status: 400 });
     }
-    const [, periodEnd] = range;
+    const [periodStart, periodEnd] = range;
+
     const periodEndInclusive = new Date(new Date(periodEnd + 'T00:00:00').getTime() - 86400000)
       .toISOString().slice(0, 10);
 
     const esc = (s: string) => s.replace(/'/g, "''");
-    const d = esc(periodEndInclusive);
+    const dateEnd = esc(periodEndInclusive);
+    const monthStart = esc(periodStart);
     const st = store ? esc(store) : '';
     const storeWhere = store ? `AND store_code = '${st}'` : '';
     const bankStoreWhere = store ? `AND t.store_code = '${st}'` : '';
@@ -39,14 +41,14 @@ export async function GET(request: NextRequest) {
         WHEN '抖音团购券' = ANY(payment_methods) THEN 'DOUYIN'
         ELSE 'OTHER' END AS channel, net_amt
       FROM bonjur_ods.income_detail
-      WHERE biz_date <= '${d}'::DATE ${storeWhere}
+      WHERE biz_date <= '${dateEnd}'::DATE ${storeWhere}
     ) sub GROUP BY channel ORDER BY channel`);
 
     const bankEntryResult = await pool.query(`SELECT s.lvl2_code AS channel, COALESCE(SUM(t.in_amt),0) AS bank_entry_amt
       FROM bonjur_dm.bank_txn_classified_snapshot s
       JOIN bonjur_ods.bank_txn t ON t.id = s.bank_txn_id
       WHERE s.lvl1_code='REV_BIZ' AND s.classified_source IN ('rule','override')
-        AND t.txn_time::date<='${d}'::DATE ${bankStoreWhere}
+        AND s.month='${monthStart}'::DATE ${bankStoreWhere}
       GROUP BY s.lvl2_code`);
 
     const monthlyTrendQimai = await pool.query(
@@ -77,7 +79,7 @@ export async function GET(request: NextRequest) {
           WHEN '美团团购券'=ANY(payment_methods) THEN 'MEITUAN' WHEN '云闪付'=ANY(payment_methods) THEN 'UNIONPAY'
           WHEN '抖音团购券'=ANY(payment_methods) THEN 'DOUYIN' ELSE 'OTHER' END AS ch, net_amt
       FROM bonjur_ods.income_detail
-      WHERE third_party_txn_no IS NULL AND biz_date<='${d}'::DATE ${storeWhere}
+      WHERE third_party_txn_no IS NULL AND biz_date<='${dateEnd}'::DATE ${storeWhere}
     ) sub GROUP BY month,ch ORDER BY month DESC,ch`);
 
     const qimaiByChannel = new Map<string, number>();
