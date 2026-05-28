@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
       month: r.month, channel: r.ch, order_count: r.oc, unentered_amt: parseFloat(r.ua).toFixed(2),
     }));
 
-    return NextResponse.json({ success: true, data: { channelMetrics, monthlyTrend, unmatchedOrders } });
+    return NextResponse.json({ success: true, note: 'snapshot-v1', data: { channelMetrics, monthlyTrend, unmatchedOrders } });
   } catch (error: unknown) {
     const pgError = error as Record<string, string>;
     if (pgError?.code === '42P01') {
