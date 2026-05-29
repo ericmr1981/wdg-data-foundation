@@ -39,6 +39,7 @@ const TABLE_LABELS: Record<string, string> = {
 
 const EXTRA_SOURCES: Record<string, string[]> = {
   gelatomiiix: ['income_detail', 'product_sales_detail'],
+  bonjur: ['income_detail', 'product_sales_detail'],
 };
 
 export const dynamic = 'force-dynamic';
