@@ -9,6 +9,8 @@ import {
 
 interface CounterpartySummary {
   counterparty_name: string;
+  lvl1_code: string;
+  lvl1_name: string;
   total_paid: number;
   total_received?: number;
   txn_count: number;
@@ -244,7 +246,7 @@ export default function PaymentPage() {
       {(brand === 'gelatomiiix' || brand === 'bonjur') && (
         <div className="mt-8 pt-8 border-t">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">银行入账率</h2>
-          <BankEntryRateSection brand={brand} span={span} period={period} periodOptions={periodOptions} store={store} />
+          <BankEntryRateSection brand={brand} span={span} period={period} store={store} />
         </div>
       )}
 
@@ -267,20 +269,35 @@ export default function PaymentPage() {
               ) : filtered.length === 0 ? (
                 <div className="p-4 text-sm text-gray-400">无数据</div>
               ) : (
-                filtered.map(c => (
-                  <div
-                    key={c.counterparty_name || '(unnamed)'}
-                    onClick={() => setSelected(c.counterparty_name || '')}
-                    className={`px-3 py-2.5 border-b last:border-b-0 cursor-pointer hover:bg-blue-50 transition-colors text-sm ${
-                      selected === c.counterparty_name ? 'bg-blue-100 border-l-2 border-l-blue-500' : ''
-                    }`}
-                  >
-                    <div className="font-medium truncate">{c.counterparty_name || '(未知名)'}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      共 {formatAmt(c.total_received || c.total_paid || 0)} 元 | {c.txn_count} 笔
+                (() => {
+                  const groups = new Map<string, typeof filtered>();
+                  for (const c of filtered) {
+                    const key = c.lvl1_name || c.lvl1_code || '未分类';
+                    if (!groups.has(key)) groups.set(key, []);
+                    groups.get(key)!.push(c);
+                  }
+                  return Array.from(groups.entries()).map(([groupName, items]) => (
+                    <div key={groupName}>
+                      <div className="px-3 py-1.5 bg-gray-100 text-xs font-semibold text-gray-600 border-b sticky top-0">
+                        {groupName}
+                      </div>
+                      {items.map(c => (
+                        <div
+                          key={c.counterparty_name || '(unnamed)'}
+                          onClick={() => setSelected(c.counterparty_name || '')}
+                          className={`px-3 py-2.5 border-b last:border-b-0 cursor-pointer hover:bg-blue-50 transition-colors text-sm ${
+                            selected === c.counterparty_name ? 'bg-blue-100 border-l-2 border-l-blue-500' : ''
+                          }`}
+                        >
+                          <div className="font-medium truncate">{c.counterparty_name || '(未知名)'}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            共 {formatAmt(c.total_received || c.total_paid || 0)} 元 | {c.txn_count} 笔
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                ))
+                  ));
+                })()
               )}
             </div>
           </div>
@@ -354,6 +371,7 @@ const CHANNEL_COLORS: Record<string, string> = {
   DOUYIN: 'bg-pink-50 border-pink-200 text-pink-800',
   ELEME: 'bg-yellow-50 border-yellow-200 text-yellow-800',
   JD: 'bg-red-50 border-red-200 text-red-800',
+  TAOBAO: 'bg-purple-50 border-purple-200 text-purple-800',
 };
 const CHANNEL_LABELS: Record<string, string> = {
   WECHAT: '微信支付',
@@ -363,6 +381,7 @@ const CHANNEL_LABELS: Record<string, string> = {
   DOUYIN: '抖音团购券',
   ELEME: '饿了么',
   JD: '京东',
+  TAOBAO: '淘宝闪购',
 };
 
 interface BankEntryData {
@@ -371,22 +390,19 @@ interface BankEntryData {
   unmatched_orders: { month: string; channel: string; order_count: number; unentered_amt: number }[];
 }
 
-function BankEntryRateSection({ brand, span, period, periodOptions, store }: {
-  brand: string; span: string; period: string; periodOptions: string[]; store: string;
+function BankEntryRateSection({ brand, span, period, store }: {
+  brand: string; span: string; period: string; store: string;
 }) {
   const [data, setData] = useState<BankEntryData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const effectivePeriod = period === 'all'
-    ? periodOptions.filter(p => p !== 'all').at(-1) ?? '2026-01'
-    : period;
-
   useEffect(() => {
     setLoading(true);
     setError(null);
     const storeParam = store && store !== 'all' ? `&store=${encodeURIComponent(store)}` : '';
-    fetch(`/api/${brand}/income/bank-entry-stats?brand=${brand}&period=${effectivePeriod}&span=${span}${storeParam}`)
+    const periodParam = period && period !== 'all' ? `&period=${period}` : '';
+    fetch(`/api/${brand}/income/bank-entry-stats?brand=${brand}&span=${span}${periodParam}${storeParam}`)
       .then(r => r.json())
       .then(json => {
         if (json.success && json.data) {
@@ -418,7 +434,7 @@ function BankEntryRateSection({ brand, span, period, periodOptions, store }: {
       })
       .catch((err: unknown) => setError(getErrorMessage(err)))
       .finally(() => setLoading(false));
-  }, [brand, span, effectivePeriod, store]);
+  }, [brand, span, period, store]);
 
   if (loading) return (
     <div className="grid grid-cols-4 gap-4">
@@ -428,17 +444,21 @@ function BankEntryRateSection({ brand, span, period, periodOptions, store }: {
   if (error) return <div className="text-red-600 text-sm">{error}</div>;
   if (!data) return null;
 
-  const displayChannels = data.channels.filter(c => c.channel !== 'TOTAL' && c.channel !== 'OTHER');
+  const displayChannels = data.channels.filter(c => c.channel !== 'TOTAL' && c.channel !== 'OTHER' && c.channel !== 'ELEME');
 
   return (
     <div className="space-y-6">
       {/* Metric cards */}
       <div className="grid grid-cols-3 gap-4">
         {displayChannels.map(ch => {
-          const isLow = ch.entry_rate < 95;
-          const colorClass = isLow
-            ? 'bg-red-50 border-red-200 text-red-800'
-            : (CHANNEL_COLORS[ch.channel] ?? 'bg-gray-50 border-gray-200 text-gray-800');
+          const rate = ch.entry_rate;
+          const isGreen = rate >= 95 && rate <= 110;
+          const isYellow = rate >= 90 && rate < 95;
+          const colorClass = isGreen
+            ? (CHANNEL_COLORS[ch.channel] ?? 'bg-green-50 border-green-200 text-green-800')
+            : isYellow
+            ? 'bg-yellow-50 border-yellow-200 text-yellow-800'
+            : 'bg-red-50 border-red-200 text-red-800';
           return (
             <div key={ch.channel} className={`border rounded-lg p-4 ${colorClass}`}>
               <div className="text-sm font-medium mb-2">{CHANNEL_LABELS[ch.channel] ?? ch.channel}</div>

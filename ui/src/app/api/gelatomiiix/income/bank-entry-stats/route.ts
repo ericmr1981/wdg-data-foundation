@@ -12,25 +12,43 @@ export async function GET(request: NextRequest) {
     const brand = searchParams.get('brand');
     const period = searchParams.get('period');
     const span = searchParams.get('span') || 'month';
+    const store = searchParams.get('store') || '';
 
-    if (!brand || !period) {
-      return NextResponse.json({ success: false, error: 'brand and period required' }, { status: 400 });
+    if (!brand) {
+      return NextResponse.json({ success: false, error: 'brand required' }, { status: 400 });
     }
 
-    const range = parsePeriod(period, span);
-    if (!range) {
-      return NextResponse.json({ success: false, error: 'Invalid period format for span' }, { status: 400 });
+    const hasPeriod = period && period !== 'all';
+    let dateClause = '';
+    let bankDateClause = '';
+    let unmatchedDateClause = '';
+    let storeClause = '';
+    let bankStoreClause = '';
+    const pIdx = (offset: number) => String(params.length + offset);
+    let params: (string | number)[] = [];
+    if (store && store !== 'all') {
+      params.push(store);
+      storeClause = `AND store_code = $${pIdx(0)}`;
+      bankStoreClause = `AND t.store_code = $${pIdx(0)}`;
     }
-    const [, periodEnd] = range;
-    // periodEnd is exclusive (first day of next period) — subtract 1 day to get the last day
-    const periodEndInclusive = new Date(new Date(periodEnd + 'T00:00:00').getTime() - 86400000)
-      .toISOString().slice(0, 10);
+    if (hasPeriod) {
+      const range = parsePeriod(period, span);
+      if (!range) {
+        return NextResponse.json({ success: false, error: 'Invalid period format for span' }, { status: 400 });
+      }
+      const [periodStart, periodEnd] = range;
+      const periodEndInclusive = new Date(new Date(periodEnd + 'T00:00:00').getTime() - 86400000)
+        .toISOString().slice(0, 10);
+      params.push(periodStart, periodEndInclusive);
+      dateClause = `AND biz_date >= $${pIdx(0)}::DATE AND biz_date <= $${pIdx(1)}::DATE`;
+      bankDateClause = `AND t.txn_date >= $${pIdx(0)}::DATE AND t.txn_date <= $${pIdx(1)}::DATE`;
+      unmatchedDateClause = `AND biz_date >= $${pIdx(0)}::DATE AND biz_date <= $${pIdx(1)}::DATE`;
+    }
 
     // --- channelMetrics ---
     const channelMetricsResult = await pool.query(`
       SELECT
-        CASE
-          WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
+        CASE WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
           WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
           WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
           WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
@@ -43,10 +61,10 @@ export async function GET(request: NextRequest) {
       FROM gelatomiiix_ods.income_detail
       WHERE NOT is_refund
         AND NOT is_member_payment
-        AND biz_date <= $1::DATE
-      GROUP BY channel
-      ORDER BY channel
-    `, [periodEndInclusive]);
+        ${dateClause} ${storeClause}
+      GROUP BY 1
+      ORDER BY 1
+    `, params);
 
     // --- bank entry by channel ---
     const bankEntryResult = await pool.query(`
@@ -58,20 +76,28 @@ export async function GET(request: NextRequest) {
         ON t.counterparty_name ILIKE '%' || r.match_value || '%'
       WHERE r.direction = 'in'
         AND r.lvl1_code = 'REV_BIZ'
-        AND t.txn_date <= $1::DATE
+        ${bankDateClause} ${bankStoreClause}
       GROUP BY r.lvl2_code
-    `, [periodEndInclusive]);
+    `, params);
 
     // --- monthlyTrend ---
+    let trendDateClause = '';
+    if (hasPeriod) {
+      const [ps, pe] = parsePeriod(period, span)!;
+      trendDateClause = `AND biz_date >= '${ps}'::DATE AND biz_date < '${pe}'::DATE`;
+    }
+
+    const st = store ? store.replace(/'/g, "''") : '';
+    const trendStore = store && store !== 'all' ? `AND store_code = '${st}'` : '';
     const monthlyTrendResult = await pool.query(`
       WITH qimai_monthly AS (
         SELECT to_char(biz_date, 'YYYY-MM') AS month, SUM(net_amt) AS qimai_net_amt
         FROM gelatomiiix_ods.income_detail
-        WHERE NOT is_refund AND NOT is_member_payment
+        WHERE NOT is_refund AND NOT is_member_payment ${trendDateClause} ${trendStore}
         GROUP BY 1
       ),
       bank_monthly AS (
-        SELECT to_char(txn_date, 'YYYY-MM') AS month, SUM(t.amount) AS bank_entry_amt
+        SELECT to_char(t.txn_date, 'YYYY-MM') AS month, SUM(t.amount) AS bank_entry_amt
         FROM brand_gelatomiiix_ods.v_bank_txn t
         JOIN brand_gelatomiiix_cfg.bank_rule_map r
           ON t.counterparty_name ILIKE '%' || r.match_value || '%'
@@ -89,8 +115,7 @@ export async function GET(request: NextRequest) {
     const unmatchedOrdersResult = await pool.query(`
       SELECT
         to_char(biz_date, 'YYYY-MM') AS month,
-        CASE
-          WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
+        CASE WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
           WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
           WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
           WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
@@ -105,10 +130,10 @@ export async function GET(request: NextRequest) {
       WHERE third_party_txn_no IS NULL
         AND NOT is_refund
         AND NOT is_member_payment
-        AND biz_date <= $1::DATE
+        ${unmatchedDateClause} ${storeClause}
       GROUP BY month, channel
       ORDER BY month DESC, channel
-    `, [periodEndInclusive]);
+    `, params);
 
     // Build channel metrics
     const qimaiByChannel = new Map<string, number>();

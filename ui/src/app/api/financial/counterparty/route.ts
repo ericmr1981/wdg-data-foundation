@@ -63,12 +63,16 @@ export async function GET(request: Request) {
                  WHEN t.summary IS NOT NULL AND t.summary != '' THEN t.summary
                  ELSE '（未知名）'
                END as counterparty_name,
+               c.lvl1_code,
+               l1.lvl1_name,
                sum(coalesce(t.${amountField}, 0)) as ${totalField},
                count(*) as txn_count,
                min(t.txn_time) as first_date,
                max(t.txn_time) as last_date
         FROM ${bankTxnTable} t
         JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
+        LEFT JOIN ${dmSchema.substring(0, dmSchema.lastIndexOf('_'))}_cfg.dim_category_lvl1 l1
+          ON l1.lvl1_code = c.lvl1_code
         WHERE c.classified_source IN ('rule', 'override')
           AND coalesce(t.${amountField}, 0) > 0
           ${dateClause}
@@ -78,7 +82,8 @@ export async function GET(request: Request) {
                    WHEN t.purpose IS NOT NULL AND t.purpose != '' AND t.purpose != 'NaN' THEN t.purpose
                    WHEN t.summary IS NOT NULL AND t.summary != '' THEN t.summary
                    ELSE '（未知名）'
-                 END
+                 END,
+                 c.lvl1_code, l1.lvl1_name
         ORDER BY ${totalField} DESC
       `;
       const result = await pool.query(listQuery, params);

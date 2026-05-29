@@ -12,53 +12,66 @@ export async function GET(request: NextRequest) {
     const span = searchParams.get('span') || 'month';
     const store = searchParams.get('store') || '';
 
-    if (!period) {
-      return NextResponse.json({ success: false, error: 'period required' }, { status: 400 });
+    const hasPeriod = period && period !== 'all';
+    let dateClause = '';
+    let monthClause = '';
+    let unmatchedDateClause = '';
+    let trendDateClause = '';
+    let trendBankDateClause = '';
+    if (hasPeriod) {
+      const range = parsePeriod(period, span);
+      if (!range) {
+        return NextResponse.json({ success: false, error: 'Invalid period format for span' }, { status: 400 });
+      }
+      const [periodStart, periodEnd] = range;
+      const periodEndInclusive = new Date(new Date(periodEnd + 'T00:00:00').getTime() - 86400000)
+        .toISOString().slice(0, 10);
+      const esc = (s: string) => s.replace(/'/g, "''");
+      dateClause = `AND biz_date >= '${esc(periodStart)}'::DATE AND biz_date <= '${esc(periodEndInclusive)}'::DATE`;
+      monthClause = `AND s.month='${esc(periodStart)}'::DATE`;
+      unmatchedDateClause = `AND biz_date >= '${esc(periodStart)}'::DATE AND biz_date <= '${esc(periodEndInclusive)}'::DATE`;
+      trendDateClause = `AND biz_date >= '${esc(periodStart)}'::DATE AND biz_date < '${esc(periodEnd)}'::DATE`;
+      trendBankDateClause = `AND t.txn_time >= '${esc(periodStart)}'::timestamp AND t.txn_time < '${esc(periodEnd)}'::timestamp`;
     }
 
-    const range = parsePeriod(period, span);
-    if (!range) {
-      return NextResponse.json({ success: false, error: 'Invalid period format for span' }, { status: 400 });
-    }
-    const [periodStart, periodEnd] = range;
-
-    const periodEndInclusive = new Date(new Date(periodEnd + 'T00:00:00').getTime() - 86400000)
-      .toISOString().slice(0, 10);
-
-    const esc = (s: string) => s.replace(/'/g, "''");
-    const dateEnd = esc(periodEndInclusive);
-    const monthStart = esc(periodStart);
-    const st = store ? esc(store) : '';
+    const st = store ? store.replace(/'/g, "''") : '';
     const storeWhere = store ? `AND store_code = '${st}'` : '';
     const bankStoreWhere = store ? `AND t.store_code = '${st}'` : '';
     const trendStoreWhere = store ? `WHERE store_code = '${st}'` : '';
 
-    const channelMetricsResult = await pool.query(`SELECT channel, SUM(net_amt) AS qimai_net_amt FROM (
-      SELECT CASE WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
-        WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
-        WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
-        WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
-        WHEN '抖音团购券' = ANY(payment_methods) THEN 'DOUYIN'
-        ELSE 'OTHER' END AS channel, net_amt
-      FROM bonjur_ods.income_detail
-      WHERE biz_date <= '${dateEnd}'::DATE ${storeWhere}
-    ) sub GROUP BY channel ORDER BY channel`);
+    const channelMetricsResult = await pool.query(`SELECT
+      COALESCE(NULLIF(d.channel, 'OTHER'),
+        CASE WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
+          WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
+          WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
+          WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
+          WHEN '抖音团购券' = ANY(payment_methods) THEN 'DOUYIN'
+          WHEN '饿了么' = ANY(payment_methods) THEN 'ELEME'
+          WHEN '京东支付' = ANY(payment_methods) THEN 'JD'
+          ELSE 'OTHER' END
+      ) AS channel, SUM(net_amt) AS qimai_net_amt
+      FROM bonjur_ods.income_detail d
+      WHERE 1=1 ${dateClause} ${storeWhere}
+      GROUP BY 1 ORDER BY 1`);
 
     const bankEntryResult = await pool.query(`SELECT s.lvl2_code AS channel, COALESCE(SUM(t.in_amt),0) AS bank_entry_amt
       FROM bonjur_dm.bank_txn_classified_snapshot s
       JOIN bonjur_ods.bank_txn t ON t.id = s.bank_txn_id
       WHERE s.lvl1_code='REV_BIZ' AND s.classified_source IN ('rule','override')
-        AND s.month='${monthStart}'::DATE ${bankStoreWhere}
+        ${monthClause} ${bankStoreWhere}
       GROUP BY s.lvl2_code`);
 
     const monthlyTrendQimai = await pool.query(
       `SELECT to_char(biz_date,'YYYY-MM') AS month,SUM(net_amt) AS qimai_net_amt
-       FROM bonjur_ods.income_detail ${trendStoreWhere} GROUP BY 1 ORDER BY 1`);
+       FROM bonjur_ods.income_detail
+       WHERE 1=1 ${trendDateClause} ${storeWhere}
+       GROUP BY 1 ORDER BY 1`);
     const monthlyTrendBank = await pool.query(
       `SELECT to_char(t.txn_time::date,'YYYY-MM') AS month,SUM(t.in_amt) AS bank_entry_amt
        FROM bonjur_dm.bank_txn_classified_snapshot s
        JOIN bonjur_ods.bank_txn t ON t.id = s.bank_txn_id
-       WHERE s.lvl1_code='REV_BIZ' AND s.classified_source IN ('rule','override') ${bankStoreWhere}
+       WHERE s.lvl1_code='REV_BIZ' AND s.classified_source IN ('rule','override')
+         ${trendBankDateClause} ${bankStoreWhere}
        GROUP BY 1 ORDER BY 1`);
 
     const trendMap = new Map<string, { q: number; b: number }>();
@@ -75,11 +88,14 @@ export async function GET(request: NextRequest) {
 
     const unmatchedOrdersResult = await pool.query(`SELECT month,ch,COUNT(*) oc,SUM(net_amt) ua FROM (
       SELECT to_char(biz_date,'YYYY-MM') AS month,
-        CASE WHEN '微信支付'=ANY(payment_methods) THEN 'WECHAT' WHEN '支付宝支付'=ANY(payment_methods) THEN 'ALIPAY'
-          WHEN '美团团购券'=ANY(payment_methods) THEN 'MEITUAN' WHEN '云闪付'=ANY(payment_methods) THEN 'UNIONPAY'
-          WHEN '抖音团购券'=ANY(payment_methods) THEN 'DOUYIN' ELSE 'OTHER' END AS ch, net_amt
-      FROM bonjur_ods.income_detail
-      WHERE third_party_txn_no IS NULL AND biz_date<='${dateEnd}'::DATE ${storeWhere}
+        COALESCE(NULLIF(d.channel, 'OTHER'),
+          CASE WHEN '微信支付'=ANY(payment_methods) THEN 'WECHAT' WHEN '支付宝支付'=ANY(payment_methods) THEN 'ALIPAY'
+            WHEN '美团团购券'=ANY(payment_methods) THEN 'MEITUAN' WHEN '云闪付'=ANY(payment_methods) THEN 'UNIONPAY'
+            WHEN '抖音团购券'=ANY(payment_methods) THEN 'DOUYIN' WHEN '饿了么'=ANY(payment_methods) THEN 'ELEME'
+            WHEN '京东支付'=ANY(payment_methods) THEN 'JD' ELSE 'OTHER' END
+        ) AS ch, net_amt
+      FROM bonjur_ods.income_detail d
+      WHERE third_party_txn_no IS NULL ${unmatchedDateClause} ${storeWhere}
     ) sub GROUP BY month,ch ORDER BY month DESC,ch`);
 
     const qimaiByChannel = new Map<string, number>();
