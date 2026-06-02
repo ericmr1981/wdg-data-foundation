@@ -15,11 +15,14 @@ function applyBrandSql(sql: string, brand: string) {
 
   let out = sql;
 
-  // Schema name replacement
+  // Schema name replacement (yufeng SQL files use yufeng_*, bonjur SQL files use bonjur_*)
+  out = out.replaceAll('yufeng_ops', ops);
+  out = out.replaceAll('yufeng_ods', ods);
+  out = out.replaceAll('yufeng_dm', dm);
+  out = out.replaceAll('yufeng_cfg', cfg);
   out = out.replaceAll('bonjur_ods', ods);
   out = out.replaceAll('bonjur_dm', dm);
   out = out.replaceAll('bonjur_cfg', cfg);
-  out = out.replaceAll('ops', ops);
 
   // brand_code filters inside views
   out = out.replaceAll("f.brand_code = 'yufeng'", `f.brand_code = '${brand}'`);
