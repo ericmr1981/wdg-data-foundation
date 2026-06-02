@@ -15,14 +15,11 @@ function applyBrandSql(sql: string, brand: string) {
 
   let out = sql;
 
-  // Schema name replacement (yufeng SQL files use yufeng_*, bonjur SQL files use bonjur_*)
+  // Schema name replacement — all template SQL files use yufeng_* prefix uniformly
   out = out.replaceAll('yufeng_ops', ops);
   out = out.replaceAll('yufeng_ods', ods);
   out = out.replaceAll('yufeng_dm', dm);
   out = out.replaceAll('yufeng_cfg', cfg);
-  out = out.replaceAll('bonjur_ods', ods);
-  out = out.replaceAll('bonjur_dm', dm);
-  out = out.replaceAll('bonjur_cfg', cfg);
 
   // brand_code filters inside views
   out = out.replaceAll("f.brand_code = 'yufeng'", `f.brand_code = '${brand}'`);
@@ -63,7 +60,7 @@ export async function POST(request: Request) {
     const yufengCoverage = await readFile(path.join(sqlDir, '40_yufeng_coverage_and_unclassified.sql'), 'utf8');
     const yufengByFile = await readFile(path.join(sqlDir, '40_yufeng_coverage_by_file.sql'), 'utf8');
     const yufengSnapshot = await readFile(path.join(sqlDir, '40_yufeng_classification_snapshot.sql'), 'utf8');
-    const yufengDmModels = await readFile(path.join(sqlDir, '30_bonjur_dm_models.sql'), 'utf8');
+    const yufengDmModels = await readFile(path.join(sqlDir, '30_yufeng_dm_models.sql'), 'utf8');
 
     // We only take the function+views+seed part from apply_classification, because table DDL differs by runtime.
     const applyPart = sliceFromMarker(yufengApply, '------------------------------------------------------------\n-- 分类函数 v2（返回 code）');
