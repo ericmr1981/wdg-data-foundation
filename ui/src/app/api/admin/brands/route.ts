@@ -100,6 +100,12 @@ export async function POST(request: Request) {
       // Create dim_store (for dropdowns)
       await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.dim_store (LIKE bonjur_cfg.dim_store INCLUDING ALL)`);
 
+      // Create bank_txn table (required for bank upload to work immediately)
+      await client.query(`CREATE TABLE IF NOT EXISTS ${ods}.bank_txn (LIKE bonjur_ods.bank_txn INCLUDING ALL)`);
+
+      // Create ops.unclassified_resolution_log (required for classification workflow)
+      await client.query(`CREATE TABLE IF NOT EXISTS ${ops}.unclassified_resolution_log (LIKE bonjur_ops.unclassified_resolution_log INCLUDING ALL)`);
+
       // Install history trigger
       await client.query(`DROP TRIGGER IF EXISTS trg_bank_rule_map_history ON ${cfg}.bank_rule_map`);
       await client.query(

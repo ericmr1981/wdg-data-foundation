@@ -58,7 +58,7 @@ export async function POST(request: Request) {
         [brand, store_code, store_name]
       );
 
-      // also upsert into cfg.dim_store (for dropdown used by metabase/ui)
+      // also upsert into cfg.dim_store (for dropdown used by UI)
       await client.query(
         `
         INSERT INTO ${cfgSchema}.dim_store (store_code, store_name)

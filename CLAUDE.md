@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # WDG Data Foundation
 
-Multi-brand restaurant chain data platform. Ingest bank transactions and daily sales, apply rule-based classification, build financial data marts (profit/cashflow/balance-sheet), serve via Next.js UI and Metabase.
+Multi-brand restaurant chain data platform. Ingest bank transactions and daily sales, apply rule-based classification, build financial data marts (profit/cashflow/balance-sheet), serve via Next.js UI.
 
 ## Brands
 
@@ -33,8 +33,7 @@ npm run test:e2e         # Playwright E2E
 npx playwright test --ui # Playwright UI mode
 
 # Docker (full stack)
-docker compose up -d                   # Postgres + Metabase + UI
-docker compose up -d postgres metabase  # DB + Metabase only (UI runs via npm run dev)
+docker compose up -d                   # Postgres + UI
 
 # Bootstrap
 bash init.sh              # Python venv + compile check
@@ -50,7 +49,6 @@ bash scripts/init_local_env.sh  # Full local env init (see docs/LOCAL_STARTUP.md
 │   ├── classify.py                # Classification engine (rule-based)
 │   ├── import_*.py                # Per-brand/source import scripts
 │   ├── create_views.py            # Materialized view refresh
-│   ├── metabase_seed_*.py         # Metabase dashboard seeding
 │   └── run_drift_check.sh         # Schema drift detection
 ├── sql/                # PostgreSQL DDL/DML, prefixed by layer:
 │   ├── 00_*            # Infrastructure (schemas, file tracking, rule grouping, history)
