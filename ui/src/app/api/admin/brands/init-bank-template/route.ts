@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { readFile } from 'fs/promises';
+import { existsSync } from 'fs';
 import path from 'path';
 import pool from '@/lib/db';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
@@ -52,13 +53,14 @@ export async function POST(request: Request) {
     const cfg = getCfgSchema(brand);
     const ops = getOpsSchema(brand);
 
-    const repoRoot = path.join(process.cwd(), '..', '..', '..', '..'); // ui/ -> repo root
+    // Find the sql directory: Docker mounts at /sql, local is parent of ui/
+    const sqlDir = existsSync('/sql') ? '/sql' : path.join(process.cwd(), '..', 'sql');
 
-    const yufengApply = await readFile(path.join(repoRoot, 'sql', 'yufeng_apply_classification.sql'), 'utf8');
-    const yufengCoverage = await readFile(path.join(repoRoot, 'sql', 'yufeng_coverage_and_unclassified.sql'), 'utf8');
-    const yufengByFile = await readFile(path.join(repoRoot, 'sql', 'yufeng_coverage_by_file.sql'), 'utf8');
-    const yufengSnapshot = await readFile(path.join(repoRoot, 'sql', 'yufeng_classification_snapshot.sql'), 'utf8');
-    const yufengDmModels = await readFile(path.join(repoRoot, 'sql', 'bonjur_dm_models.sql'), 'utf8');
+    const yufengApply = await readFile(path.join(sqlDir, '40_yufeng_apply_classification.sql'), 'utf8');
+    const yufengCoverage = await readFile(path.join(sqlDir, '40_yufeng_coverage_and_unclassified.sql'), 'utf8');
+    const yufengByFile = await readFile(path.join(sqlDir, '40_yufeng_coverage_by_file.sql'), 'utf8');
+    const yufengSnapshot = await readFile(path.join(sqlDir, '40_yufeng_classification_snapshot.sql'), 'utf8');
+    const yufengDmModels = await readFile(path.join(sqlDir, '30_bonjur_dm_models.sql'), 'utf8');
 
     // We only take the function+views+seed part from apply_classification, because table DDL differs by runtime.
     const applyPart = sliceFromMarker(yufengApply, '------------------------------------------------------------\n-- 分类函数 v2（返回 code）');
