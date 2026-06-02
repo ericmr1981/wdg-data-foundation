@@ -61,6 +61,7 @@ export async function POST(request: Request) {
     const yufengByFile = await readFile(path.join(sqlDir, '40_yufeng_coverage_by_file.sql'), 'utf8');
     const yufengSnapshot = await readFile(path.join(sqlDir, '40_yufeng_classification_snapshot.sql'), 'utf8');
     const yufengDmModels = await readFile(path.join(sqlDir, '30_yufeng_dm_models.sql'), 'utf8');
+    const yufengFinancial = await readFile(path.join(sqlDir, '40_yufeng_financial_statements.sql'), 'utf8');
 
     // We only take the function+views+seed part from apply_classification, because table DDL differs by runtime.
     const applyPart = sliceFromMarker(yufengApply, '------------------------------------------------------------\n-- 分类函数 v2（返回 code）');
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
     const sqlByFile = applyBrandSql(yufengByFile, brand);
     const sqlSnapshot = applyBrandSql(yufengSnapshot, brand);
     const sqlDmModels = applyBrandSql(yufengDmModels, brand);
+    const sqlFinancial = applyBrandSql(yufengFinancial, brand);
 
     const client = await pool.connect();
     try {
@@ -104,6 +106,9 @@ export async function POST(request: Request) {
       await client.query(sqlSnapshot);
       await client.query(sqlDmModels);
 
+      // 6) Financial statement views (v_profit_statement, v_cashflow_statement, v_balance_sheet)
+      await client.query(sqlFinancial);
+
       await client.query('COMMIT');
       return NextResponse.json({
         success: true,
@@ -116,6 +121,7 @@ export async function POST(request: Request) {
             dm_refresh_fn: `${dm}.refresh_bank_txn_classified_snapshot`,
             dm_views: [`${dm}.v_bank_txn_classified`, `${dm}.v_unclassified_detail`, `${dm}.v_coverage_by_file`],
             dm_profit_views: [`${dm}.expense_monthly`, `${dm}.profit_monthly`, `${dm}.revenue_monthly`, `${dm}.v_expense_lvl1_monthly`],
+            dm_financial_statements: [`${dm}.v_profit_statement`, `${dm}.v_cashflow_statement`, `${dm}.v_balance_sheet`],
           },
         },
       });
