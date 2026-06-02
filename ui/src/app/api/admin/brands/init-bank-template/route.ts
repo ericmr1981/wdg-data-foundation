@@ -15,10 +15,10 @@ function applyBrandSql(sql: string, brand: string) {
   let out = sql;
 
   // Schema name replacement
-  out = out.replaceAll('yufeng_ods', ods);
-  out = out.replaceAll('yufeng_dm', dm);
-  out = out.replaceAll('yufeng_cfg', cfg);
-  out = out.replaceAll('yufeng_ops', ops);
+  out = out.replaceAll('bonjur_ods', ods);
+  out = out.replaceAll('bonjur_dm', dm);
+  out = out.replaceAll('bonjur_cfg', cfg);
+  out = out.replaceAll('ops', ops);
 
   // brand_code filters inside views
   out = out.replaceAll("f.brand_code = 'yufeng'", `f.brand_code = '${brand}'`);
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     const yufengCoverage = await readFile(path.join(repoRoot, 'sql', 'yufeng_coverage_and_unclassified.sql'), 'utf8');
     const yufengByFile = await readFile(path.join(repoRoot, 'sql', 'yufeng_coverage_by_file.sql'), 'utf8');
     const yufengSnapshot = await readFile(path.join(repoRoot, 'sql', 'yufeng_classification_snapshot.sql'), 'utf8');
-    const yufengDmModels = await readFile(path.join(repoRoot, 'sql', 'yufeng_dm_models.sql'), 'utf8');
+    const yufengDmModels = await readFile(path.join(repoRoot, 'sql', 'bonjur_dm_models.sql'), 'utf8');
 
     // We only take the function+views+seed part from apply_classification, because table DDL differs by runtime.
     const applyPart = sliceFromMarker(yufengApply, '------------------------------------------------------------\n-- 分类函数 v2（返回 code）');
@@ -81,15 +81,15 @@ export async function POST(request: Request) {
       await client.query(`CREATE SCHEMA IF NOT EXISTS ${ops};`);
 
       // 2) Ensure core tables exist (clone from yufeng as template)
-      await client.query(`CREATE TABLE IF NOT EXISTS ${ods}.bank_txn (LIKE yufeng_ods.bank_txn INCLUDING ALL);`);
-      await client.query(`CREATE TABLE IF NOT EXISTS ${dm}.bank_txn_override (LIKE yufeng_dm.bank_txn_override INCLUDING ALL);`);
-      await client.query(`CREATE TABLE IF NOT EXISTS ${ops}.unclassified_resolution_log (LIKE yufeng_ops.unclassified_resolution_log INCLUDING ALL);`);
+      await client.query(`CREATE TABLE IF NOT EXISTS ${ods}.bank_txn (LIKE bonjur_ods.bank_txn INCLUDING ALL);`);
+      await client.query(`CREATE TABLE IF NOT EXISTS ${dm}.bank_txn_override (LIKE bonjur_dm.bank_txn_override INCLUDING ALL);`);
+      await client.query(`CREATE TABLE IF NOT EXISTS ${ops}.unclassified_resolution_log (LIKE ops.unclassified_resolution_log INCLUDING ALL);`);
 
       // cfg dictionaries + rules + store dim
-      await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.dim_category_lvl1 (LIKE yufeng_cfg.dim_category_lvl1 INCLUDING ALL);`);
-      await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.dim_category_lvl2 (LIKE yufeng_cfg.dim_category_lvl2 INCLUDING ALL);`);
-      await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.bank_rule_map (LIKE yufeng_cfg.bank_rule_map INCLUDING ALL);`);
-      await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.dim_store (LIKE yufeng_cfg.dim_store INCLUDING ALL);`);
+      await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.dim_category_lvl1 (LIKE bonjur_cfg.dim_category_lvl1 INCLUDING ALL);`);
+      await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.dim_category_lvl2 (LIKE bonjur_cfg.dim_category_lvl2 INCLUDING ALL);`);
+      await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.bank_rule_map (LIKE bonjur_cfg.bank_rule_map INCLUDING ALL);`);
+      await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.dim_store (LIKE bonjur_cfg.dim_store INCLUDING ALL);`);
 
       // 3) Apply function + views + seeds
       await client.query(sqlApply);

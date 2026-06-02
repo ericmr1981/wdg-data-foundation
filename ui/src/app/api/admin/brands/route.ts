@@ -86,19 +86,19 @@ export async function POST(request: Request) {
         await client.query(`CREATE SCHEMA IF NOT EXISTS ${delivery}`);
       }
 
-      // Create dictionary tables by cloning from yufeng_cfg
-      await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.dim_category_lvl1 (LIKE yufeng_cfg.dim_category_lvl1 INCLUDING ALL)`);
-      await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.dim_category_lvl2 (LIKE yufeng_cfg.dim_category_lvl2 INCLUDING ALL)`);
-      await client.query(`INSERT INTO ${cfg}.dim_category_lvl1 SELECT * FROM yufeng_cfg.dim_category_lvl1 ON CONFLICT (lvl1_code) DO NOTHING`);
-      await client.query(`INSERT INTO ${cfg}.dim_category_lvl2 SELECT * FROM yufeng_cfg.dim_category_lvl2 ON CONFLICT (lvl1_code,lvl2_code) DO NOTHING`);
+      // Create dictionary tables by cloning from bonjur_cfg
+      await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.dim_category_lvl1 (LIKE bonjur_cfg.dim_category_lvl1 INCLUDING ALL)`);
+      await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.dim_category_lvl2 (LIKE bonjur_cfg.dim_category_lvl2 INCLUDING ALL)`);
+      await client.query(`INSERT INTO ${cfg}.dim_category_lvl1 SELECT * FROM bonjur_cfg.dim_category_lvl1 ON CONFLICT (lvl1_code) DO NOTHING`);
+      await client.query(`INSERT INTO ${cfg}.dim_category_lvl2 SELECT * FROM bonjur_cfg.dim_category_lvl2 ON CONFLICT (lvl1_code,lvl2_code) DO NOTHING`);
 
       // Create bank_rule_map table (code-based)
       await client.query(
-        `CREATE TABLE IF NOT EXISTS ${cfg}.bank_rule_map (LIKE yufeng_cfg.bank_rule_map INCLUDING ALL)`
+        `CREATE TABLE IF NOT EXISTS ${cfg}.bank_rule_map (LIKE bonjur_cfg.bank_rule_map INCLUDING ALL)`
       );
 
       // Create dim_store (for dropdowns)
-      await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.dim_store (LIKE yufeng_cfg.dim_store INCLUDING ALL)`);
+      await client.query(`CREATE TABLE IF NOT EXISTS ${cfg}.dim_store (LIKE bonjur_cfg.dim_store INCLUDING ALL)`);
 
       // Install history trigger
       await client.query(`DROP TRIGGER IF EXISTS trg_bank_rule_map_history ON ${cfg}.bank_rule_map`);
