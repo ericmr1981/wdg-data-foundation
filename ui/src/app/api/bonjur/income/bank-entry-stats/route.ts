@@ -27,11 +27,13 @@ export async function GET(request: NextRequest) {
       const periodEndInclusive = new Date(new Date(periodEnd + 'T00:00:00').getTime() - 86400000)
         .toISOString().slice(0, 10);
       const esc = (s: string) => s.replace(/'/g, "''");
-      dateClause = `AND biz_date >= '${esc(periodStart)}'::DATE AND biz_date <= '${esc(periodEndInclusive)}'::DATE`;
-      monthClause = `AND s.month='${esc(periodStart)}'::DATE`;
+      // Channel metrics + bank entry: cumulative up to period end
+      dateClause = `AND biz_date < '${esc(periodEnd)}'::DATE`;
+      monthClause = `AND s.month < '${esc(periodEnd)}'::DATE`;
       unmatchedDateClause = `AND biz_date >= '${esc(periodStart)}'::DATE AND biz_date <= '${esc(periodEndInclusive)}'::DATE`;
-      trendDateClause = `AND biz_date >= '${esc(periodStart)}'::DATE AND biz_date < '${esc(periodEnd)}'::DATE`;
-      trendBankDateClause = `AND t.txn_time >= '${esc(periodStart)}'::timestamp AND t.txn_time < '${esc(periodEnd)}'::timestamp`;
+      // Trend: show all data up to period end (cumulative)
+      trendDateClause = `AND biz_date < '${esc(periodEnd)}'::DATE`;
+      trendBankDateClause = `AND t.txn_time < '${esc(periodEnd)}'::timestamp`;
     }
 
     const st = store ? store.replace(/'/g, "''") : '';

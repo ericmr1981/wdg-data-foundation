@@ -38,6 +38,7 @@ function NavBar() {
   const [me, setMe] = useState<{ username: string; role: string } | null>(null);
   const [adminOpen, setAdminOpen] = useState(false);
   const [salesOpen, setSalesOpen] = useState(false);
+  const [financialOpen, setFinancialOpen] = useState(false);
   const pathname = usePathname();
 
   useEffect(() => {
@@ -62,10 +63,10 @@ function NavBar() {
   }, [pathname]);
 
   useEffect(() => {
-    function handleClick() { setAdminOpen(false); setSalesOpen(false); }
-    if (adminOpen || salesOpen) document.addEventListener('click', handleClick);
+    function handleClick() { setAdminOpen(false); setSalesOpen(false); setFinancialOpen(false); }
+    if (adminOpen || salesOpen || financialOpen) document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
-  }, [adminOpen, salesOpen]);
+  }, [adminOpen, salesOpen, financialOpen]);
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -80,15 +81,24 @@ function NavBar() {
             <Link href="/u" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-900 hover:text-blue-600">
               首页
             </Link>
-            <Link href="/u/financial" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
-              财务报表
+            <Link href="/u/dashboard" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
+              经营看板
             </Link>
-            <Link href="/u/payment" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
-              付款分析
-            </Link>
-            <Link href="/u/income" className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600">
-              收入分析
-            </Link>
+            <div className="relative">
+              <button
+                onClick={(e) => { e.stopPropagation(); setFinancialOpen(v => !v); }}
+                className="inline-flex items-center px-1 pt-1 text-sm font-medium text-gray-500 hover:text-blue-600"
+              >
+                财务报表 ▼
+              </button>
+              {financialOpen && (
+                <div className="absolute left-0 top-full mt-1 w-36 bg-white border rounded shadow-lg z-50">
+                  <Link href="/u/financial" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">财务报表</Link>
+                  <Link href="/u/payment" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">付款分析</Link>
+                  <Link href="/u/income" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">收入分析</Link>
+                </div>
+              )}
+            </div>
             <div className="relative">
               <button
                 onClick={(e) => { e.stopPropagation(); setSalesOpen((v) => !v); }}

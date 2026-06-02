@@ -58,8 +58,9 @@ export async function GET(request: Request) {
     let storeClause = '';
 
     if (!isAll && boundaries) {
-      dateClause = 'AND month >= $1::date AND month < $2::date';
-      params.push(boundaries[0], boundaries[1]);
+      // Cumulative up to period end
+      dateClause = 'AND month < $1::date';
+      params.push(boundaries[1]);
     }
     if (store !== 'all') {
       storeClause = `AND store_code = $${params.length + 1}`;

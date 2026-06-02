@@ -24,12 +24,13 @@ export async function GET(request: NextRequest) {
     let unmatchedDateClause = '';
     let storeClause = '';
     let bankStoreClause = '';
-    const pIdx = (offset: number) => String(params.length + offset);
     let params: (string | number)[] = [];
+    let umParams: (string | number)[] = [];
     if (store && store !== 'all') {
       params.push(store);
-      storeClause = `AND store_code = $${pIdx(0)}`;
-      bankStoreClause = `AND t.store_code = $${pIdx(0)}`;
+      umParams.push(store);
+      storeClause = 'AND store_code = $1';
+      bankStoreClause = 'AND t.store_code = $1';
     }
     if (hasPeriod) {
       const range = parsePeriod(period, span);
@@ -39,10 +40,12 @@ export async function GET(request: NextRequest) {
       const [periodStart, periodEnd] = range;
       const periodEndInclusive = new Date(new Date(periodEnd + 'T00:00:00').getTime() - 86400000)
         .toISOString().slice(0, 10);
-      params.push(periodStart, periodEndInclusive);
-      dateClause = `AND biz_date >= $${pIdx(0)}::DATE AND biz_date <= $${pIdx(1)}::DATE`;
-      bankDateClause = `AND t.txn_date >= $${pIdx(0)}::DATE AND t.txn_date <= $${pIdx(1)}::DATE`;
-      unmatchedDateClause = `AND biz_date >= $${pIdx(0)}::DATE AND biz_date <= $${pIdx(1)}::DATE`;
+      const dn = store && store !== 'all' ? 2 : 1;
+      params.push(periodEnd);
+      dateClause = `AND biz_date < $${dn}::DATE`;
+      bankDateClause = `AND t.txn_date < $${dn}::DATE`;
+      umParams.push(periodStart, periodEndInclusive);
+      unmatchedDateClause = `AND biz_date >= $${store && store !== 'all' ? 2 : 1}::DATE AND biz_date <= $${store && store !== 'all' ? 3 : 2}::DATE`;
     }
 
     // --- channelMetrics ---
@@ -84,7 +87,7 @@ export async function GET(request: NextRequest) {
     let trendDateClause = '';
     if (hasPeriod) {
       const [ps, pe] = parsePeriod(period, span)!;
-      trendDateClause = `AND biz_date >= '${ps}'::DATE AND biz_date < '${pe}'::DATE`;
+      trendDateClause = `AND biz_date < '${pe}'::DATE`;
     }
 
     const st = store ? store.replace(/'/g, "''") : '';
@@ -133,7 +136,7 @@ export async function GET(request: NextRequest) {
         ${unmatchedDateClause} ${storeClause}
       GROUP BY month, channel
       ORDER BY month DESC, channel
-    `, params);
+    `, umParams);
 
     // Build channel metrics
     const qimaiByChannel = new Map<string, number>();
