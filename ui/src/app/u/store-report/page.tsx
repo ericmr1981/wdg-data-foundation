@@ -45,10 +45,11 @@ export default function StoreReportPage() {
     setStore('');
     fetch(`/api/stores?brand=${encodeURIComponent(brand)}`)
       .then(r => r.json())
-      .then((d: ApiResult<StoreOpt[]>) => {
+      .then((d: ApiResult<Array<{ store_code: string; store_name: string }>>) => {
         if (d.success && d.data && d.data.length > 0) {
-          setStores(d.data);
-          setStore(d.data[0].code);
+          const mapped = d.data.map(s => ({ code: s.store_code, name: s.store_name }));
+          setStores(mapped);
+          setStore(mapped[0].code);
         } else {
           setStores([]);
         }
