@@ -1,6 +1,6 @@
 'use client';
 
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, LabelList } from 'recharts';
 import type { TrendResponse, KpiMetricKey } from '@/lib/store-report-types';
 import { KPI_LABELS } from '@/lib/store-report-types';
 
@@ -47,7 +47,14 @@ export function TrendChart({ title, trend, metrics, colors = DEFAULT_COLORS }: P
                 strokeWidth={2}
                 dot={{ r: 3 }}
                 connectNulls
-              />
+              >
+                <LabelList
+                  dataKey={k}
+                  position="top"
+                  style={{ fontSize: 9, fill: colors[i % colors.length] }}
+                  formatter={(v: any) => v == null ? '' : fmtY(metrics[0], Number(v))}
+                />
+              </Line>
             ))}
           </LineChart>
         </ResponsiveContainer>
