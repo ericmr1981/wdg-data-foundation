@@ -144,46 +144,57 @@ function KpiCard({ label, value, prefix = '¥', vsPrev, isRate = false, invert =
   );
 }
 
-// ── Tooltip bar chart (x-axis oldest→newest) ──────────
+// ── Tooltip bar chart (x-axis baseline, pos↑ neg↓) ────
 function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: TrendKey; format?: (v: number) => string }) {
   const [tooltip, setTooltip] = useState<{ month: string; value: number; x: number; y: number } | null>(null);
-  // API returns newest-first; reverse to show oldest (left) → newest (right)
   const sorted = [...data].reverse();
   const values = sorted.map(d => d[trendKey]);
-  const maxVal = Math.max(...values, 1);
-  const minVal = Math.min(...values, 0);
-  const range = Math.max(maxVal, Math.abs(minVal));
-  const defaultColor = TREND_BAR_COLORS[trendKey];
+  const range = Math.max(Math.max(...values, 0), Math.abs(Math.min(...values, 0)), 1);
+  const halfH = 88;
   const fmt = format || ((v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 2 }));
 
   return (
     <div className="bg-white border rounded-lg p-4">
       <h3 className="text-sm font-semibold text-gray-700 mb-3">{TREND_LABELS[trendKey]}趋势</h3>
-      <div className="flex items-end gap-[3px] h-44 relative">
-        {sorted.map(d => {
-          const val = d[trendKey];
-          const isPos = val >= 0;
-          const pct = range > 0 ? (Math.abs(val) / range) * 100 : 0;
-          const barColor = val >= 0 ? '#22C55E' : '#EF4444';
-          return (
-            <div key={d.month} className="flex-1 flex flex-col items-center justify-end h-full relative">
-              <div
-                className="w-full rounded-t transition-all cursor-pointer hover:opacity-80"
-                style={{ height: `${Math.max(pct, 1)}%`, backgroundColor: barColor, opacity: isPos ? 0.85 : 0.9 }}
-                onMouseEnter={(e) => {
-                  const rect = (e.target as HTMLElement).getBoundingClientRect();
-                  setTooltip({ month: d.month, value: val, x: rect.left + rect.width / 2, y: rect.top - 8 });
-                }}
-                onMouseLeave={() => setTooltip(null)}
-              />
-              <div className="text-[9px] text-gray-400 mt-1">{d.month.slice(5)}</div>
-            </div>
-          );
-        })}
+      <div className="relative" style={{ height: '200px' }}>
+        {/* y-axis labels */}
+        <div className="absolute left-0 text-[9px] text-gray-400" style={{ top: '4px' }}>{fmt(range)}</div>
+        <div className="absolute left-0 text-[9px] text-gray-400" style={{ bottom: '24px' }}>{fmt(-range)}</div>
+        {/* center baseline (x-axis) */}
+        <div className="absolute left-6 right-2" style={{ top: `${halfH + 12}px`, height: '1px', backgroundColor: '#9CA3AF' }} />
+        {/* bars */}
+        <div className="absolute left-6 right-2 flex items-start gap-[3px]" style={{ top: '12px', height: '176px' }}>
+          {sorted.map(d => {
+            const val = d[trendKey];
+            const isPos = val >= 0;
+            const pct = range > 0 ? (Math.abs(val) / range) : 0;
+            const barH = Math.max(1, pct * halfH);
+            const barColor = isPos ? '#22C55E' : '#EF4444';
+            return (
+              <div key={d.month} className="flex-1 flex flex-col items-center relative" style={{ height: '100%' }}>
+                {isPos ? (
+                  <div
+                    className="w-full cursor-pointer hover:opacity-80"
+                    style={{ height: `${barH}px`, backgroundColor: barColor, opacity: 0.85, marginTop: `${halfH - barH}px`, borderTopLeftRadius: '2px', borderTopRightRadius: '2px' }}
+                    onMouseEnter={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setTooltip({ month: d.month, value: val, x: r.left + r.width/2, y: r.top }); }}
+                    onMouseLeave={() => setTooltip(null)}
+                  />
+                ) : (
+                  <div
+                    className="w-full cursor-pointer hover:opacity-80"
+                    style={{ height: `${barH}px`, backgroundColor: barColor, opacity: 0.85, marginTop: `${halfH}px`, borderBottomLeftRadius: '2px', borderBottomRightRadius: '2px' }}
+                    onMouseEnter={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setTooltip({ month: d.month, value: val, x: r.left + r.width/2, y: r.top }); }}
+                    onMouseLeave={() => setTooltip(null)}
+                  />
+                )}
+                <div className="absolute text-[9px] text-gray-400" style={{ bottom: '-18px' }}>{d.month.slice(5)}</div>
+              </div>
+            );
+          })}
+        </div>
       </div>
       {tooltip && (
-        <div
-          className="fixed z-50 bg-gray-900 text-white text-xs rounded px-2 py-1 pointer-events-none"
+        <div className="fixed z-50 bg-gray-900 text-white text-xs rounded px-2 py-1 pointer-events-none"
           style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, -100%)' }}
         >
           {tooltip.month}: {fmt(tooltip.value)}
