@@ -82,6 +82,10 @@ export async function POST(request: Request) {
         }
       }
     }
+    // direction 必须有 'in'/'out'('any' 会导致 bank_rule_map CHECK 约束失败)
+    if (actualDirection !== 'in' && actualDirection !== 'out') {
+      return NextResponse.json({ success: false, error: `Invalid direction: ${actualDirection}` }, { status: 400 });
+    }
 
     // 冲突检查（主条件）- 使用 lvl1/lvl2 列名
     const conflictResult = await pool.query(

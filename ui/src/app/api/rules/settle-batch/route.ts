@@ -99,7 +99,7 @@ export async function POST(request: Request) {
       const { lvl1_code, lvl2_code } = await mapNameToCode(cfgSchema, lvl1, lvl2 || null);
 
       // 获取流水信息确定 direction 和原始数据
-      let actualDirection = 'any';
+      let actualDirection = 'out';
       const txnResult = await client.query(
         `SELECT date_trunc('month', txn_time)::date as month, source_file_id,
                 in_amt, out_amt, summary, memo, purpose, counterparty_name
