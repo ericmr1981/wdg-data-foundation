@@ -44,14 +44,14 @@ export async function GET(request: Request) {
     let trend: TrendResponse;
     try {
       const cur = await pool.query(
-        `SELECT * FROM ${schema}.v_store_monthly_kpi WHERE month = $1 AND store_code = $2`,
+        `SELECT * FROM ${schema}.v_store_monthly_kpi WHERE to_char(month, 'YYYY-MM') = $1 AND store_code = $2`,
         [month, store]
       );
       if (cur.rows.length === 0) {
         return NextResponse.json({ success: false, data: null, error: 'No data' }, { status: 404 });
       }
       const prev = await pool.query(
-        `SELECT * FROM ${schema}.v_store_monthly_kpi WHERE month = $1 AND store_code = $2`,
+        `SELECT * FROM ${schema}.v_store_monthly_kpi WHERE to_char(month, 'YYYY-MM') = $1 AND store_code = $2`,
         [prevMonth, store]
       );
 

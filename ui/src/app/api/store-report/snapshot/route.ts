@@ -46,7 +46,7 @@ export async function GET(request: Request) {
     let previousRows: StoreKpi[] = [];
     try {
       const cur = await pool.query(
-        `SELECT * FROM ${schema}.v_store_monthly_kpi WHERE month = $1 AND store_code = $2`,
+        `SELECT * FROM ${schema}.v_store_monthly_kpi WHERE to_char(month, 'YYYY-MM') = $1 AND store_code = $2`,
         [month, store]
       );
       currentRows = cur.rows;
@@ -57,7 +57,7 @@ export async function GET(request: Request) {
         );
       }
       const prev = await pool.query(
-        `SELECT * FROM ${schema}.v_store_monthly_kpi WHERE month = $1 AND store_code = $2`,
+        `SELECT * FROM ${schema}.v_store_monthly_kpi WHERE to_char(month, 'YYYY-MM') = $1 AND store_code = $2`,
         [prevMonth, store]
       );
       previousRows = prev.rows;
