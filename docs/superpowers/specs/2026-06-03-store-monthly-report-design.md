@@ -2,7 +2,7 @@
 
 ## 1. 概述
 
-在现有 Next.js UI 中新增"门店月报"功能模块。基于已分类的银行流水与现有 3 张财务视图（`v_profit_statement` / `v_cashflow_statement` / `v_balance_sheet`），按门店 × 月份聚合 9 个核心财务指标，提供当月快照、12 个月历史趋势、Excel 下载能力。
+在现有 Next.js UI 中新增"门店月报"功能模块。基于已分类的银行流水与现有 3 张财务视图（`v_profit_statement` / `v_cashflow_statement` / `v_balance_sheet`），按门店 × 月份聚合核心财务指标，提供当月快照、12 个月历史趋势、Excel 下载能力。
 
 支撑品牌：`gelatomiiix`（`brand_gelatomiiix_dm`）、`bonjur`（`bonjur_dm`）、`xintiandi`（通过 `brand_tamkoko_dm`）。
 
@@ -26,28 +26,35 @@
 
 ## 3. 指标定义
 
-9 个核心指标，全部基于 `v_store_monthly_kpi` 视图：
+UI 展示 **9 个核心指标**（KPI 卡片 + 趋势图）。视图 `v_store_monthly_kpi` 暴露的字段是这些指标的派生基础，部分为中间量（`cost_amt` / `expense_amt` / `hr_amt` / `rent_amt` / `total_in_amt` / `total_out_amt` / `loan_balance`）和 UI 指标 1:1 字段。
 
-| # | 字段 | 来源 | 公式 |
+| # | UI 指标 | view 字段 | 来源 / 公式 |
 |---|---|---|---|
-| 1 | `revenue_amt` | v_profit_statement | `SUM(amount WHERE section='revenue')` |
-| 2 | `cost_amt` | v_profit_statement | `SUM(amount WHERE section='cost')` |
-| 3 | `expense_amt` | v_profit_statement | `SUM(amount WHERE section='expense')` |
-| 4 | `gross_profit_amt` | 派生 | `revenue_amt - cost_amt` |
-| 5 | `net_profit_amt` | 派生 | `revenue_amt - cost_amt - expense_amt` |
-| 6 | `operating_cf_amt` | v_cashflow_statement | `SUM(net_amount WHERE activity='operating')` |
-| 7 | `cash_balance` | v_balance_sheet | 直读 |
-| 8 | `cashflow_runway_months` | 派生 | `cash_balance / |operating_cf_amt|`，仅 `operating_cf_amt < 0` 时非 NULL |
-| 9 | `hr_amt` | v_profit_statement | `SUM(amount WHERE section='expense' AND lvl1_code='HR')` |
-| 10 | `rent_amt` | v_profit_statement | `SUM(amount WHERE section='expense' AND lvl1_code='RENT_UTIL')` |
-| 11 | `hr_ratio_pct` | 派生 | `hr_amt / NULLIF(revenue_amt, 0) * 100`，保留 1 位 |
-| 12 | `rent_ratio_pct` | 派生 | `rent_amt / NULLIF(revenue_amt, 0) * 100`，保留 1 位 |
+| 1 | 营业收入 | `revenue_amt` | `SUM(amount WHERE section='revenue')` |
+| 2 | 营业支出 | `expense_amt` | `SUM(amount WHERE section='expense')`，**期间费用**口径（与 `/u/financial` 利润表一致） |
+| 3 | 毛利 | `gross_profit_amt` | `revenue_amt - cost_amt`（`cost_amt` 为中间量，UI 不单独展示） |
+| 4 | 净利润 | `net_profit_amt` | `revenue_amt - cost_amt - expense_amt` |
+| 5 | 经营现金流 | `operating_cf_amt` | `SUM(net_amount WHERE activity='operating')` |
+| 6 | 银行余额 | `cash_balance` | 直读 `v_balance_sheet` |
+| 7 | 现金流月数 | `cashflow_runway_months` | `cash_balance / |operating_cf_amt|`，仅 `operating_cf_amt < 0` 时非 NULL |
+| 8 | 人力占比率 | `hr_ratio_pct` | `SUM(amount WHERE lvl1_code='HR')::numeric / NULLIF(revenue_amt, 0) * 100`，保留 1 位 |
+| 9 | 租金占比率 | `rent_ratio_pct` | `SUM(amount WHERE lvl1_code='RENT_UTIL')::numeric / NULLIF(revenue_amt, 0) * 100`，保留 1 位 |
+
+**view 额外暴露的中间量**（用于 Excel 同期对比 / 趋势补全，UI 不显示）：
+
+| 字段 | 用途 |
+|---|---|
+| `cost_amt` | 毛利计算 |
+| `hr_amt` / `rent_amt` | 同期对比 sheet 展示绝对值 |
+| `total_in_amt` / `total_out_amt` | 现金流期间汇总 |
+| `loan_balance` | 同期对比（如未来扩展负债率） |
 
 **口径约定**：
 - 所有金额单位：元（数据库 numeric，前端按需格式化）
 - 收入/支出符号：流入为正、流出为负
-- `hr_amt` / `rent_amt` 是绝对值；UI 卡片显示 `hr_ratio_pct` / `rent_ratio_pct`（比率更有运营参考价值）
+- `hr_amt` / `rent_amt` 是绝对值；UI 卡片只显示 `hr_ratio_pct` / `rent_ratio_pct`（比率更有运营参考价值）
 - 与 `/u/financial` 完全同口径（同 view 同 section 划分）
+- 「营业支出」= 期间费用（HR + RENT_UTIL + MKT + ADMIN + SHIP + TAX_SURCHARGE + EXP_OTHER），**不包含** 营业成本（MATERIAL）
 
 ## 4. 数据架构
 
@@ -287,7 +294,7 @@ cd ui && npm install xlsx
    - 访问 `/u/store-report` 不报错
    - 切换品牌/门店/月份筛选均能正常加载
    - 9 张 KPI 卡片数值与 `/u/financial` 利润表/现金流量表/资产负债表对应月数据一致
-   - 7 张趋势图能正常渲染
+   - 8 张趋势图能正常渲染（毛利 + 净利润双线合并为 1 张卡）
    - 点击「下载」按钮能下载 .xlsx 文件，4 个 Sheet 内容齐全
 5. 顶栏「报表」菜单可见，「门店月报」可点击
 6. Dashboard 快捷入口新增「门店月报」卡片
