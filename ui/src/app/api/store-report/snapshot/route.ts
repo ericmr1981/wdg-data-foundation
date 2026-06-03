@@ -7,13 +7,6 @@ import type { ApiResult, SnapshotResponse, StoreKpi } from '@/lib/store-report-t
 
 const PG_ERR_NO_VIEW = '42P01';
 
-function nextMonth(yyyymm: string): string {
-  const [y, m] = yyyymm.split('-').map(Number);
-  const ny = m === 12 ? y + 1 : y;
-  const nm = m === 12 ? 1 : m + 1;
-  return `${ny}-${String(nm).padStart(2, '0')}`;
-}
-
 export async function GET(request: Request) {
   try {
     const user = await getSessionUser();
