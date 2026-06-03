@@ -4,7 +4,9 @@ import { ExcelMetricKey, EXCEL_METRIC_LABELS, KpiMetricKey, KPI_LABELS } from '.
 
 const ALL_METRICS: ExcelMetricKey[] = [
   'revenue_amt', 'cost_amt', 'expense_amt', 'hr_amt', 'rent_amt',
-  'gross_profit_amt', 'net_profit_amt', 'operating_cf_amt',
+  'gross_profit_amt', 'gross_profit_rate_pct',
+  'net_profit_amt', 'net_profit_rate_pct',
+  'operating_cf_amt',
   'cash_balance', 'loan_balance', 'cashflow_runway_months',
   'hr_ratio_pct', 'rent_ratio_pct',
 ];
@@ -31,7 +33,7 @@ function fmtMonths(n: number | null | undefined): number | string {
 }
 
 function fmtCell(key: ExcelMetricKey, v: number | null | undefined): number | string {
-  if (key === 'hr_ratio_pct' || key === 'rent_ratio_pct') return fmtPct(v);
+  if (key === 'hr_ratio_pct' || key === 'rent_ratio_pct' || key === 'gross_profit_rate_pct' || key === 'net_profit_rate_pct') return fmtPct(v);
   if (key === 'cashflow_runway_months') return fmtMonths(v);
   return fmtAmt(v);
 }
@@ -113,6 +115,8 @@ export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
     cashflow_runway_months: input.trend.series.cashflow_runway_months[yoyIndex] ?? null,
     hr_ratio_pct: input.trend.series.hr_ratio_pct[yoyIndex] ?? null,
     rent_ratio_pct: input.trend.series.rent_ratio_pct[yoyIndex] ?? null,
+    gross_profit_rate_pct: input.trend.series.gross_profit_rate_pct?.[yoyIndex] ?? null,
+    net_profit_rate_pct: input.trend.series.net_profit_rate_pct?.[yoyIndex] ?? null,
   } : null;
 
   const yoyRows: any[][] = [
