@@ -1,11 +1,17 @@
 import * as XLSX from 'xlsx';
 import type { SnapshotResponse, StoreKpi, TrendResponse } from './store-report-types';
-import { ExcelMetricKey, EXCEL_METRIC_LABELS } from './store-report-types';
+import { ExcelMetricKey, EXCEL_METRIC_LABELS, KpiMetricKey, KPI_LABELS } from './store-report-types';
 
 const ALL_METRICS: ExcelMetricKey[] = [
   'revenue_amt', 'cost_amt', 'expense_amt', 'hr_amt', 'rent_amt',
   'gross_profit_amt', 'net_profit_amt', 'operating_cf_amt',
   'cash_balance', 'loan_balance', 'cashflow_runway_months',
+  'hr_ratio_pct', 'rent_ratio_pct',
+];
+
+const SERIES_KEYS: KpiMetricKey[] = [
+  'revenue_amt', 'expense_amt', 'gross_profit_amt', 'net_profit_amt',
+  'operating_cf_amt', 'cash_balance', 'cashflow_runway_months',
   'hr_ratio_pct', 'rent_ratio_pct',
 ];
 
@@ -87,7 +93,7 @@ export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
   const ws3 = XLSX.utils.aoa_to_sheet(trendRows);
   XLSX.utils.book_append_sheet(wb, ws3, '历史趋势');
 
-  // Sheet 4: 同期对比 (当月 vs 去年同期)
+  // Sheet 4: 同期对比 (当月 vs 去年同期) — only show metrics available in trend series
   const yoy = (() => {
     const [y, m] = input.month.split('-').map(Number);
     return `${y - 1}-${String(m).padStart(2, '0')}`;
@@ -112,7 +118,7 @@ export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
   const yoyRows: any[][] = [
     ['指标', `当月 (${input.month})`, `去年同期 (${yoy})`, '同比%'],
   ];
-  for (const key of ALL_METRICS) {
+  for (const key of SERIES_KEYS) {
     const curV = (cur as any)[key];
     const yoyV = yoyKpi ? (yoyKpi as any)[key] : null;
     let delta: number | string = '';
@@ -120,7 +126,7 @@ export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
       delta = Math.round(((Number(curV) - Number(yoyV)) / Math.abs(Number(yoyV))) * 1000) / 10;
     }
     yoyRows.push([
-      EXCEL_METRIC_LABELS[key] ?? key,
+      KPI_LABELS[key] ?? key,
       fmtCell(key, curV),
       yoyV == null ? '(无数据)' : fmtCell(key, yoyV),
       delta,

@@ -107,7 +107,7 @@ export async function GET(request: Request) {
     }
 
     const wb = buildStoreReportWorkbook({
-      brand: brandRaw, store, month, generatedAt: new Date(), snapshot, trend,
+      brand, store, month, generatedAt: new Date(), snapshot, trend,
     });
     const buf = workbookToBuffer(wb);
 
@@ -115,7 +115,7 @@ export async function GET(request: Request) {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="${brandRaw}_${store}_${month}.xlsx"`,
+        'Content-Disposition': `attachment; filename="${brand}_${store}_${month}.xlsx"`,
       },
     });
   } catch (err: unknown) {

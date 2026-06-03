@@ -20,7 +20,7 @@ interface StoreOpt { code: string; name: string; }
 export default function StoreReportPage() {
   const { brand: ctxBrand } = useBrand();
   const [brandOptions, setBrandOptions] = useState(BRAND_OPTIONS_HARDCODED);
-  const [brand, setBrand] = useState(ctxBrand || 'gelatomiiix');
+  const [brand, setBrand] = useState(ctxBrand || BRAND_OPTIONS_HARDCODED[0]?.code || 'gelatomiiix');
   const [stores, setStores] = useState<StoreOpt[]>([]);
   const [store, setStore] = useState('');
   const [month, setMonth] = useState(defaultMonth());
