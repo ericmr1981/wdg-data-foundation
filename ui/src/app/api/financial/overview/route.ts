@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
-import { normalizeBrand, getDmSchemaSafe } from '@/lib/brand-server';
+import { normalizeBrand, getDmSchemaSafe, getOdsSchema } from '@/lib/brand-server';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { parsePeriod } from '../period-utils';
 import { ProfitRow, CashflowRow, BalanceSheetRow, CountRow, getErrorMessage } from '@/lib/query-types';
@@ -98,6 +98,17 @@ export async function GET(request: Request) {
     const cashBalance = Number(balanceRes.rows[0]?.cash_balance || 0);
     const storeCount = Number((storesRes.rows[0] as CountRow | undefined)?.cnt || 0);
 
+    // Ignore records count (offset/cancellation with negative amount)
+    let ignoreCount = 0;
+    try {
+      const odsSchema = getOdsSchema(brand);
+      const icRes = await pool.query(
+        `SELECT count(*) as cnt FROM ${dmSchema}.bank_txn_classified_snapshot WHERE classified_source = 'ignore' ${store !== 'all' ? `AND bank_txn_id IN (SELECT id FROM ${odsSchema}.bank_txn WHERE store_code = $1)` : ''}`,
+        store !== 'all' ? [store] : []
+      );
+      ignoreCount = Number(icRes.rows[0]?.cnt || 0);
+    } catch { /* ignore errors */ }
+
     let cashRunway: number | null = null;
     if (operatingCashflow < 0) {
       const burn = Math.abs(operatingCashflow);
@@ -142,6 +153,7 @@ export async function GET(request: Request) {
         revenue, grossMarginRate, netProfitRate,
         operatingCashflow, cashBalance, cashRunway,
         storeCount, revenuePerStore,
+        ignoreCount,
         vsPrevPeriod: {
           revenue: vsRevenue,
           grossMarginRate: vsGm,

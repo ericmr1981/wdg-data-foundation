@@ -59,6 +59,14 @@ BEGIN
     lvl2_code = EXCLUDED.lvl2_code,
     classified_source = EXCLUDED.classified_source,
     updated_at = now();
+
+  -- 标记负金额（冲账/对冲）记录为 ignore，排除出所有计算
+  UPDATE yufeng_dm.bank_txn_classified_snapshot c
+  SET classified_source = 'ignore'
+  FROM yufeng_ods.bank_txn t
+  WHERE c.bank_txn_id = t.id
+    AND (t.in_amt < 0 OR t.out_amt < 0)
+    AND c.classified_source NOT IN ('override', 'ignore');
 END;
 $$;
 

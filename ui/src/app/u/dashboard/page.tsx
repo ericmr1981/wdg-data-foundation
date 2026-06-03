@@ -16,6 +16,7 @@ interface OverviewData {
   cashRunway: number | null;
   storeCount: number;
   revenuePerStore: number;
+  ignoreCount: number;
   vsPrevPeriod: {
     revenue: number;
     grossMarginRate: number;
@@ -469,6 +470,13 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+
+          {overview.ignoreCount > 0 && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 text-xs text-orange-700 flex items-center gap-1">
+              <span>ⓘ</span>
+              <span>包含 <strong>{overview.ignoreCount}</strong> 条对冲/冲账记录（负金额），已自动排除出计算</span>
+            </div>
+          )}
 
           {/* Charts: trend on top, expense below */}
           <div className="space-y-4">
