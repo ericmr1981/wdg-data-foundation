@@ -59,13 +59,32 @@ BEGIN
     classified_source = EXCLUDED.classified_source,
     updated_at = now();
 
-  -- 标记负金额（冲账/对冲）记录为 ignore，排除出所有计算
+  -- 标记负金额（冲账/对冲）记录为 ignore
   UPDATE bonjur_dm.bank_txn_classified_snapshot c
   SET classified_source = 'ignore'
   FROM bonjur_ods.bank_txn t
   WHERE c.bank_txn_id = t.id
     AND (t.in_amt < 0 OR t.out_amt < 0)
     AND c.classified_source NOT IN ('override', 'ignore');
+
+  -- 同时标记对应的正金额记录（同门店+同对手+同文件+绝对值相同）
+  UPDATE bonjur_dm.bank_txn_classified_snapshot c
+  SET classified_source = 'ignore'
+  FROM bonjur_ods.bank_txn t
+  WHERE c.bank_txn_id = t.id
+    AND c.classified_source NOT IN ('override', 'ignore')
+    AND EXISTS (
+      SELECT 1 FROM bonjur_ods.bank_txn n
+      WHERE n.id != t.id
+        AND n.store_code = t.store_code
+        AND n.counterparty_name IS NOT DISTINCT FROM t.counterparty_name
+        AND n.source_file_id = t.source_file_id
+        AND (n.in_amt < 0 OR n.out_amt < 0)
+        AND (
+          (ABS(COALESCE(n.in_amt, 0)) = COALESCE(t.in_amt, 0) AND COALESCE(t.in_amt, 0) > 0)
+          OR (ABS(COALESCE(n.out_amt, 0)) = COALESCE(t.out_amt, 0) AND COALESCE(t.out_amt, 0) > 0)
+        )
+    );
 END;
 $$;
 
