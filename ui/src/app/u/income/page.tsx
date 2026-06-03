@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useBrand } from '@/lib/brand-context';
 import { getErrorMessage } from '@/lib/query-types';
 import {
@@ -61,7 +61,9 @@ export default function PaymentPage() {
   const [stores, setStores] = useState<{ code: string; name: string }[]>([]);
   const [search, setSearch] = useState('');
 
-  // 从 URL 参数继承筛选条件
+  const urlParamsLoadedRef = useRef(false);
+
+  // 从 URL 参数继承筛选条件（仅在首次加载时）
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const s = params.get('span');
@@ -70,6 +72,7 @@ export default function PaymentPage() {
     if (s && ['month', 'quarter', 'year'].includes(s)) setSpan(s as any);
     if (p) setPeriod(p);
     if (st) setStore(st);
+    urlParamsLoadedRef.current = true;
   }, []);
 
   // Income metrics
@@ -84,6 +87,7 @@ export default function PaymentPage() {
   }, [span]);
 
   useEffect(() => {
+    if (!urlParamsLoadedRef.current) return;
     setPeriod(prev => prev === 'all' ? 'all' : periodOptions[periodOptions.length - 1] || '2026-01');
   }, [span, periodOptions]);
 

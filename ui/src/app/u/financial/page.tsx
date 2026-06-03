@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useBrand } from '@/lib/brand-context';
 import ProfitStatement from './profit/profit-tab';
 import CashflowStatement from './cashflow/cashflow-tab';
@@ -39,7 +39,9 @@ export default function FinancialLayout() {
   const [period, setPeriod] = useState('2026-01');
   const [store, setStore] = useState('all');
 
-  // 从 URL 参数继承筛选条件
+  const urlParamsLoadedRef = useRef(false);
+
+  // 从 URL 参数继承筛选条件（仅在首次加载时）
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const s = params.get('span');
@@ -48,6 +50,7 @@ export default function FinancialLayout() {
     if (s && ['month', 'quarter', 'year'].includes(s)) setSpan(s as SpanId);
     if (p) setPeriod(p);
     if (st) setStore(st);
+    urlParamsLoadedRef.current = true;
   }, []);
 
   const periodOptions = useMemo(() => {
@@ -61,6 +64,7 @@ export default function FinancialLayout() {
   }, [span]);
 
   useEffect(() => {
+    if (!urlParamsLoadedRef.current) return;
     setPeriod(periodOptions[periodOptions.length - 1] || '2026-01');
   }, [span, periodOptions]);
 
