@@ -114,6 +114,14 @@ export async function POST(request: Request) {
           actualDirection = 'out';
         }
       }
+      // 当流水数据无法确定方向时, 从分类字典的方向推断
+      if (actualDirection !== 'in' && actualDirection !== 'out') {
+        const dirRes = await client.query(
+          `SELECT direction FROM ${cfgSchema}.dim_category_lvl1 WHERE lvl1_code = $1 LIMIT 1`,
+          [lvl1_code]
+        );
+        actualDirection = dirRes.rows.length > 0 ? dirRes.rows[0].direction : 'in';
+      }
       const txn = txnResult.rows.length > 0 ? txnResult.rows[0] : null;
       if (txn?.source_file_id) {
         sourceFileIds.add(Number(txn.source_file_id));

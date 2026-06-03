@@ -82,9 +82,13 @@ export async function POST(request: Request) {
         }
       }
     }
-    // direction 必须有 'in'/'out'('any' 会导致 bank_rule_map CHECK 约束失败)
+    // 当流水数据无法确定方向时, 从分类字典的方向推断
     if (actualDirection !== 'in' && actualDirection !== 'out') {
-      return NextResponse.json({ success: false, error: `Invalid direction: ${actualDirection}` }, { status: 400 });
+      const dirRes = await pool.query(
+        `SELECT direction FROM ${cfgSchema}.dim_category_lvl1 WHERE lvl1_code = $1 LIMIT 1`,
+        [lvl1_code]
+      );
+      actualDirection = dirRes.rows.length > 0 ? dirRes.rows[0].direction : 'in';
     }
 
     // 冲突检查（主条件）- 使用 lvl1/lvl2 列名
