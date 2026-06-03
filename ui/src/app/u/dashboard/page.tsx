@@ -450,7 +450,6 @@ export default function DashboardPage() {
                 onClick={() => setActiveTrend(k)}
               />
             ))}
-            <KpiCard label="营业支出" value={overview.expenses} trendKey="expenses" active={activeTrend === 'expenses'} onClick={() => setActiveTrend('expenses')} />
             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3">
               <div className="text-[11px] text-blue-600">银行余额</div>
               <div className="text-sm font-bold text-blue-900 mt-1">
