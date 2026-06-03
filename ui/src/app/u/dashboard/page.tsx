@@ -360,11 +360,12 @@ function QuickLinks({ span, period, store }: { span: string; period: string; sto
     { href: `/u/payment?${params}`, label: '付款分析', desc: '按科目 / 往来方查看支出' },
     { href: `/u/income?${params}`, label: '收入分析', desc: '收入趋势 / 银行入账率' },
     { href: `/u/sales?${params}`, label: '销售报表', desc: '各门店销售数据汇总' },
+    { href: `/u/store-report?${params}`, label: '门店月报', desc: '当月快照 + 12月趋势 + Excel' },
   ];
   return (
     <div className="bg-white border rounded-lg p-4">
       <h3 className="text-sm font-semibold text-gray-700 mb-3">快捷入口</h3>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         {links.map(l => (
           <a key={l.href} href={l.href} className="block p-3 border rounded hover:bg-gray-50 transition-colors">
             <div className="text-sm font-medium text-blue-600">{l.label}</div>
