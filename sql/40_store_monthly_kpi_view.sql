@@ -12,7 +12,7 @@ WITH profit_agg AS (
     month, store_code,
     SUM(CASE WHEN section = 'revenue' THEN amount ELSE 0 END) AS revenue_amt,
     SUM(CASE WHEN section = 'cost'     THEN amount ELSE 0 END) AS cost_amt,
-    SUM(CASE WHEN section = 'expense'  THEN amount ELSE 0 END) AS expense_amt,
+    SUM(CASE WHEN section = 'expense' AND lvl1_code NOT IN ('EXP_OTHER', 'TAX_SURCHARGE', 'BUILD') THEN amount ELSE 0 END) AS expense_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'HR'        THEN amount ELSE 0 END) AS hr_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'RENT_UTIL' THEN amount ELSE 0 END) AS rent_amt
   FROM bonjur_dm.v_profit_statement GROUP BY month, store_code
@@ -29,14 +29,16 @@ SELECT
   p.month, p.store_code,
   p.revenue_amt, p.cost_amt, p.expense_amt, p.hr_amt, p.rent_amt,
   p.revenue_amt - p.cost_amt AS gross_profit_amt,
-  p.revenue_amt - p.cost_amt - p.expense_amt AS net_profit_amt,
+  p.revenue_amt - p.expense_amt AS net_profit_amt,
   c.operating_cf_amt, c.total_in_amt, c.total_out_amt,
   b.cash_balance, b.loan_balance,
   CASE WHEN c.operating_cf_amt < 0
     THEN ROUND(b.cash_balance / ABS(c.operating_cf_amt), 1)
   END AS cashflow_runway_months,
-  ROUND(p.hr_amt::numeric  / NULLIF(p.revenue_amt, 0) * 100, 1) AS hr_ratio_pct,
-  ROUND(p.rent_amt::numeric / NULLIF(p.revenue_amt, 0) * 100, 1) AS rent_ratio_pct
+  ROUND(ABS(p.hr_amt)::numeric  / NULLIF(p.revenue_amt, 0) * 100, 1) AS hr_ratio_pct,
+  ROUND(ABS(p.rent_amt)::numeric / NULLIF(p.revenue_amt, 0) * 100, 1) AS rent_ratio_pct,
+  ROUND((p.revenue_amt - p.cost_amt)::numeric / NULLIF(p.revenue_amt, 0) * 100, 1) AS gross_profit_rate_pct,
+  ROUND((p.revenue_amt - p.expense_amt)::numeric / NULLIF(p.revenue_amt, 0) * 100, 1) AS net_profit_rate_pct
 FROM profit_agg p
 LEFT JOIN cashflow_agg c USING (month, store_code)
 LEFT JOIN bonjur_dm.v_balance_sheet b USING (month, store_code);
@@ -48,7 +50,7 @@ WITH profit_agg AS (
     month, store_code,
     SUM(CASE WHEN section = 'revenue' THEN amount ELSE 0 END) AS revenue_amt,
     SUM(CASE WHEN section = 'cost'     THEN amount ELSE 0 END) AS cost_amt,
-    SUM(CASE WHEN section = 'expense'  THEN amount ELSE 0 END) AS expense_amt,
+    SUM(CASE WHEN section = 'expense' AND lvl1_code NOT IN ('EXP_OTHER', 'TAX_SURCHARGE', 'BUILD') THEN amount ELSE 0 END) AS expense_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'HR'        THEN amount ELSE 0 END) AS hr_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'RENT_UTIL' THEN amount ELSE 0 END) AS rent_amt
   FROM brand_gelatomiiix_dm.v_profit_statement GROUP BY month, store_code
@@ -65,14 +67,16 @@ SELECT
   p.month, p.store_code,
   p.revenue_amt, p.cost_amt, p.expense_amt, p.hr_amt, p.rent_amt,
   p.revenue_amt - p.cost_amt AS gross_profit_amt,
-  p.revenue_amt - p.cost_amt - p.expense_amt AS net_profit_amt,
+  p.revenue_amt - p.expense_amt AS net_profit_amt,
   c.operating_cf_amt, c.total_in_amt, c.total_out_amt,
   b.cash_balance, b.loan_balance,
   CASE WHEN c.operating_cf_amt < 0
     THEN ROUND(b.cash_balance / ABS(c.operating_cf_amt), 1)
   END AS cashflow_runway_months,
-  ROUND(p.hr_amt::numeric  / NULLIF(p.revenue_amt, 0) * 100, 1) AS hr_ratio_pct,
-  ROUND(p.rent_amt::numeric / NULLIF(p.revenue_amt, 0) * 100, 1) AS rent_ratio_pct
+  ROUND(ABS(p.hr_amt)::numeric  / NULLIF(p.revenue_amt, 0) * 100, 1) AS hr_ratio_pct,
+  ROUND(ABS(p.rent_amt)::numeric / NULLIF(p.revenue_amt, 0) * 100, 1) AS rent_ratio_pct,
+  ROUND((p.revenue_amt - p.cost_amt)::numeric / NULLIF(p.revenue_amt, 0) * 100, 1) AS gross_profit_rate_pct,
+  ROUND((p.revenue_amt - p.expense_amt)::numeric / NULLIF(p.revenue_amt, 0) * 100, 1) AS net_profit_rate_pct
 FROM profit_agg p
 LEFT JOIN cashflow_agg c USING (month, store_code)
 LEFT JOIN brand_gelatomiiix_dm.v_balance_sheet b USING (month, store_code);
@@ -84,7 +88,7 @@ WITH profit_agg AS (
     month, store_code,
     SUM(CASE WHEN section = 'revenue' THEN amount ELSE 0 END) AS revenue_amt,
     SUM(CASE WHEN section = 'cost'     THEN amount ELSE 0 END) AS cost_amt,
-    SUM(CASE WHEN section = 'expense'  THEN amount ELSE 0 END) AS expense_amt,
+    SUM(CASE WHEN section = 'expense' AND lvl1_code NOT IN ('EXP_OTHER', 'TAX_SURCHARGE', 'BUILD') THEN amount ELSE 0 END) AS expense_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'HR'        THEN amount ELSE 0 END) AS hr_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'RENT_UTIL' THEN amount ELSE 0 END) AS rent_amt
   FROM brand_tamkoko_dm.v_profit_statement GROUP BY month, store_code
@@ -101,14 +105,16 @@ SELECT
   p.month, p.store_code,
   p.revenue_amt, p.cost_amt, p.expense_amt, p.hr_amt, p.rent_amt,
   p.revenue_amt - p.cost_amt AS gross_profit_amt,
-  p.revenue_amt - p.cost_amt - p.expense_amt AS net_profit_amt,
+  p.revenue_amt - p.expense_amt AS net_profit_amt,
   c.operating_cf_amt, c.total_in_amt, c.total_out_amt,
   b.cash_balance, b.loan_balance,
   CASE WHEN c.operating_cf_amt < 0
     THEN ROUND(b.cash_balance / ABS(c.operating_cf_amt), 1)
   END AS cashflow_runway_months,
-  ROUND(p.hr_amt::numeric  / NULLIF(p.revenue_amt, 0) * 100, 1) AS hr_ratio_pct,
-  ROUND(p.rent_amt::numeric / NULLIF(p.revenue_amt, 0) * 100, 1) AS rent_ratio_pct
+  ROUND(ABS(p.hr_amt)::numeric  / NULLIF(p.revenue_amt, 0) * 100, 1) AS hr_ratio_pct,
+  ROUND(ABS(p.rent_amt)::numeric / NULLIF(p.revenue_amt, 0) * 100, 1) AS rent_ratio_pct,
+  ROUND((p.revenue_amt - p.cost_amt)::numeric / NULLIF(p.revenue_amt, 0) * 100, 1) AS gross_profit_rate_pct,
+  ROUND((p.revenue_amt - p.expense_amt)::numeric / NULLIF(p.revenue_amt, 0) * 100, 1) AS net_profit_rate_pct
 FROM profit_agg p
 LEFT JOIN cashflow_agg c USING (month, store_code)
 LEFT JOIN brand_tamkoko_dm.v_balance_sheet b USING (month, store_code);
