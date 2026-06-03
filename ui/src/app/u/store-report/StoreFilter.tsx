@@ -26,11 +26,12 @@ function defaultMonth(): string {
 function lastNMonths(n: number): string[] {
   const out: string[] = [];
   const d = new Date();
+  const baseY = d.getFullYear();
+  const baseM = d.getMonth() + 1; // 1-12
   for (let i = 0; i < n; i++) {
-    const y = d.getFullYear();
-    const m = d.getMonth() + 1 - i;
-    const yy = m <= 0 ? y - 1 : y;
-    const mm = m <= 0 ? 12 + m : m;
+    const totalM = baseM - i; // can be negative
+    const yy = baseY + Math.floor((totalM - 1) / 12);
+    const mm = ((totalM - 1) % 12 + 12) % 12 + 1;
     out.push(`${yy}-${String(mm).padStart(2, '0')}`);
   }
   return out.reverse();
