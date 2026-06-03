@@ -32,9 +32,16 @@ DB_CONFIG = {
     "password": os.getenv("DB_PASSWORD"),
 }
 
-STORE_CODE = "sh_xtd"
-STORE_NAME = "上海新天地广场"
-TARGET_TABLE = "gelatomiiix_ods.income_detail"
+STORE_CODE = os.getenv("INCOME_STORE_CODE", "sh_xtd")
+STORE_NAME = ""
+BRAND_CODE = os.getenv("INCOME_BRAND_CODE", "gelatomiiix")
+
+def get_target_table(brand: str) -> str:
+    if brand in ('bonjur',):
+        return "bonjur_ods.income_detail"
+    if brand in ('gelatomiiix',):
+        return "gelatomiiix_ods.income_detail"
+    return f"brand_{brand}_ods.income_detail"
 
 # 有效第三方支付渠道（存入 payment_methods，计入银行入账率）
 THIRD_PARTY_METHODS = {
@@ -108,7 +115,7 @@ def parse_date(s: str) -> Optional[datetime]:
         return None
 
 
-def transform_row(r: dict, source_file: str) -> Optional[dict]:
+def transform_row(r: dict, source_file: str, store_code_override: str = "", store_name_override: str = "") -> Optional[dict]:
     """将 CSV 行转换为数据库记录"""
     order_no_raw = r.get("订单号", "").strip()
     order_no = strip_backtick(order_no_raw)
@@ -169,9 +176,11 @@ def transform_row(r: dict, source_file: str) -> Optional[dict]:
     member_phone = r.get("用户手机号", "").strip()
     member_phone = member_phone if member_phone and member_phone != "--" else None
 
+    csv_store_code = r.get("门店编码", "").strip().strip("`")
+    csv_store_name = r.get("门店名称", "").strip()
     return {
-        "store_code": STORE_CODE,
-        "store_name": STORE_NAME,
+        "store_code": csv_store_code or store_code_override or STORE_CODE,
+        "store_name": csv_store_name or store_name_override,
         "biz_date": biz_date.date() if biz_date else None,
         "order_no": order_no_raw,
         "order_no_clean": order_no,
@@ -241,10 +250,10 @@ def create_ingest_file(source_file: str, file_hash: str, file_size: int, conn) -
             """
             INSERT INTO raw.ingest_file
               (brand_code, store_code, source_type, month, file_name, file_path, file_hash, file_size, status)
-            VALUES ('gelatomiiix', %s, 'income_detail', %s, %s, %s, %s, %s, 'pending')
+            VALUES (%s, %s, 'income_detail', %s, %s, %s, %s, %s, 'pending')
             RETURNING id
             """,
-            (STORE_CODE, month, Path(source_file).name, source_file, file_hash, file_size),
+            (BRAND_CODE, STORE_CODE, month, Path(source_file).name, source_file, file_hash, file_size),
         )
         return cur.fetchone()[0]
 
@@ -307,7 +316,7 @@ def insert_rows(records: list[dict], source_file_id: int, conn) -> int:
         execute_values(
             cur,
             f"""
-            INSERT INTO {TARGET_TABLE}
+            INSERT INTO {target_table}
               (store_code, store_name, biz_date, order_no, order_no_clean,
                pay_time, order_time,
                revenue_amt, net_amt, gross_amt, discount_amt, overflow_amt, coupon_fee,
@@ -347,10 +356,11 @@ def insert_rows(records: list[dict], source_file_id: int, conn) -> int:
     return len(values)
 
 
-def process_file(fp: str, conn, dry_run: bool) -> dict:
+def process_file(fp: str, conn, dry_run: bool, store_code: str = "", store_name: str = "") -> dict:
     file_hash = calculate_sha256(fp)
     file_size = os.path.getsize(fp)
     source_file = str(Path(fp).resolve())
+    target_table = get_target_table(BRAND_CODE)
 
     existing = check_ingest_file(file_hash, conn)
     if existing and existing["status"] == "success":
@@ -364,7 +374,7 @@ def process_file(fp: str, conn, dry_run: bool) -> dict:
     with open(fp, encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for r in reader:
-            row = transform_row(r, source_file)
+            row = transform_row(r, source_file, store_code, store_name)
             if row:
                 rows.append(row)
 
@@ -380,10 +390,33 @@ def process_file(fp: str, conn, dry_run: bool) -> dict:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="gelatomiiix 收入明细表 CSV 导入")
+    ap = argparse.ArgumentParser(description="收入明细表 CSV 导入（多品牌支持）")
     ap.add_argument("input", help="CSV file or directory containing CSV files")
     ap.add_argument("--dry-run", action="store_true", help="Parse and report without inserting")
+    ap.add_argument("--brand", default=os.getenv("INCOME_BRAND_CODE", "gelatomiiix"), help="Brand code")
+    ap.add_argument("--store-code", default=os.getenv("INCOME_STORE_CODE", ""), help="Store code")
     args = ap.parse_args()
+
+    global STORE_CODE, BRAND_CODE
+    STORE_CODE = args.store_code or STORE_CODE
+    BRAND_CODE = args.brand
+
+    # Look up store name from ops.stores if not set
+    global STORE_NAME
+    if not STORE_NAME:
+        try:
+            conn_lookup = psycopg2.connect(**DB_CONFIG)
+            cur = conn_lookup.cursor()
+            cur.execute("SELECT store_name FROM ops.stores WHERE store_code = %s AND enabled = true LIMIT 1", (STORE_CODE,))
+            row = cur.fetchone()
+            if row:
+                STORE_NAME = row[0]
+            conn_lookup.close()
+        except Exception:
+            STORE_NAME = STORE_CODE
+
+    target_table = get_target_table(BRAND_CODE)
+    print(f"Brand: {BRAND_CODE}, Store: {STORE_CODE} ({STORE_NAME}), Table: {target_table}")
 
     in_path = Path(args.input)
     if in_path.is_dir():
@@ -398,7 +431,7 @@ def main():
     conn = psycopg2.connect(**DB_CONFIG)
     try:
         for fp in files:
-            process_file(fp, conn, args.dry_run)
+            process_file(fp, conn, args.dry_run, STORE_CODE, STORE_NAME)
     finally:
         conn.close()
     print("Done.")

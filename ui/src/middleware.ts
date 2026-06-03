@@ -24,7 +24,8 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api/stores') ||
     pathname.startsWith('/api/gelatomiiix/income/qimai-detail') ||
     pathname.startsWith('/api/gelatomiiix/income/upload-qimai') ||
-    pathname.startsWith('/api/gelatomiiix/income/bank-entry-stats') ||
+    pathname.startsWith('/api/income/bank-entry-stats') ||
+	    pathname.startsWith('/api/gelatomiiix/income/bank-entry-stats') ||
     pathname.startsWith('/api/bonjur/income/upload-qimai') ||
     pathname.startsWith('/api/bonjur/income/bank-entry-stats') ||
     pathname.startsWith('/api/bonjur/sales/upload-product') ||

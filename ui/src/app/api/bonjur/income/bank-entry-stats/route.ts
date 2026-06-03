@@ -42,7 +42,6 @@ export async function GET(request: NextRequest) {
     const storeWhere = store ? `AND store_code = '${st}'` : '';
     const bankStoreWhere = store ? `AND t.store_code = '${st}'` : '';
     const trendStoreWhere = store ? `WHERE store_code = '${st}'` : '';
-
     // --- current month channel data ---
     let currMonthDateClause = '1=0';
     let currMonthBankClause = '1=0';
@@ -58,19 +57,13 @@ export async function GET(request: NextRequest) {
         pool.query(`SELECT s.lvl2_code AS channel, COALESCE(SUM(t.in_amt),0) AS bank_entry_amt
           FROM bonjur_dm.bank_txn_classified_snapshot s
           JOIN bonjur_ods.bank_txn t ON t.id = s.bank_txn_id
-          WHERE s.lvl1_code='REV_BIZ' AND s.classified_source IN ('rule','override')
+          WHERE s.lvl1_code='REV_BIZ' AND s.lvl2_code NOT IN ('OTHER_CH','REFUND_IN') AND s.classified_source IN ('rule','override')
             ${currMonthBankClause} ${bankStoreWhere}
           GROUP BY s.lvl2_code`),
         pool.query(`SELECT
-          COALESCE(NULLIF(d.channel, 'OTHER'),
-            CASE WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
-              WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
-              WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
-              WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
-              WHEN '抖音团购券' = ANY(payment_methods) THEN 'DOUYIN'
-              WHEN '饿了么' = ANY(payment_methods) THEN 'ELEME'
-              WHEN '京东支付' = ANY(payment_methods) THEN 'JD'
-              ELSE 'OTHER' END
+          COALESCE(
+            (SELECT m.channel_code FROM bonjur_cfg.channel_mapping m WHERE m.payment_method = ANY(d.payment_methods) ORDER BY m.sort_order LIMIT 1),
+            'OTHER'
           ) AS channel, SUM(net_amt) AS qimai_net_amt
           FROM bonjur_ods.income_detail d
           WHERE 1=1 ${currMonthDateClause} ${storeWhere}
@@ -85,15 +78,9 @@ export async function GET(request: NextRequest) {
     }
 
     const channelMetricsResult = await pool.query(`SELECT
-      COALESCE(NULLIF(d.channel, 'OTHER'),
-        CASE WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
-          WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
-          WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
-          WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
-          WHEN '抖音团购券' = ANY(payment_methods) THEN 'DOUYIN'
-          WHEN '饿了么' = ANY(payment_methods) THEN 'ELEME'
-          WHEN '京东支付' = ANY(payment_methods) THEN 'JD'
-          ELSE 'OTHER' END
+      COALESCE(
+        (SELECT m.channel_code FROM bonjur_cfg.channel_mapping m WHERE m.payment_method = ANY(d.payment_methods) ORDER BY m.sort_order LIMIT 1),
+        'OTHER'
       ) AS channel, SUM(net_amt) AS qimai_net_amt
       FROM bonjur_ods.income_detail d
       WHERE 1=1 ${dateClause} ${storeWhere}
@@ -102,7 +89,7 @@ export async function GET(request: NextRequest) {
     const bankEntryResult = await pool.query(`SELECT s.lvl2_code AS channel, COALESCE(SUM(t.in_amt),0) AS bank_entry_amt
       FROM bonjur_dm.bank_txn_classified_snapshot s
       JOIN bonjur_ods.bank_txn t ON t.id = s.bank_txn_id
-      WHERE s.lvl1_code='REV_BIZ' AND s.classified_source IN ('rule','override')
+      WHERE s.lvl1_code='REV_BIZ' AND s.lvl2_code NOT IN ('OTHER_CH','REFUND_IN') AND s.classified_source IN ('rule','override')
         ${monthClause} ${bankStoreWhere}
       GROUP BY s.lvl2_code`);
 
@@ -115,7 +102,7 @@ export async function GET(request: NextRequest) {
       `SELECT to_char(t.txn_time::date,'YYYY-MM') AS month,SUM(t.in_amt) AS bank_entry_amt
        FROM bonjur_dm.bank_txn_classified_snapshot s
        JOIN bonjur_ods.bank_txn t ON t.id = s.bank_txn_id
-       WHERE s.lvl1_code='REV_BIZ' AND s.classified_source IN ('rule','override')
+       WHERE s.lvl1_code='REV_BIZ' AND s.lvl2_code NOT IN ('OTHER_CH','REFUND_IN') AND s.classified_source IN ('rule','override')
          ${trendBankDateClause} ${bankStoreWhere}
        GROUP BY 1 ORDER BY 1`);
 
@@ -133,11 +120,9 @@ export async function GET(request: NextRequest) {
 
     const unmatchedOrdersResult = await pool.query(`SELECT month,ch,COUNT(*) oc,SUM(net_amt) ua FROM (
       SELECT to_char(biz_date,'YYYY-MM') AS month,
-        COALESCE(NULLIF(d.channel, 'OTHER'),
-          CASE WHEN '微信支付'=ANY(payment_methods) THEN 'WECHAT' WHEN '支付宝支付'=ANY(payment_methods) THEN 'ALIPAY'
-            WHEN '美团团购券'=ANY(payment_methods) THEN 'MEITUAN' WHEN '云闪付'=ANY(payment_methods) THEN 'UNIONPAY'
-            WHEN '抖音团购券'=ANY(payment_methods) THEN 'DOUYIN' WHEN '饿了么'=ANY(payment_methods) THEN 'ELEME'
-            WHEN '京东支付'=ANY(payment_methods) THEN 'JD' ELSE 'OTHER' END
+        COALESCE(
+          (SELECT m.channel_code FROM bonjur_cfg.channel_mapping m WHERE m.payment_method = ANY(d.payment_methods) ORDER BY m.sort_order LIMIT 1),
+          'OTHER'
         ) AS ch, net_amt
       FROM bonjur_ods.income_detail d
       WHERE third_party_txn_no IS NULL ${unmatchedDateClause} ${storeWhere}

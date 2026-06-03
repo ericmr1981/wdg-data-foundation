@@ -1,25 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { normalizeBrand, getOdsSchema, getDmSchema, getCfgSchema } from '@/lib/brand-server';
 import { getErrorMessage } from '@/lib/query-types';
-import { getCfgSchema } from '@/lib/brand-server';
 import { parsePeriod } from '@/app/api/financial/period-utils';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/gelatomiiix/income/bank-entry-stats?brand=gelatomiiix&period=2026-04&span=month
+// GET /api/income/bank-entry-stats?brand=gelatomiiix&period=2026-04&span=month
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const brand = searchParams.get('brand');
+    const brandParam = searchParams.get('brand');
     const period = searchParams.get('period');
     const span = searchParams.get('span') || 'month';
     const store = searchParams.get('store') || '';
 
-    if (!brand) {
+    if (!brandParam) {
       return NextResponse.json({ success: false, error: 'brand required' }, { status: 400 });
     }
 
+    const brand = normalizeBrand(brandParam);
+    if (!brand) {
+      return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
+    }
+
+    const odsSchema = getOdsSchema(brand);
+    const dmSchema = getDmSchema(brand);
+    // Legacy brands (gelatomiiix) store income_detail in non-prefixed schema
+    const incomeOds = brand === 'gelatomiiix' ? 'gelatomiiix_ods' : odsSchema;
     const cfgSchema = getCfgSchema(brand);
+
     const hasPeriod = period && period !== 'all';
     let dateClause = '';
     let bankDateClause = '';
@@ -51,7 +61,6 @@ export async function GET(request: NextRequest) {
       bankDateClause = `AND t.txn_time < $${dn}::DATE`;
       umParams.push(periodStart, periodEndInclusive);
       unmatchedDateClause = `AND biz_date >= $${store && store !== 'all' ? 2 : 1}::DATE AND biz_date <= $${store && store !== 'all' ? 3 : 2}::DATE`;
-      // 当月精确范围
       currParams.push(periodStart, periodEnd);
       if (store && store !== 'all') {
         currMonthDateClause = `AND biz_date >= $1::DATE AND biz_date < $2::DATE AND store_code = $3`;
@@ -63,7 +72,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // --- channelMetrics ---
+    // --- channelMetrics (qimai income from income_detail) ---
     const channelMetricsResult = await pool.query(`
       SELECT
         COALESCE(
@@ -71,7 +80,7 @@ export async function GET(request: NextRequest) {
           'OTHER'
         ) AS channel,
         COALESCE(SUM(net_amt), 0) AS qimai_net_amt
-      FROM gelatomiiix_ods.income_detail
+      FROM ${incomeOds}.income_detail
       WHERE NOT is_refund
         AND NOT is_member_payment
         ${dateClause} ${storeClause}
@@ -79,13 +88,13 @@ export async function GET(request: NextRequest) {
       ORDER BY 1
     `, params);
 
-    // --- bank entry by channel (使用预分类快照, 与 income-metrics/counterparty 口径一致) ---
+    // --- bank entry by channel (使用预分类快照) ---
     const bankEntryResult = await pool.query(`
       SELECT
         c.lvl2_code AS channel,
         COALESCE(SUM(COALESCE(t.in_amt, 0)), 0) AS bank_entry_amt
-      FROM brand_gelatomiiix_ods.bank_txn t
-      JOIN brand_gelatomiiix_dm.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
+      FROM ${odsSchema}.bank_txn t
+      JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
       WHERE c.classified_source IN ('rule', 'override')
         AND c.lvl1_code = 'REV_BIZ'
         AND c.lvl2_code NOT IN ('OTHER_CH', 'REFUND_IN')
@@ -102,8 +111,8 @@ export async function GET(request: NextRequest) {
         pool.query(`
           SELECT c.lvl2_code AS channel,
                  COALESCE(SUM(COALESCE(t.in_amt, 0)), 0) AS bank_entry_amt
-          FROM brand_gelatomiiix_ods.bank_txn t
-          JOIN brand_gelatomiiix_dm.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
+          FROM ${odsSchema}.bank_txn t
+          JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
           WHERE c.classified_source IN ('rule', 'override')
             AND c.lvl1_code = 'REV_BIZ'
             AND c.lvl2_code NOT IN ('OTHER_CH', 'REFUND_IN')
@@ -118,7 +127,7 @@ export async function GET(request: NextRequest) {
               'OTHER'
             ) AS channel,
             COALESCE(SUM(net_amt), 0) AS qimai_net_amt
-          FROM gelatomiiix_ods.income_detail
+          FROM ${incomeOds}.income_detail
           WHERE NOT is_refund AND NOT is_member_payment
             ${currMonthDateClause}
           GROUP BY 1
@@ -144,14 +153,14 @@ export async function GET(request: NextRequest) {
     const monthlyTrendResult = await pool.query(`
       WITH qimai_monthly AS (
         SELECT to_char(biz_date, 'YYYY-MM') AS month, SUM(net_amt) AS qimai_net_amt
-        FROM gelatomiiix_ods.income_detail
+        FROM ${incomeOds}.income_detail
         WHERE NOT is_refund AND NOT is_member_payment ${trendDateClause} ${trendStore}
         GROUP BY 1
       ),
       bank_monthly AS (
         SELECT to_char(t.txn_time, 'YYYY-MM') AS month, SUM(COALESCE(t.in_amt, 0)) AS bank_entry_amt
-        FROM brand_gelatomiiix_ods.bank_txn t
-        JOIN brand_gelatomiiix_dm.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
+        FROM ${odsSchema}.bank_txn t
+        JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
         WHERE c.classified_source IN ('rule', 'override')
           AND c.lvl1_code = 'REV_BIZ'
           AND c.lvl2_code NOT IN ('OTHER_CH', 'REFUND_IN')
@@ -175,7 +184,7 @@ export async function GET(request: NextRequest) {
         ) AS channel,
         COUNT(*) AS order_count,
         COALESCE(SUM(net_amt), 0) AS unentered_amt
-      FROM gelatomiiix_ods.income_detail
+      FROM ${incomeOds}.income_detail
       WHERE third_party_txn_no IS NULL
         AND NOT is_refund
         AND NOT is_member_payment

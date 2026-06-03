@@ -258,7 +258,7 @@ export default function PaymentPage() {
       )}
 
       {/* ===== 银行入账率区块 ===== */}
-      {(brand === 'gelatomiiix' || brand === 'bonjur') && (
+      {brand && (
         <div className="mt-8 pt-8 border-t">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">银行入账率</h2>
           <BankEntryRateSection brand={brand} span={span} period={period} store={store} />
@@ -382,6 +382,7 @@ const CHANNEL_COLORS: Record<string, string> = {
   WECHAT: 'bg-green-50 border-green-200 text-green-800',
   ALIPAY: 'bg-blue-50 border-blue-200 text-blue-800',
   MEITUAN: 'bg-orange-50 border-orange-200 text-orange-800',
+  CLOUD_PAY: 'bg-gray-50 border-gray-200 text-gray-800',
   UNIONPAY: 'bg-gray-50 border-gray-200 text-gray-800',
   DOUYIN: 'bg-pink-50 border-pink-200 text-pink-800',
   ELEME: 'bg-yellow-50 border-yellow-200 text-yellow-800',
@@ -392,6 +393,7 @@ const CHANNEL_LABELS: Record<string, string> = {
   WECHAT: '微信支付',
   ALIPAY: '支付宝',
   MEITUAN: '美团/蜜可诗',
+  CLOUD_PAY: '云闪付',
   UNIONPAY: '云闪付',
   DOUYIN: '抖音团购券',
   ELEME: '饿了么',
@@ -425,7 +427,7 @@ function BankEntryRateSection({ brand, span, period, store }: {
     setError(null);
     const storeParam = store && store !== 'all' ? `&store=${encodeURIComponent(store)}` : '';
     const periodParam = period && period !== 'all' ? `&period=${period}` : '';
-    fetch(`/api/${brand}/income/bank-entry-stats?brand=${brand}&span=${span}${periodParam}${storeParam}`)
+    fetch(`/api/income/bank-entry-stats?brand=${brand}&span=${span}${periodParam}${storeParam}`)
       .then(r => r.json())
       .then(json => {
         if (json.success && json.data) {

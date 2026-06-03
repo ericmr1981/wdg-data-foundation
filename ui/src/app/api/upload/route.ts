@@ -59,14 +59,16 @@ export async function POST(request: Request) {
         (existsSync(defaultScriptsDir) ? defaultScriptsDir : existsSync('/scripts') ? '/scripts' : defaultScriptsDir);
 
       let scriptName = '';
-      const scriptArgs = [filePath];
+      const scriptArgs = source === 'income'
+        ? [filePath, '--brand', brand, '--store-code', store]
+        : [filePath];
 
       if (source === 'bank') {
         scriptName = 'import_yufeng_bank_txn.py';
-      } else if (source === 'sales') {
+      } else if (source === 'income') {
         scriptName = brand === 'bonjur'
-          ? 'import_bonjur_sales_self_service_daily.py'
-          : 'import_bonjur_sales_daily.py';
+          ? 'import_bonjur_income_detail.py'
+          : 'import_gelatomiiix_income_detail.py';
       } else {
         return NextResponse.json({ success: false, error: 'Unknown source type' }, { status: 400 });
       }
