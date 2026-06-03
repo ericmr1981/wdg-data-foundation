@@ -389,8 +389,8 @@ interface BankEntryChannel {
   qimai_net_amt: number;
   bank_entry_amt: number;
   entry_rate: number;
-  qimai_growth: number;
-  bank_growth: number;
+  month_qimai_amt: number;
+  month_bank_amt: number;
 }
 interface BankEntryData {
   channels: BankEntryChannel[];
@@ -421,8 +421,8 @@ function BankEntryRateSection({ brand, span, period, store }: {
               qimai_net_amt: parseFloat(r.qimai_net_amt) || 0,
               bank_entry_amt: parseFloat(r.bank_entry_amt) || 0,
               entry_rate: parseFloat(r.entry_rate) || 0,
-              qimai_growth: r.qimai_growth ?? 0,
-              bank_growth: r.bank_growth ?? 0,
+              month_qimai_amt: parseFloat(r.month_qimai_amt) || 0,
+              month_bank_amt: parseFloat(r.month_bank_amt) || 0,
             })),
             monthly_trend: (d.monthlyTrend || []).map((r: any) => ({
               month: r.month,
@@ -469,24 +469,16 @@ function BankEntryRateSection({ brand, span, period, store }: {
             : isYellow
             ? 'bg-yellow-50 border-yellow-200 text-yellow-800'
             : 'bg-red-50 border-red-200 text-red-800';
-          const bankGrowthStr = ch.bank_growth > 0 ? `+${ch.bank_growth.toFixed(1)}%` : `${ch.bank_growth.toFixed(1)}%`;
-          const qimaiGrowthStr = ch.qimai_growth > 0 ? `+${ch.qimai_growth.toFixed(1)}%` : `${ch.qimai_growth.toFixed(1)}%`;
           return (
             <div key={ch.channel} className={`border rounded-lg p-4 ${colorClass}`}>
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-sm font-medium">{CHANNEL_LABELS[ch.channel] ?? ch.channel}</div>
-                <div className={`text-xs font-mono ${ch.bank_growth >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                  {ch.bank_growth !== 0 ? bankGrowthStr : '-'}
-                </div>
-              </div>
+              <div className="text-sm font-medium mb-2">{CHANNEL_LABELS[ch.channel] ?? ch.channel}</div>
               <div className="text-xs opacity-70 mb-1">
                 企迈实收 {ch.qimai_net_amt.toLocaleString('zh-CN', { minimumFractionDigits: 2 })} 元
-                <span className={`ml-1 ${ch.qimai_growth >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                  ({qimaiGrowthStr})
-                </span>
+                {ch.month_qimai_amt > 0 && <span className="ml-1 opacity-50">({ch.month_qimai_amt.toLocaleString('zh-CN', { minimumFractionDigits: 2 })})</span>}
               </div>
               <div className="text-xs opacity-70 mb-2">
                 银行入账 {ch.bank_entry_amt.toLocaleString('zh-CN', { minimumFractionDigits: 2 })} 元
+                {ch.month_bank_amt > 0 && <span className="ml-1 opacity-50">({ch.month_bank_amt.toLocaleString('zh-CN', { minimumFractionDigits: 2 })})</span>}
               </div>
               <div className="text-2xl font-bold font-mono">{ch.entry_rate.toFixed(1)}%</div>
             </div>
