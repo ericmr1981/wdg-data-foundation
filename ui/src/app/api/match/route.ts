@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
-import { getDmSchema, getCfgSchema, getOpsSchema, normalizeBrand } from '@/lib/brand-server';
+import { getDmSchema, getCfgSchema, getOpsSchema, getOdsBankTxnTable, normalizeBrand } from '@/lib/brand-server';
 
 // GET /api/match?brand=xxx - 获取未分类列表
 export async function GET(request: Request) {
@@ -36,40 +36,50 @@ export async function GET(request: Request) {
     }
 
     const schema = getDmSchema(brand);
+    const odsTable = getOdsBankTxnTable(brand);
 
+    // 直接查询 bank_txn_classified_snapshot (BASE TABLE), 避免 v_unclassified_detail 触发全量实时分类
     let query = `
-      SELECT month, bank_txn_id, txn_time, counterparty_name, summary, memo,
-             in_amt, out_amt, balance_amt, source_file_id, combined_text
-      FROM ${schema}.v_unclassified_detail
+      SELECT date_trunc('month', t.txn_time)::date as month,
+             t.id as bank_txn_id, t.txn_time, t.counterparty_name, t.summary, t.memo,
+             t.in_amt, t.out_amt, t.balance_amt, t.source_file_id,
+             COALESCE(t.counterparty_name, '') || ' | ' || COALESCE(t.summary, '') || ' | ' || COALESCE(t.memo, '') as combined_text
+      FROM ${odsTable} t
+      JOIN ${schema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
+      WHERE c.classified_source = 'unclassified'
     `;
     const params: any[] = [];
 
     if (month) {
-      query += ' WHERE month = $1';
+      query += " AND date_trunc('month', t.txn_time)::date = $1::date";
       params.push(month);
     }
 
     const sourceFileId = searchParams.get('source_file_id');
     if (sourceFileId) {
-      const placeholders = month ? ' AND source_file_id = $' + (params.length + 1) : ' WHERE source_file_id = $' + (params.length + 1);
-      query += placeholders;
+      query += ' AND t.source_file_id = $' + (params.length + 1);
       params.push(parseInt(sourceFileId));
     }
 
-    query += ' ORDER BY txn_time DESC LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
+    query += ' ORDER BY t.txn_time DESC LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
     params.push(pageSize, (page - 1) * pageSize);
 
     const result = await pool.query(query, params);
 
     // 获取总数
-    let countQuery = `SELECT COUNT(*) as total FROM ${schema}.v_unclassified_detail`;
+    let countQuery = `
+      SELECT COUNT(*) as total
+      FROM ${odsTable} t
+      JOIN ${schema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
+      WHERE c.classified_source = 'unclassified'
+    `;
     const countParams: any[] = [];
     if (month) {
-      countQuery += ' WHERE month = $1';
+      countQuery += " AND date_trunc('month', t.txn_time)::date = $1::date";
       countParams.push(month);
     }
     if (sourceFileId) {
-      countQuery += month ? ' AND source_file_id = $' + (countParams.length + 1) : ' WHERE source_file_id = $1';
+      countQuery += ' AND t.source_file_id = $' + (countParams.length + 1);
       countParams.push(parseInt(sourceFileId));
     }
     const countResult = await pool.query(countQuery, countParams);
@@ -91,7 +101,7 @@ export async function GET(request: Request) {
       return NextResponse.json({
         success: true,
         data: { items: [], total: 0, page: 1, pageSize: 20, totalPages: 0 },
-        note: 'v_unclassified_detail not ready'
+        note: 'bank_txn_classified_snapshot not ready'
       });
     }
 
@@ -127,7 +137,7 @@ export async function POST(request: Request) {
 
     const client = await pool.connect();
     try {
-      // 兼容旧版“仅 override（不沉淀规则）”请求：{ bank_txn_id, lvl1, lvl2?, note? }
+      // 兼容旧版"仅 override（不沉淀规则）"请求：{ bank_txn_id, lvl1, lvl2?, note? }
       // 旧版 UI 还在用中文名称（lvl1/lvl2），这里做一次 name->code 映射并写入 override，让页面可用。
     if (bank_txn_id && !direction && !lvl1_code && (body.lvl1 || body.lvl1_name)) {
       const lvl1Name = body.lvl1 || body.lvl1_name;
@@ -307,7 +317,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ success: false, error: 'Missing required field: bank_txn_ids must be non-empty array' }, { status: 400 });
     }
 
-    // 兼容旧版“批量 override-only”：{ bank_txn_ids, lvl1, lvl2?, note? }
+    // 兼容旧版"批量 override-only"：{ bank_txn_ids, lvl1, lvl2?, note? }
     if (!direction && !lvl1_code && (body.lvl1 || body.lvl1_name)) {
       const lvl1Name = body.lvl1 || body.lvl1_name;
       const lvl2Name = body.lvl2 || body.lvl2_name || null;
