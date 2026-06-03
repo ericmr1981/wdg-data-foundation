@@ -267,7 +267,7 @@ def update_ingest_file(source_file_id: int, row_count: int, conn, status: str = 
         conn.commit()
 
 
-def insert_rows(records: list[dict], source_file_id: int, conn) -> int:
+def insert_rows(records: list[dict], source_file_id: int, conn, target_table: str) -> int:
     """去重后插入：按 order_no_clean 取首次出现"""
     seen: set[str] = set()
     deduped: list[dict] = []
@@ -383,7 +383,7 @@ def process_file(fp: str, conn, dry_run: bool, store_code: str = "", store_name:
         update_ingest_file(source_file_id, len(rows), conn, "pending")
         return {"name": Path(fp).name, "records": len(rows)}
 
-    inserted = insert_rows(rows, source_file_id, conn)
+    inserted = insert_rows(rows, source_file_id, conn, target_table)
     update_ingest_file(source_file_id, inserted, conn)
     print(f"  INSERTED: {Path(fp).name} -> {inserted} records (from {len(rows)} parsed, {len(rows) - inserted} duplicates)")
     return {"name": Path(fp).name, "total": len(rows), "inserted": inserted}
