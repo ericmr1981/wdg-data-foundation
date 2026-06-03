@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       const dn = store && store !== 'all' ? 2 : 1;
       params.push(periodEnd);
       dateClause = `AND biz_date < $${dn}::DATE`;
-      bankDateClause = `AND t.txn_date < $${dn}::DATE`;
+      bankDateClause = `AND t.txn_time < $${dn}::DATE`;
       umParams.push(periodStart, periodEndInclusive);
       unmatchedDateClause = `AND biz_date >= $${store && store !== 'all' ? 2 : 1}::DATE AND biz_date <= $${store && store !== 'all' ? 3 : 2}::DATE`;
     }
@@ -69,18 +69,18 @@ export async function GET(request: NextRequest) {
       ORDER BY 1
     `, params);
 
-    // --- bank entry by channel ---
+    // --- bank entry by channel (使用预分类快照, 与 income-metrics/counterparty 口径一致) ---
     const bankEntryResult = await pool.query(`
       SELECT
-        r.lvl2_code AS channel,
-        COALESCE(SUM(t.amount), 0) AS bank_entry_amt
-      FROM brand_gelatomiiix_ods.v_bank_txn t
-      JOIN brand_gelatomiiix_cfg.bank_rule_map r
-        ON t.counterparty_name ILIKE '%' || r.match_value || '%'
-      WHERE r.direction = 'in'
-        AND r.lvl1_code = 'REV_BIZ'
+        c.lvl2_code AS channel,
+        COALESCE(SUM(COALESCE(t.in_amt, 0)), 0) AS bank_entry_amt
+      FROM brand_gelatomiiix_ods.bank_txn t
+      JOIN brand_gelatomiiix_dm.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
+      WHERE c.classified_source IN ('rule', 'override')
+        AND c.lvl1_code = 'REV_BIZ'
+        AND COALESCE(t.in_amt, 0) > 0
         ${bankDateClause} ${bankStoreClause}
-      GROUP BY r.lvl2_code
+      GROUP BY c.lvl2_code
     `, params);
 
     // --- monthlyTrend ---
@@ -100,11 +100,12 @@ export async function GET(request: NextRequest) {
         GROUP BY 1
       ),
       bank_monthly AS (
-        SELECT to_char(t.txn_date, 'YYYY-MM') AS month, SUM(t.amount) AS bank_entry_amt
-        FROM brand_gelatomiiix_ods.v_bank_txn t
-        JOIN brand_gelatomiiix_cfg.bank_rule_map r
-          ON t.counterparty_name ILIKE '%' || r.match_value || '%'
-        WHERE r.direction = 'in' AND r.lvl1_code = 'REV_BIZ'
+        SELECT to_char(t.txn_time, 'YYYY-MM') AS month, SUM(COALESCE(t.in_amt, 0)) AS bank_entry_amt
+        FROM brand_gelatomiiix_ods.bank_txn t
+        JOIN brand_gelatomiiix_dm.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
+        WHERE c.classified_source IN ('rule', 'override')
+          AND c.lvl1_code = 'REV_BIZ'
+          AND COALESCE(t.in_amt, 0) > 0
         GROUP BY 1
       )
       SELECT COALESCE(q.month, b.month) AS month,

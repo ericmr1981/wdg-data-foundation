@@ -132,6 +132,40 @@ The classification pipeline: imported rows → `fn_classify()` (rule-based) → 
 - `python scripts/run_pipeline_oneclick.py --brand all --dry-run` completes without error
 - Financial statements are cash-basis (收付实现制) — disclosed in UI
 
+## Bank Data Usage规范
+
+所有与银行流水相关的数据分析 API **必须使用 `bank_txn_classified_snapshot`（预分类快照）**，不得独立执行 `bank_rule_map` 模糊匹配或直接调用 `fn_classify()`。
+
+```
+bank_txn → fn_classify() → bank_txn_classified_snapshot (BASE TABLE)
+                               ↑ 所有 API 只读这里，不做二次匹配
+```
+
+分类只跑一次，所有页面口径统一。详见 [docs/qmaireport/README.md](docs/qmaireport/README.md) 审计摘要。
+
+## Documentation Index
+
+| 文档 | 位置 | 内容 |
+|---|---|---|
+| 架构说明 | [docs/architecture.md](docs/architecture.md) | 系统架构总览 |
+| 本地启动 | [docs/LOCAL_STARTUP.md](docs/LOCAL_STARTUP.md) | 开发环境搭建 |
+| **页面文档 (qmaireport)** | [docs/qmaireport/README.md](docs/qmaireport/README.md) | 索引 + 全站银行数据审计 |
+| ├ 收入分析 | [docs/qmaireport/income-page-structure.md](docs/qmaireport/income-page-structure.md) | /u/income 结构 |
+| │ | [docs/qmaireport/income-data-sources.md](docs/qmaireport/income-data-sources.md) | /u/income 数据来源 |
+| │ | [docs/qmaireport/income-user-stories.md](docs/qmaireport/income-user-stories.md) | /u/income 用户故事 |
+| ├ 财务报表 | [docs/qmaireport/financial-page-structure.md](docs/qmaireport/financial-page-structure.md) | /u/financial, /u/payment, /u/dashboard 结构 |
+| │ | [docs/qmaireport/financial-data-sources.md](docs/qmaireport/financial-data-sources.md) | 数据来源 |
+| │ | [docs/qmaireport/financial-user-stories.md](docs/qmaireport/financial-user-stories.md) | 用户故事 |
+| ├ 销售分析 | [docs/qmaireport/sales-page-structure.md](docs/qmaireport/sales-page-structure.md) | /u/sales, /u/sales/details 结构 |
+| │ | [docs/qmaireport/sales-data-sources.md](docs/qmaireport/sales-data-sources.md) | 数据来源 (不涉及银行流水) |
+| │ | [docs/qmaireport/sales-user-stories.md](docs/qmaireport/sales-user-stories.md) | 用户故事 |
+| ├ 管道上传 | [docs/qmaireport/pipeline-page-structure.md](docs/qmaireport/pipeline-page-structure.md) | /upload, /pipeline 结构 |
+| │ | [docs/qmaireport/pipeline-data-sources.md](docs/qmaireport/pipeline-data-sources.md) | 数据来源 |
+| │ | [docs/qmaireport/pipeline-user-stories.md](docs/qmaireport/pipeline-user-stories.md) | 用户故事 |
+| └ 匹配规则 | [docs/qmaireport/match-page-structure.md](docs/qmaireport/match-page-structure.md) | /match, /rules 结构 |
+|   | [docs/qmaireport/match-data-sources.md](docs/qmaireport/match-data-sources.md) | 数据来源 |
+|   | [docs/qmaireport/match-user-stories.md](docs/qmaireport/match-user-stories.md) | 用户故事 |
+
 ## Constraints
 - Keep changes bounded and reversible; verify before claiming done
 - Never hardcode DB passwords or commit fallback defaults

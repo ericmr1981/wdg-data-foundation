@@ -45,12 +45,14 @@ export async function GET(request: Request) {
     }
 
     // Cumulative qimai revenue up to endDate
+    // 口径: net_amt (扣除折扣/手续费后的实收), 排除会员支付(内部流转)
     let qimaiRevenue: number | null = null;
     try {
       const qiRes = await pool.query(
-        `SELECT COALESCE(SUM(revenue_amt), 0)::numeric as qimai_revenue
+        `SELECT COALESCE(SUM(net_amt), 0)::numeric as qimai_revenue
          FROM ${odsSchema}.income_detail
-         WHERE biz_date < $1::date ${storeClause}`,
+         WHERE NOT is_member_payment AND NOT is_refund
+           AND biz_date < $1::date ${storeClause}`,
         storeParams
       );
       qimaiRevenue = Number(qiRes.rows[0]?.qimai_revenue || 0);
