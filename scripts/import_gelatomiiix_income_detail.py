@@ -179,8 +179,8 @@ def transform_row(r: dict, source_file: str, store_code_override: str = "", stor
     csv_store_code = r.get("门店编码", "").strip().strip("`")
     csv_store_name = r.get("门店名称", "").strip()
     return {
-        "store_code": csv_store_code or store_code_override or STORE_CODE,
-        "store_name": csv_store_name or store_name_override,
+        "store_code": store_code_override or csv_store_code or STORE_CODE,
+        "store_name": store_name_override or csv_store_name,
         "biz_date": biz_date.date() if biz_date else None,
         "order_no": order_no_raw,
         "order_no_clean": order_no,
@@ -207,11 +207,11 @@ def transform_row(r: dict, source_file: str, store_code_override: str = "", stor
     }
 
 
-def check_ingest_file(file_hash: str, conn) -> Optional[dict]:
+def check_ingest_file(file_hash: str, brand_code: str, conn) -> Optional[dict]:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, status, row_count FROM raw.ingest_file WHERE file_hash = %s",
-            (file_hash,),
+            "SELECT id, status, row_count FROM raw.ingest_file WHERE file_hash = %s AND brand_code = %s",
+            (file_hash, brand_code),
         )
         row = cur.fetchone()
         return {"id": row[0], "status": row[1], "row_count": row[2]} if row else None
@@ -362,7 +362,7 @@ def process_file(fp: str, conn, dry_run: bool, store_code: str = "", store_name:
     source_file = str(Path(fp).resolve())
     target_table = get_target_table(BRAND_CODE)
 
-    existing = check_ingest_file(file_hash, conn)
+    existing = check_ingest_file(file_hash, BRAND_CODE, conn)
     if existing and existing["status"] == "success":
         print(f"  SKIP (already imported): {Path(fp).name}")
         return {"skipped": True}

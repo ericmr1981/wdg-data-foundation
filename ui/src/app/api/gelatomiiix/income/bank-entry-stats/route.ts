@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
     const channelMetricsResult = await pool.query(`
       SELECT
         COALESCE(
-          (SELECT m.channel_code FROM ${cfgSchema}.channel_mapping m WHERE m.payment_method = ANY(payment_methods) ORDER BY m.sort_order LIMIT 1),
+          (SELECT m.channel_code FROM ${cfgSchema}.channel_mapping m WHERE payment_methods && ARRAY[m.payment_method] ORDER BY m.sort_order LIMIT 1),
           'OTHER'
         ) AS channel,
         COALESCE(SUM(net_amt), 0) AS qimai_net_amt
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
         pool.query(`
           SELECT
             COALESCE(
-              (SELECT m.channel_code FROM ${cfgSchema}.channel_mapping m WHERE m.payment_method = ANY(payment_methods) ORDER BY m.sort_order LIMIT 1),
+              (SELECT m.channel_code FROM ${cfgSchema}.channel_mapping m WHERE payment_methods && ARRAY[m.payment_method] ORDER BY m.sort_order LIMIT 1),
               'OTHER'
             ) AS channel,
             COALESCE(SUM(net_amt), 0) AS qimai_net_amt
@@ -170,7 +170,7 @@ export async function GET(request: NextRequest) {
       SELECT
         to_char(biz_date, 'YYYY-MM') AS month,
         COALESCE(
-          (SELECT m.channel_code FROM ${cfgSchema}.channel_mapping m WHERE m.payment_method = ANY(payment_methods) ORDER BY m.sort_order LIMIT 1),
+          (SELECT m.channel_code FROM ${cfgSchema}.channel_mapping m WHERE payment_methods && ARRAY[m.payment_method] ORDER BY m.sort_order LIMIT 1),
           'OTHER'
         ) AS channel,
         COUNT(*) AS order_count,

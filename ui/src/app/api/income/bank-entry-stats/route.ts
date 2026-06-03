@@ -6,6 +6,18 @@ import { parsePeriod } from '@/app/api/financial/period-utils';
 
 export const dynamic = 'force-dynamic';
 
+async function getChannelCaseSql(cfgSchema: string): Promise<string> {
+  const res = await pool.query(
+    `SELECT payment_method, channel_code FROM ${cfgSchema}.channel_mapping ORDER BY sort_order`
+  );
+  const rows = res.rows as { payment_method: string; channel_code: string }[];
+  const esc = (s: string) => s.replace(/'/g, "''");
+  const whens = rows.map(r =>
+    `WHEN '${esc(r.payment_method)}' = ANY(payment_methods) THEN '${esc(r.channel_code)}'`
+  ).join('\n            ');
+  return `CASE ${whens} ELSE 'OTHER' END`;
+}
+
 // GET /api/income/bank-entry-stats?brand=gelatomiiix&period=2026-04&span=month
 export async function GET(request: NextRequest) {
   try {
@@ -26,9 +38,11 @@ export async function GET(request: NextRequest) {
 
     const odsSchema = getOdsSchema(brand);
     const dmSchema = getDmSchema(brand);
-    // Legacy brands (gelatomiiix) store income_detail in non-prefixed schema
     const incomeOds = brand === 'gelatomiiix' ? 'gelatomiiix_ods' : odsSchema;
     const cfgSchema = getCfgSchema(brand);
+
+    // 动态构建 CASE WHEN 语句（避免 PG 16 GROUP BY 限制）
+    const channelCase = await getChannelCaseSql(cfgSchema);
 
     const hasPeriod = period && period !== 'all';
     let dateClause = '';
@@ -75,10 +89,7 @@ export async function GET(request: NextRequest) {
     // --- channelMetrics (qimai income from income_detail) ---
     const channelMetricsResult = await pool.query(`
       SELECT
-        COALESCE(
-          (SELECT m.channel_code FROM ${cfgSchema}.channel_mapping m WHERE m.payment_method = ANY(payment_methods) ORDER BY m.sort_order LIMIT 1),
-          'OTHER'
-        ) AS channel,
+        ${channelCase} AS channel,
         COALESCE(SUM(net_amt), 0) AS qimai_net_amt
       FROM ${incomeOds}.income_detail
       WHERE NOT is_refund
@@ -122,10 +133,7 @@ export async function GET(request: NextRequest) {
         `, currParams),
         pool.query(`
           SELECT
-            COALESCE(
-              (SELECT m.channel_code FROM ${cfgSchema}.channel_mapping m WHERE m.payment_method = ANY(payment_methods) ORDER BY m.sort_order LIMIT 1),
-              'OTHER'
-            ) AS channel,
+            ${channelCase} AS channel,
             COALESCE(SUM(net_amt), 0) AS qimai_net_amt
           FROM ${incomeOds}.income_detail
           WHERE NOT is_refund AND NOT is_member_payment
@@ -178,10 +186,7 @@ export async function GET(request: NextRequest) {
     const unmatchedOrdersResult = await pool.query(`
       SELECT
         to_char(biz_date, 'YYYY-MM') AS month,
-        COALESCE(
-          (SELECT m.channel_code FROM ${cfgSchema}.channel_mapping m WHERE m.payment_method = ANY(payment_methods) ORDER BY m.sort_order LIMIT 1),
-          'OTHER'
-        ) AS channel,
+        ${channelCase} AS channel,
         COUNT(*) AS order_count,
         COALESCE(SUM(net_amt), 0) AS unentered_amt
       FROM ${incomeOds}.income_detail
@@ -189,7 +194,7 @@ export async function GET(request: NextRequest) {
         AND NOT is_refund
         AND NOT is_member_payment
         ${unmatchedDateClause} ${storeClause}
-      GROUP BY month, channel
+      GROUP BY month, 2
       ORDER BY month DESC, channel
     `, umParams);
 

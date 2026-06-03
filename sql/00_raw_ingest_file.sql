@@ -39,9 +39,11 @@ CREATE TABLE IF NOT EXISTS raw.ingest_file (
 
 -- 2. 索引
 
--- 2.1 唯一约束：file_hash 唯一（避免重复导入相同内容）
-CREATE UNIQUE INDEX IF NOT EXISTS idx_ingest_file_hash_uniq
-    ON raw.ingest_file (file_hash);
+-- 2.1 唯一约束：(brand_code, file_hash) 联合唯一，同一文件可导入不同品牌
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ingest_file_brand_hash
+    ON raw.ingest_file (brand_code, file_hash);
+
+DROP INDEX IF EXISTS idx_ingest_file_hash_uniq;
 
 -- 2.2 查询索引：按品牌+门店+月份+类型查询
 CREATE INDEX IF NOT EXISTS idx_ingest_file_lookup

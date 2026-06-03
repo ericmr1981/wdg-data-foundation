@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
           GROUP BY s.lvl2_code`),
         pool.query(`SELECT
           COALESCE(
-            (SELECT m.channel_code FROM bonjur_cfg.channel_mapping m WHERE m.payment_method = ANY(d.payment_methods) ORDER BY m.sort_order LIMIT 1),
+            (SELECT m.channel_code FROM bonjur_cfg.channel_mapping m WHERE d.payment_methods && ARRAY[m.payment_method] ORDER BY m.sort_order LIMIT 1),
             'OTHER'
           ) AS channel, SUM(net_amt) AS qimai_net_amt
           FROM bonjur_ods.income_detail d
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
 
     const channelMetricsResult = await pool.query(`SELECT
       COALESCE(
-        (SELECT m.channel_code FROM bonjur_cfg.channel_mapping m WHERE m.payment_method = ANY(d.payment_methods) ORDER BY m.sort_order LIMIT 1),
+        (SELECT m.channel_code FROM bonjur_cfg.channel_mapping m WHERE d.payment_methods && ARRAY[m.payment_method] ORDER BY m.sort_order LIMIT 1),
         'OTHER'
       ) AS channel, SUM(net_amt) AS qimai_net_amt
       FROM bonjur_ods.income_detail d
@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
     const unmatchedOrdersResult = await pool.query(`SELECT month,ch,COUNT(*) oc,SUM(net_amt) ua FROM (
       SELECT to_char(biz_date,'YYYY-MM') AS month,
         COALESCE(
-          (SELECT m.channel_code FROM bonjur_cfg.channel_mapping m WHERE m.payment_method = ANY(d.payment_methods) ORDER BY m.sort_order LIMIT 1),
+          (SELECT m.channel_code FROM bonjur_cfg.channel_mapping m WHERE d.payment_methods && ARRAY[m.payment_method] ORDER BY m.sort_order LIMIT 1),
           'OTHER'
         ) AS ch, net_amt
       FROM bonjur_ods.income_detail d

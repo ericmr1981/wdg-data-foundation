@@ -58,7 +58,7 @@ export default function UploadPage() {
 
   const sources = [
     { code: 'bank', name: '银行流水' },
-    { code: 'sales', name: '营业数据' }
+    { code: 'income', name: '收入明细' }
   ];
 
   // Fetch coverage for the uploaded file
