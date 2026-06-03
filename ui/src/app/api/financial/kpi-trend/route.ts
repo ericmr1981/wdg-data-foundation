@@ -36,7 +36,8 @@ export async function GET(request: Request) {
         to_char(date_trunc('month', t.txn_time)::date, 'YYYY-MM') as month,
         COALESCE(SUM(CASE WHEN c.lvl1_code = 'REV_BIZ' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as revenue,
         COALESCE(SUM(CASE WHEN c.lvl1_code = 'MATERIAL' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as material_cost,
-        COALESCE(SUM(coalesce(t.in_amt,0) - coalesce(t.out_amt,0)), 0) as net_profit
+        COALESCE(SUM(coalesce(t.in_amt,0) - coalesce(t.out_amt,0)), 0) as net_profit,
+        COALESCE(ABS(SUM(CASE WHEN c.lvl1_code IN ('MATERIAL','HR','RENT_UTIL','MKT','ADMIN','SHIP','TAX_SURCHARGE','EXP_OTHER','BUILD') THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END)), 0) as expenses
       FROM ${dmSchema}.bank_txn_classified_snapshot c
       JOIN ${dmSchema.replace('_dm', '_ods')}.bank_txn t ON t.id = c.bank_txn_id
       WHERE c.classified_source IN ('rule', 'override') ${storeClause}
@@ -65,8 +66,8 @@ export async function GET(request: Request) {
     );
 
     // Build monthly trend
-    const profitMap = new Map<string, { revenue: number; material: number; net: number }>();
-    for (const r of profitTrend.rows) profitMap.set(r.month, { revenue: Number(r.revenue), material: Number(r.material_cost), net: Number(r.net_profit) });
+    const profitMap = new Map<string, { revenue: number; material: number; net: number; expenses: number }>();
+    for (const r of profitTrend.rows) profitMap.set(r.month, { revenue: Number(r.revenue), material: Number(r.material_cost), net: Number(r.net_profit), expenses: Number(r.expenses) });
 
     const cfMap = new Map<string, number>();
     for (const r of cfTrend.rows) cfMap.set(r.month, Number(r.operating_cashflow));
@@ -82,7 +83,7 @@ export async function GET(request: Request) {
         gross_margin_rate: rev > 0 ? (rev + (p?.material || 0)) / rev : 0,
         net_profit_rate: rev > 0 ? (p?.net || 0) / rev : 0,
         operating_cashflow: cf || 0,
-        expenses: [],
+        expenses: p?.expenses || 0,
       };
     });
 

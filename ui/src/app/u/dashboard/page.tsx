@@ -9,6 +9,7 @@ interface Store { code: string; name: string; }
 
 interface OverviewData {
   revenue: number;
+  expenses: number;
   grossMarginRate: number;
   netProfitRate: number;
   operatingCashflow: number;
@@ -26,13 +27,16 @@ interface OverviewData {
   };
 }
 
+interface ExpenseItem {
+  lvl1_code: string; lvl1_name: string; lvl2_code: string; lvl2_name: string; amount: number;
+}
 interface MonthlyKpi {
   month: string;
   revenue: number;
   gross_margin_rate: number;
   net_profit_rate: number;
   operating_cashflow: number;
-  expenses: { lvl1_code: string; lvl1_name: string; lvl2_code: string; lvl2_name: string; amount: number }[];
+  expenses: number;
 }
 
 interface KpiTrendData {
@@ -41,7 +45,7 @@ interface KpiTrendData {
   prev_month: { revenue: number; expenses: { lvl1_code: string; lvl1_name: string; lvl2_code: string; lvl2_name: string; amount: number }[] } | null;
 }
 
-type TrendKey = 'revenue' | 'gross_margin_rate' | 'net_profit_rate' | 'operating_cashflow';
+type TrendKey = 'revenue' | 'expenses' | 'gross_margin_rate' | 'net_profit_rate' | 'operating_cashflow';
 
 interface StoreHealth {
   store_code: string;
@@ -51,6 +55,7 @@ interface StoreHealth {
 
 const TREND_LABELS: Record<TrendKey, string> = {
   revenue: '营业收入',
+  expenses: '营业支出',
   gross_margin_rate: '毛利率',
   net_profit_rate: '净利润率',
   operating_cashflow: '经营现金流',
@@ -58,6 +63,7 @@ const TREND_LABELS: Record<TrendKey, string> = {
 
 const TREND_COLORS: Record<TrendKey, string> = {
   revenue: 'bg-blue-500',
+  expenses: 'bg-red-500',
   gross_margin_rate: 'bg-green-500',
   net_profit_rate: 'bg-purple-500',
   operating_cashflow: 'bg-cyan-500',
@@ -65,6 +71,7 @@ const TREND_COLORS: Record<TrendKey, string> = {
 
 const TREND_BAR_COLORS: Record<TrendKey, string> = {
   revenue: '#3B82F6',
+  expenses: '#EF4444',
   gross_margin_rate: '#22C55E',
   net_profit_rate: '#A855F7',
   operating_cashflow: '#06B6D4',
@@ -142,8 +149,11 @@ function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: 
   const [tooltip, setTooltip] = useState<{ month: string; value: number; x: number; y: number } | null>(null);
   // API returns newest-first; reverse to show oldest (left) → newest (right)
   const sorted = [...data].reverse();
-  const max = Math.max(...sorted.map(d => Math.abs(d[trendKey])), 1);
-  const color = TREND_BAR_COLORS[trendKey];
+  const values = sorted.map(d => d[trendKey]);
+  const maxVal = Math.max(...values, 1);
+  const minVal = Math.min(...values, 0);
+  const range = Math.max(maxVal, Math.abs(minVal));
+  const defaultColor = TREND_BAR_COLORS[trendKey];
   const fmt = format || ((v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 2 }));
 
   return (
@@ -152,12 +162,14 @@ function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: 
       <div className="flex items-end gap-[3px] h-44 relative">
         {sorted.map(d => {
           const val = d[trendKey];
-          const pct = max > 0 ? (Math.abs(val) / max) * 100 : 0;
+          const isPos = val >= 0;
+          const pct = range > 0 ? (Math.abs(val) / range) * 100 : 0;
+          const barColor = val >= 0 ? '#22C55E' : '#EF4444';
           return (
             <div key={d.month} className="flex-1 flex flex-col items-center justify-end h-full relative">
               <div
                 className="w-full rounded-t transition-all cursor-pointer hover:opacity-80"
-                style={{ height: `${Math.max(pct, 1)}%`, backgroundColor: color }}
+                style={{ height: `${Math.max(pct, 1)}%`, backgroundColor: barColor, opacity: isPos ? 0.85 : 0.9 }}
                 onMouseEnter={(e) => {
                   const rect = (e.target as HTMLElement).getBoundingClientRect();
                   setTooltip({ month: d.month, value: val, x: rect.left + rect.width / 2, y: rect.top - 8 });
@@ -354,7 +366,7 @@ function QuickLinks({ span, period, store }: { span: string; period: string; sto
 }
 
 // ── Main page ─────────────────────────────────────────
-const CLICKABLE_KPIS: TrendKey[] = ['revenue', 'gross_margin_rate', 'net_profit_rate', 'operating_cashflow'];
+const CLICKABLE_KPIS: TrendKey[] = ['revenue', 'expenses', 'gross_margin_rate', 'net_profit_rate', 'operating_cashflow'];
 
 export default function DashboardPage() {
   const { brand } = useBrand();
@@ -429,17 +441,31 @@ export default function DashboardPage() {
               <KpiCard
                 key={k}
                 label={TREND_LABELS[k]}
-                value={k === 'revenue' ? overview.revenue : k === 'gross_margin_rate' ? overview.grossMarginRate : k === 'net_profit_rate' ? overview.netProfitRate : overview.operatingCashflow}
+                value={k === 'revenue' ? overview.revenue : k === 'expenses' ? overview.expenses : k === 'gross_margin_rate' ? overview.grossMarginRate : k === 'net_profit_rate' ? overview.netProfitRate : overview.operatingCashflow}
                 isRate={k === 'gross_margin_rate' || k === 'net_profit_rate'}
-                vsPrev={k === 'revenue' ? overview.vsPrevPeriod.revenue : k === 'gross_margin_rate' ? overview.vsPrevPeriod.grossMarginRate : k === 'net_profit_rate' ? overview.vsPrevPeriod.netProfitRate : overview.vsPrevPeriod.operatingCashflow}
+                vsPrev={k === 'revenue' ? overview.vsPrevPeriod.revenue : k === 'gross_margin_rate' ? overview.vsPrevPeriod.grossMarginRate : k === 'net_profit_rate' ? overview.vsPrevPeriod.netProfitRate : k === 'operating_cashflow' ? overview.vsPrevPeriod.operatingCashflow : undefined}
                 invert={k === 'operating_cashflow'}
                 trendKey={k}
                 active={activeTrend === k}
                 onClick={() => setActiveTrend(k)}
               />
             ))}
-            <KpiCard label="期末余额" value={overview.cashBalance} noClick />
-            <KpiCard label="期初余额" value={overview.beginningBalance} noClick />
+            <KpiCard label="营业支出" value={overview.expenses} trendKey="expenses" active={activeTrend === 'expenses'} onClick={() => setActiveTrend('expenses')} />
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3">
+              <div className="text-[11px] text-blue-600">银行余额</div>
+              <div className="text-sm font-bold text-blue-900 mt-1">
+                ¥{overview.cashBalance.toLocaleString(undefined, { minimumFractionDigits: 0 })}
+              </div>
+              {overview.beginningBalance > 0 && (
+                <div className="text-[10px] text-blue-500 mt-0.5">
+                  期初 ¥{overview.beginningBalance.toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                  <span className="ml-1">
+                    {overview.cashBalance >= overview.beginningBalance ? '↑' : '↓'}
+                    {Math.abs(((overview.cashBalance - overview.beginningBalance) / overview.beginningBalance) * 100).toFixed(1)}%
+                  </span>
+                </div>
+              )}
+            </div>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <div className="text-[11px] text-blue-600">门店数</div>
               <div className="text-lg font-bold text-blue-900">{overview.storeCount}</div>

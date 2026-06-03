@@ -96,6 +96,8 @@ export async function GET(request: Request) {
     const revenue = pMap.get('REV_BIZ') || 0;
     const materialCost = pMap.get('MATERIAL') || 0;
     const allProfits = Array.from(pMap.values()).reduce((s: number, v: number) => s + v, 0);
+    // Expenses = total in - net profit = sum of all out-direction amounts
+    const expenses = revenue + (pMap.get('REV_OTHER') || 0) - allProfits;
     const grossMarginRate = revenue > 0 ? (revenue + materialCost) / revenue : 0;
     const netProfitRate = revenue > 0 ? allProfits / revenue : 0;
     const operatingCashflow = Number(cfRes.rows.find((r: CashflowRow) => r.activity === 'operating')?.net_amount || 0);
@@ -158,7 +160,7 @@ export async function GET(request: Request) {
         revenue, grossMarginRate, netProfitRate,
         operatingCashflow, cashBalance, cashRunway,
         storeCount, revenuePerStore,
-        ignoreCount, beginningBalance,
+        ignoreCount, beginningBalance, expenses,
         vsPrevPeriod: {
           revenue: vsRevenue,
           grossMarginRate: vsGm,
