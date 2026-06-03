@@ -70,7 +70,9 @@ export async function GET(request: Request) {
     const monthList: string[] = [];
 
     for (const r of rows) {
-      const m = r.month instanceof Date ? r.month.toISOString().slice(0, 7) : String(r.month);
+      const m = r.month instanceof Date
+        ? `${r.month.getFullYear()}-${String(r.month.getMonth() + 1).padStart(2, '0')}`
+        : String(r.month);
       monthList.push(m);
       for (const k of seriesKeys) {
         const v = r[k as string];

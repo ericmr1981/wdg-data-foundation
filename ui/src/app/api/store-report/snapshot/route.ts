@@ -71,7 +71,9 @@ export async function GET(request: Request) {
     }
 
     const toKpi = (r: any): StoreKpi => ({
-      month: r.month instanceof Date ? r.month.toISOString().slice(0, 7) : String(r.month),
+      month: r.month instanceof Date
+        ? `${r.month.getFullYear()}-${String(r.month.getMonth() + 1).padStart(2, '0')}`
+        : String(r.month),
       revenue_amt: Number(r.revenue_amt),
       cost_amt: Number(r.cost_amt),
       expense_amt: Number(r.expense_amt),

@@ -56,7 +56,9 @@ export async function GET(request: Request) {
       );
 
       const toKpi = (r: any): StoreKpi => ({
-        month: r.month instanceof Date ? r.month.toISOString().slice(0, 7) : String(r.month),
+        month: r.month instanceof Date
+          ? `${r.month.getFullYear()}-${String(r.month.getMonth() + 1).padStart(2, '0')}`
+          : String(r.month),
         revenue_amt: Number(r.revenue_amt), cost_amt: Number(r.cost_amt), expense_amt: Number(r.expense_amt),
         hr_amt: Number(r.hr_amt), rent_amt: Number(r.rent_amt),
         gross_profit_amt: Number(r.gross_profit_amt), net_profit_amt: Number(r.net_profit_amt),
@@ -87,7 +89,9 @@ export async function GET(request: Request) {
       for (const k of keys) series[k] = [];
       const monthList: string[] = [];
       for (const r of sorted) {
-        const m = r.month instanceof Date ? r.month.toISOString().slice(0, 7) : String(r.month);
+        const m = r.month instanceof Date
+          ? `${r.month.getFullYear()}-${String(r.month.getMonth() + 1).padStart(2, '0')}`
+          : String(r.month);
         monthList.push(m);
         for (const k of keys) {
           const v = r[k as string];
