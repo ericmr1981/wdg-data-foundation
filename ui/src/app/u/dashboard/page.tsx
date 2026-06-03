@@ -17,6 +17,7 @@ interface OverviewData {
   storeCount: number;
   revenuePerStore: number;
   ignoreCount: number;
+  beginningBalance: number;
   vsPrevPeriod: {
     revenue: number;
     grossMarginRate: number;
@@ -438,6 +439,7 @@ export default function DashboardPage() {
               />
             ))}
             <KpiCard label="期末余额" value={overview.cashBalance} noClick />
+            <KpiCard label="期初余额" value={overview.beginningBalance} noClick />
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <div className="text-[11px] text-blue-600">门店数</div>
               <div className="text-lg font-bold text-blue-900">{overview.storeCount}</div>

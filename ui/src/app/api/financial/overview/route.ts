@@ -67,7 +67,7 @@ export async function GET(request: Request) {
     // Current period queries
     const cp = withStore([startDate, endDate]);
 
-    const [profitRes, cfRes, balanceRes, storesRes] = await Promise.all([
+    const [profitRes, cfRes, balanceRes, storesRes, beginBalanceRes] = await Promise.all([
       pool.query(
         `SELECT lvl1_code, sum(amount) as amount FROM ${dmSchema}.v_profit_statement WHERE month >= $1::date AND month < $2::date ${cp.clause} GROUP BY lvl1_code`,
         cp.params
@@ -86,6 +86,10 @@ export async function GET(request: Request) {
             [startDate, endDate]
           )
         : Promise.resolve({ rows: [{ cnt: '1' }] }),
+      pool.query(
+        `SELECT cash_balance FROM ${dmSchema}.v_balance_sheet WHERE month < $1::date ${store !== 'all' ? 'AND store_code = $2' : ''} ORDER BY month DESC LIMIT 1`,
+        store !== 'all' ? [startDate, store] : [startDate]
+      ),
     ]);
 
     const pMap = new Map(profitRes.rows.map((r: ProfitRow) => [r.lvl1_code, Number(r.amount)]));
@@ -96,6 +100,7 @@ export async function GET(request: Request) {
     const netProfitRate = revenue > 0 ? allProfits / revenue : 0;
     const operatingCashflow = Number(cfRes.rows.find((r: CashflowRow) => r.activity === 'operating')?.net_amount || 0);
     const cashBalance = Number(balanceRes.rows[0]?.cash_balance || 0);
+    const beginningBalance = Number(beginBalanceRes.rows[0]?.cash_balance || 0);
     const storeCount = Number((storesRes.rows[0] as CountRow | undefined)?.cnt || 0);
 
     // Ignore records count (offset/cancellation with negative amount)
@@ -153,7 +158,7 @@ export async function GET(request: Request) {
         revenue, grossMarginRate, netProfitRate,
         operatingCashflow, cashBalance, cashRunway,
         storeCount, revenuePerStore,
-        ignoreCount,
+        ignoreCount, beginningBalance,
         vsPrevPeriod: {
           revenue: vsRevenue,
           grossMarginRate: vsGm,
