@@ -83,6 +83,70 @@ export async function GET(request: NextRequest) {
       GROUP BY c.lvl2_code
     `, params);
 
+    // --- previous period channel data (for MoM growth) ---
+    let prevParams: (string | number)[] = [];
+    let prevDateClause = '1=0';
+    let prevBankDateClause = '1=0';
+    if (hasPeriod) {
+      const [ps] = parsePeriod(period, span)!;
+      const pd = new Date(ps + 'T00:00:00');
+      if (span === 'month') pd.setMonth(pd.getMonth() - 1);
+      else if (span === 'quarter') pd.setMonth(pd.getMonth() - 3);
+      else if (span === 'year') pd.setFullYear(pd.getFullYear() - 1);
+      const prevStart = pd.toISOString().slice(0, 10);
+      pd.setMonth(pd.getMonth() + (span === 'month' ? 1 : span === 'quarter' ? 3 : 12));
+      const prevEnd = pd.toISOString().slice(0, 10);
+      if (store && store !== 'all') {
+        prevParams.push(store);
+        prevDateClause = `AND biz_date >= $2::DATE AND biz_date < $3::DATE`;
+        prevBankDateClause = `AND t.txn_time >= $2::DATE AND t.txn_time < $3::DATE`;
+      } else {
+        prevDateClause = `AND biz_date >= $1::DATE AND biz_date < $2::DATE`;
+        prevBankDateClause = `AND t.txn_time >= $1::DATE AND t.txn_time < $2::DATE`;
+      }
+      prevParams.push(prevStart, prevEnd);
+    }
+    let prevBankByChannel = new Map<string, number>();
+    let prevQimaiByChannel = new Map<string, number>();
+    if (hasPeriod) {
+      const [prevBankRes, prevQimaiRes] = await Promise.all([
+        pool.query(`
+          SELECT c.lvl2_code AS channel,
+                 COALESCE(SUM(COALESCE(t.in_amt, 0)), 0) AS bank_entry_amt
+          FROM brand_gelatomiiix_ods.bank_txn t
+          JOIN brand_gelatomiiix_dm.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
+          WHERE c.classified_source IN ('rule', 'override')
+            AND c.lvl1_code = 'REV_BIZ'
+            AND COALESCE(t.in_amt, 0) > 0
+            ${prevBankDateClause}
+          GROUP BY c.lvl2_code
+        `, prevParams),
+        pool.query(`
+          SELECT
+            CASE WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
+                 WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
+                 WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
+                 WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
+                 WHEN '抖音团购券' = ANY(payment_methods) THEN 'DOUYIN'
+                 WHEN '饿了么' = ANY(payment_methods) THEN 'ELEME'
+                 WHEN '京东支付' = ANY(payment_methods) THEN 'JD'
+                 ELSE 'OTHER'
+            END AS channel,
+            COALESCE(SUM(net_amt), 0) AS qimai_net_amt
+          FROM gelatomiiix_ods.income_detail
+          WHERE NOT is_refund AND NOT is_member_payment
+            ${prevDateClause}
+          GROUP BY 1
+        `, prevParams)
+      ]);
+      for (const row of prevBankRes.rows as { channel: string; bank_entry_amt: string }[]) {
+        prevBankByChannel.set(row.channel, parseFloat(row.bank_entry_amt));
+      }
+      for (const row of prevQimaiRes.rows as { channel: string; qimai_net_amt: string }[]) {
+        prevQimaiByChannel.set(row.channel, parseFloat(row.qimai_net_amt));
+      }
+    }
+
     // --- monthlyTrend ---
     let trendDateClause = '';
     if (hasPeriod) {
@@ -153,25 +217,43 @@ export async function GET(request: NextRequest) {
     const channelMetrics = [];
     let totalQimai = 0;
     let totalBank = 0;
+    let totalPrevQimai = 0;
+    let totalPrevBank = 0;
 
     for (const channel of allChannels) {
       const qimaiAmt = qimaiByChannel.get(channel) || 0;
       const bankAmt = bankByChannel.get(channel) || 0;
+      const prevQimaiAmt = prevQimaiByChannel.get(channel) || 0;
+      const prevBankAmt = prevBankByChannel.get(channel) || 0;
       totalQimai += qimaiAmt;
       totalBank += bankAmt;
+      totalPrevQimai += prevQimaiAmt;
+      totalPrevBank += prevBankAmt;
+      const qimaiGrowth = prevQimaiAmt > 0 ? ((qimaiAmt - prevQimaiAmt) / prevQimaiAmt * 100) : 0;
+      const bankGrowth = prevBankAmt > 0 ? ((bankAmt - prevBankAmt) / prevBankAmt * 100) : 0;
       channelMetrics.push({
         channel,
         qimai_net_amt: qimaiAmt.toFixed(2),
         bank_entry_amt: bankAmt.toFixed(2),
         entry_rate: qimaiAmt > 0 ? (bankAmt / qimaiAmt * 100).toFixed(2) : '0.00',
+        prev_qimai_amt: prevQimaiAmt.toFixed(2),
+        prev_bank_amt: prevBankAmt.toFixed(2),
+        qimai_growth: Math.round(qimaiGrowth * 100) / 100,
+        bank_growth: Math.round(bankGrowth * 100) / 100,
       });
     }
 
+    const totalPrevQimaiAmt = totalPrevQimai;
+    const totalPrevBankAmt = totalPrevBank;
+    const totalQimaiGrowth = totalPrevQimai > 0 ? Math.round((totalQimai - totalPrevQimai) / totalPrevQimai * 10000) / 100 : 0;
+    const totalBankGrowth = totalPrevBank > 0 ? Math.round((totalBank - totalPrevBank) / totalPrevBank * 10000) / 100 : 0;
     channelMetrics.push({
       channel: 'TOTAL',
       qimai_net_amt: totalQimai.toFixed(2),
       bank_entry_amt: totalBank.toFixed(2),
       entry_rate: totalQimai > 0 ? (totalBank / totalQimai * 100).toFixed(2) : '0.00',
+      qimai_growth: totalQimaiGrowth,
+      bank_growth: totalBankGrowth,
     });
 
     const monthlyTrend = (monthlyTrendResult.rows as { month: string; qimai_net_amt: string; bank_entry_amt: string }[])

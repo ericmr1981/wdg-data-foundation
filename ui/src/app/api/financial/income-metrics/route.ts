@@ -58,9 +58,9 @@ export async function GET(request: Request) {
     let storeClause = '';
 
     if (!isAll && boundaries) {
-      // Cumulative up to period end
-      dateClause = 'AND month < $1::date';
-      params.push(boundaries[1]);
+      // 精确期间: 所选月份/季度/年
+      dateClause = 'AND month >= $1::date AND month < $2::date';
+      params.push(boundaries[0], boundaries[1]);
     }
     if (store !== 'all') {
       storeClause = `AND store_code = $${params.length + 1}`;
@@ -91,13 +91,21 @@ export async function GET(request: Request) {
     // Dim lookup for lvl2 names
     const dimLvl2Query = `SELECT lvl1_code, lvl2_code, lvl2_name FROM ${cfgSchema}.dim_category_lvl2`;
 
-    // Monthly trend (last 12 months, respects store filter only)
-    const trendStoreClause = store !== 'all' ? 'AND store_code = $1' : '';
-    const trendParams: (string | number)[] = store !== 'all' ? [store] : [];
+    // Monthly trend (trailing 12 months up to period end, respects store filter only)
+    const trendParams: (string | number)[] = [];
+    let trendDateClause = '';
+    if (!isAll && boundaries) {
+      trendDateClause = 'AND month < $' + (trendParams.length + 1) + '::date';
+      trendParams.push(boundaries[1]);
+    }
+    if (store !== 'all') {
+      trendDateClause += ' AND store_code = $' + (trendParams.length + 1);
+      trendParams.push(store);
+    }
     const trendQuery = `
       SELECT to_char(month, 'YYYY-MM') as month, sum(net_amount) as amount
       FROM ${dmSchema}.v_cashflow_statement
-      WHERE net_amount > 0 ${trendStoreClause}
+      WHERE net_amount > 0 ${trendDateClause}
       GROUP BY month
       ORDER BY month DESC
       LIMIT 12

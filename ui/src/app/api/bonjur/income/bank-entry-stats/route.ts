@@ -41,6 +41,55 @@ export async function GET(request: NextRequest) {
     const bankStoreWhere = store ? `AND t.store_code = '${st}'` : '';
     const trendStoreWhere = store ? `WHERE store_code = '${st}'` : '';
 
+    // --- previous period channel data (for MoM growth) ---
+    let prevDateClause = '1=0';
+    let prevMonthClause = '1=0';
+    if (hasPeriod) {
+      const [ps] = parsePeriod(period, span)!;
+      const pd = new Date(ps + 'T00:00:00');
+      if (span === 'month') pd.setMonth(pd.getMonth() - 1);
+      else if (span === 'quarter') pd.setMonth(pd.getMonth() - 3);
+      else if (span === 'year') pd.setFullYear(pd.getFullYear() - 1);
+      const prevStart = pd.toISOString().slice(0, 10);
+      pd.setMonth(pd.getMonth() + (span === 'month' ? 1 : span === 'quarter' ? 3 : 12));
+      const prevEnd = pd.toISOString().slice(0, 10);
+      const esc = (s: string) => s.replace(/'/g, "''");
+      prevDateClause = `AND biz_date >= '${esc(prevStart)}'::DATE AND biz_date < '${esc(prevEnd)}'::DATE`;
+      prevMonthClause = `AND s.month >= '${esc(prevStart)}'::DATE AND s.month < '${esc(prevEnd)}'::DATE`;
+    }
+    let prevBankByChannel = new Map<string, number>();
+    let prevQimaiByChannel = new Map<string, number>();
+    if (hasPeriod) {
+      const [prevBankRes, prevQimaiRes] = await Promise.all([
+        pool.query(`SELECT s.lvl2_code AS channel, COALESCE(SUM(t.in_amt),0) AS bank_entry_amt
+          FROM bonjur_dm.bank_txn_classified_snapshot s
+          JOIN bonjur_ods.bank_txn t ON t.id = s.bank_txn_id
+          WHERE s.lvl1_code='REV_BIZ' AND s.classified_source IN ('rule','override')
+            ${prevMonthClause} ${bankStoreWhere}
+          GROUP BY s.lvl2_code`),
+        pool.query(`SELECT
+          COALESCE(NULLIF(d.channel, 'OTHER'),
+            CASE WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
+              WHEN '支付宝支付' = ANY(payment_methods) THEN 'ALIPAY'
+              WHEN '美团团购券' = ANY(payment_methods) THEN 'MEITUAN'
+              WHEN '云闪付' = ANY(payment_methods) THEN 'UNIONPAY'
+              WHEN '抖音团购券' = ANY(payment_methods) THEN 'DOUYIN'
+              WHEN '饿了么' = ANY(payment_methods) THEN 'ELEME'
+              WHEN '京东支付' = ANY(payment_methods) THEN 'JD'
+              ELSE 'OTHER' END
+          ) AS channel, SUM(net_amt) AS qimai_net_amt
+          FROM bonjur_ods.income_detail d
+          WHERE 1=1 ${prevDateClause} ${storeWhere}
+          GROUP BY 1 ORDER BY 1`)
+      ]);
+      for (const row of prevBankRes.rows as { channel: string; bank_entry_amt: string }[]) {
+        prevBankByChannel.set(row.channel, parseFloat(row.bank_entry_amt));
+      }
+      for (const row of prevQimaiRes.rows as { channel: string; qimai_net_amt: string }[]) {
+        prevQimaiByChannel.set(row.channel, parseFloat(row.qimai_net_amt));
+      }
+    }
+
     const channelMetricsResult = await pool.query(`SELECT
       COALESCE(NULLIF(d.channel, 'OTHER'),
         CASE WHEN '微信支付' = ANY(payment_methods) THEN 'WECHAT'
@@ -110,14 +159,20 @@ export async function GET(request: NextRequest) {
     }
     const allChannels = new Set([...qimaiByChannel.keys(), ...bankByChannel.keys()]);
     const channelMetrics: any[] = [];
-    let tq = 0, tb = 0;
+    let tq = 0, tb = 0, tpq = 0, tpb = 0;
     for (const ch of allChannels) {
       const qa = qimaiByChannel.get(ch) || 0;
       const ba = bankByChannel.get(ch) || 0;
-      tq += qa; tb += ba;
-      channelMetrics.push({ channel: ch, qimai_net_amt: qa.toFixed(2), bank_entry_amt: ba.toFixed(2), entry_rate: qa > 0 ? (ba / qa * 100).toFixed(2) : '0.00' });
+      const pq = prevQimaiByChannel.get(ch) || 0;
+      const pb = prevBankByChannel.get(ch) || 0;
+      tq += qa; tb += ba; tpq += pq; tpb += pb;
+      const qg = pq > 0 ? Math.round((qa - pq) / pq * 10000) / 100 : 0;
+      const bg = pb > 0 ? Math.round((ba - pb) / pb * 10000) / 100 : 0;
+      channelMetrics.push({ channel: ch, qimai_net_amt: qa.toFixed(2), bank_entry_amt: ba.toFixed(2), entry_rate: qa > 0 ? (ba / qa * 100).toFixed(2) : '0.00', qimai_growth: qg, bank_growth: bg });
     }
-    channelMetrics.push({ channel: 'TOTAL', qimai_net_amt: tq.toFixed(2), bank_entry_amt: tb.toFixed(2), entry_rate: tq > 0 ? (tb / tq * 100).toFixed(2) : '0.00' });
+    const tqg = tpq > 0 ? Math.round((tq - tpq) / tpq * 10000) / 100 : 0;
+    const tbg = tpb > 0 ? Math.round((tb - tpb) / tpb * 10000) / 100 : 0;
+    channelMetrics.push({ channel: 'TOTAL', qimai_net_amt: tq.toFixed(2), bank_entry_amt: tb.toFixed(2), entry_rate: tq > 0 ? (tb / tq * 100).toFixed(2) : '0.00', qimai_growth: tqg, bank_growth: tbg });
 
     const unmatchedOrders = (unmatchedOrdersResult.rows as any[]).map((r: any) => ({
       month: r.month, channel: r.ch, order_count: r.oc, unentered_amt: parseFloat(r.ua).toFixed(2),
