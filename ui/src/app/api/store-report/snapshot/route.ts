@@ -89,6 +89,8 @@ export async function GET(request: Request) {
       cashflow_runway_months: r.cashflow_runway_months == null ? null : Number(r.cashflow_runway_months),
       hr_ratio_pct: r.hr_ratio_pct == null ? null : Number(r.hr_ratio_pct),
       rent_ratio_pct: r.rent_ratio_pct == null ? null : Number(r.rent_ratio_pct),
+      gross_profit_rate_pct: r.gross_profit_rate_pct == null ? null : Number(r.gross_profit_rate_pct),
+      net_profit_rate_pct: r.net_profit_rate_pct == null ? null : Number(r.net_profit_rate_pct),
     });
 
     return NextResponse.json<ApiResult<SnapshotResponse>>({

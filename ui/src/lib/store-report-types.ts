@@ -19,6 +19,8 @@ export interface StoreKpi {
   cashflow_runway_months: number | null;
   hr_ratio_pct: number | null;
   rent_ratio_pct: number | null;
+  gross_profit_rate_pct: number | null;
+  net_profit_rate_pct: number | null;
 }
 
 export interface SnapshotResponse {
@@ -35,7 +37,9 @@ export type KpiMetricKey =
   | 'cash_balance'
   | 'cashflow_runway_months'
   | 'hr_ratio_pct'
-  | 'rent_ratio_pct';
+  | 'rent_ratio_pct'
+  | 'gross_profit_rate_pct'
+  | 'net_profit_rate_pct';
 
 export const KPI_LABELS: Record<KpiMetricKey, string> = {
   revenue_amt: '营业收入',
@@ -47,6 +51,8 @@ export const KPI_LABELS: Record<KpiMetricKey, string> = {
   cashflow_runway_months: '现金流月数',
   hr_ratio_pct: '人力占比率',
   rent_ratio_pct: '租金占比率',
+  gross_profit_rate_pct: '毛利率',
+  net_profit_rate_pct: '利润率',
 };
 
 // Excel 导出包含的更宽指标集（含中间量 cost_amt / hr_amt / rent_amt / loan_balance）

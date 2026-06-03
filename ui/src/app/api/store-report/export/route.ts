@@ -67,13 +67,16 @@ export async function GET(request: Request) {
         cashflow_runway_months: r.cashflow_runway_months == null ? null : Number(r.cashflow_runway_months),
         hr_ratio_pct: r.hr_ratio_pct == null ? null : Number(r.hr_ratio_pct),
         rent_ratio_pct: r.rent_ratio_pct == null ? null : Number(r.rent_ratio_pct),
+        gross_profit_rate_pct: r.gross_profit_rate_pct == null ? null : Number(r.gross_profit_rate_pct),
+        net_profit_rate_pct: r.net_profit_rate_pct == null ? null : Number(r.net_profit_rate_pct),
       });
       snapshot = { current: toKpi(cur.rows[0]), previous: prev.rows[0] ? toKpi(prev.rows[0]) : null };
 
       const tr = await pool.query(
         `SELECT month, revenue_amt, expense_amt, gross_profit_amt, net_profit_amt,
                 operating_cf_amt, cash_balance, cashflow_runway_months,
-                hr_ratio_pct, rent_ratio_pct
+                hr_ratio_pct, rent_ratio_pct,
+                gross_profit_rate_pct, net_profit_rate_pct
          FROM ${schema}.v_store_monthly_kpi
          WHERE store_code = $1
          ORDER BY month DESC LIMIT 12`,
@@ -84,6 +87,7 @@ export async function GET(request: Request) {
         'revenue_amt', 'expense_amt', 'gross_profit_amt', 'net_profit_amt',
         'operating_cf_amt', 'cash_balance', 'cashflow_runway_months',
         'hr_ratio_pct', 'rent_ratio_pct',
+        'gross_profit_rate_pct', 'net_profit_rate_pct',
       ];
       const series = {} as Record<KpiMetricKey, (number | null)[]>;
       for (const k of keys) series[k] = [];

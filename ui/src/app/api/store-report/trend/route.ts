@@ -43,7 +43,8 @@ export async function GET(request: Request) {
         `SELECT month,
                 revenue_amt, expense_amt, gross_profit_amt, net_profit_amt,
                 operating_cf_amt, cash_balance, cashflow_runway_months,
-                hr_ratio_pct, rent_ratio_pct
+                hr_ratio_pct, rent_ratio_pct,
+                gross_profit_rate_pct, net_profit_rate_pct
          FROM ${schema}.v_store_monthly_kpi
          WHERE store_code = $1
          ORDER BY month DESC
@@ -64,6 +65,7 @@ export async function GET(request: Request) {
       'revenue_amt', 'expense_amt', 'gross_profit_amt', 'net_profit_amt',
       'operating_cf_amt', 'cash_balance', 'cashflow_runway_months',
       'hr_ratio_pct', 'rent_ratio_pct',
+      'gross_profit_rate_pct', 'net_profit_rate_pct',
     ];
     const series = {} as Record<KpiMetricKey, (number | null)[]>;
     for (const k of seriesKeys) series[k] = [];
