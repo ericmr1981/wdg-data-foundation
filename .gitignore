@@ -60,3 +60,5 @@ scripts/load_bonjur_batches.mjs
 # supabase local dev temp files
 supabase/.branches/
 supabase/.temp/
+*.csv
+tasks.json
