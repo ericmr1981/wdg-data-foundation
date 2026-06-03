@@ -97,9 +97,8 @@ export async function GET(request: NextRequest) {
       pd.setMonth(pd.getMonth() + (span === 'month' ? 1 : span === 'quarter' ? 3 : 12));
       const prevEnd = pd.toISOString().slice(0, 10);
       if (store && store !== 'all') {
-        prevParams.push(store);
-        prevDateClause = `AND biz_date >= $2::DATE AND biz_date < $3::DATE`;
-        prevBankDateClause = `AND t.txn_time >= $2::DATE AND t.txn_time < $3::DATE`;
+        prevDateClause = `AND biz_date >= $1::DATE AND biz_date < $2::DATE`;
+        prevBankDateClause = `AND t.txn_time >= $1::DATE AND t.txn_time < $2::DATE`;
       } else {
         prevDateClause = `AND biz_date >= $1::DATE AND biz_date < $2::DATE`;
         prevBankDateClause = `AND t.txn_time >= $1::DATE AND t.txn_time < $2::DATE`;
