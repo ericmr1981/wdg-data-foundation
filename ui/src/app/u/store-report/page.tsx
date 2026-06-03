@@ -137,7 +137,8 @@ export default function StoreReportPage() {
         <div className="grid grid-cols-2 gap-3">
           <TrendChart title="营业收入趋势 (12月)" trend={trend} metrics={['revenue_amt']} />
           <TrendChart title="营业支出趋势 (12月)" trend={trend} metrics={['expense_amt']} />
-          <TrendChart title="毛利 / 净利润趋势" trend={trend} metrics={['gross_profit_amt', 'net_profit_amt']} />
+          <TrendChart title="毛利 / 毛利率趋势" trend={trend} metrics={['gross_profit_amt', 'gross_profit_rate_pct']} />
+          <TrendChart title="净利润 / 利润率趋势" trend={trend} metrics={['net_profit_amt', 'net_profit_rate_pct']} />
           <TrendChart title="经营现金流趋势" trend={trend} metrics={['operating_cf_amt']} />
           <TrendChart title="银行余额趋势" trend={trend} metrics={['cash_balance']} />
           <TrendChart title="现金流月数趋势" trend={trend} metrics={['cashflow_runway_months']} />
