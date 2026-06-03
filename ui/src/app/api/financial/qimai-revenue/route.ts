@@ -36,6 +36,7 @@ export async function GET(request: Request) {
         `SELECT COALESCE(SUM(amount), 0)::numeric as bank_revenue
          FROM ${dmSchema}.v_profit_statement
          WHERE section = 'revenue' AND lvl1_code = 'REV_BIZ'
+           AND lvl2_code != 'OTHER_CH'
            AND month < $1::date ${storeClause}`,
         storeParams
       );
