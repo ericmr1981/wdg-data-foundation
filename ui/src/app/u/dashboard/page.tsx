@@ -329,12 +329,13 @@ function DataHealth({ brand }: { brand: string }) {
   );
 }
 
-function QuickLinks() {
+function QuickLinks({ span, period, store }: { span: string; period: string; store: string }) {
+  const params = new URLSearchParams({ span, period, store }).toString();
   const links = [
-    { href: '/u/financial', label: '财务报表', desc: '利润表 / 现金流量表 / 资产负债表' },
-    { href: '/u/payment', label: '付款分析', desc: '按科目 / 往来方查看支出' },
-    { href: '/u/income', label: '收入分析', desc: '收入趋势 / 银行入账率' },
-    { href: '/u/sales', label: '销售报表', desc: '各门店销售数据汇总' },
+    { href: `/u/financial?${params}`, label: '财务报表', desc: '利润表 / 现金流量表 / 资产负债表' },
+    { href: `/u/payment?${params}`, label: '付款分析', desc: '按科目 / 往来方查看支出' },
+    { href: `/u/income?${params}`, label: '收入分析', desc: '收入趋势 / 银行入账率' },
+    { href: `/u/sales?${params}`, label: '销售报表', desc: '各门店销售数据汇总' },
   ];
   return (
     <div className="bg-white border rounded-lg p-4">
@@ -495,7 +496,7 @@ export default function DashboardPage() {
           {/* Bottom row */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <DataHealth brand={brand} />
-            <QuickLinks />
+            <QuickLinks span={span} period={period} store={store} />
           </div>
         </>
       )}

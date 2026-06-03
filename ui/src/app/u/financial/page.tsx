@@ -39,6 +39,17 @@ export default function FinancialLayout() {
   const [period, setPeriod] = useState('2026-01');
   const [store, setStore] = useState('all');
 
+  // 从 URL 参数继承筛选条件
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const s = params.get('span');
+    const p = params.get('period');
+    const st = params.get('store');
+    if (s && ['month', 'quarter', 'year'].includes(s)) setSpan(s as SpanId);
+    if (p) setPeriod(p);
+    if (st) setStore(st);
+  }, []);
+
   const periodOptions = useMemo(() => {
     if (span === 'month') {
       return ['2025-03', '2025-04', '2025-05', '2025-06', '2025-07', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06'];

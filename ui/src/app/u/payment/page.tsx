@@ -51,6 +51,17 @@ export default function PaymentPage() {
   const [stores, setStores] = useState<{ code: string; name: string }[]>([]);
   const [search, setSearch] = useState('');
 
+  // 从 URL 参数继承筛选条件
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const s = params.get('span');
+    const p = params.get('period');
+    const st = params.get('store');
+    if (s && ['month', 'quarter', 'year'].includes(s)) setSpan(s as any);
+    if (p) setPeriod(p);
+    if (st) setStore(st);
+  }, []);
+
   // Payment metrics
   const [metrics, setMetrics] = useState<{ total_out: number; by_lvl1: PaymentLvl1[]; monthly_trend: PaymentTrend[] } | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
