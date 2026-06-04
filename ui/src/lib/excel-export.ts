@@ -50,17 +50,7 @@ export interface ExportInput {
 export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
 
-  // Sheet 1: 门店信息
-  const infoRows = [
-    ['品牌', input.brand],
-    ['门店', input.store],
-    ['月份', input.month],
-    ['生成时间', input.generatedAt.toISOString()],
-  ];
-  const ws1 = XLSX.utils.aoa_to_sheet(infoRows);
-  XLSX.utils.book_append_sheet(wb, ws1, '门店信息');
-
-  // Sheet 2: 当月快照
+  // 段 2: 当月快照（保留原 snapRows 构建逻辑）
   const cur = input.snapshot.current;
   const prev = input.snapshot.previous;
   const snapRows: any[][] = [['指标', '当月值', '上月值', '环比%']];
@@ -78,24 +68,8 @@ export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
       delta,
     ]);
   }
-  const ws2 = XLSX.utils.aoa_to_sheet(snapRows);
-  XLSX.utils.book_append_sheet(wb, ws2, '当月快照');
 
-  // Sheet 3: 历史趋势
-  const trendHeader = ['月份', ...ALL_METRICS.map(k => EXCEL_METRIC_LABELS[k] ?? k)];
-  const trendRows: any[][] = [trendHeader];
-  for (let i = 0; i < input.trend.months.length; i++) {
-    const row: any[] = [input.trend.months[i]];
-    for (const key of ALL_METRICS) {
-      const v = (input.trend.series as any)[key]?.[i];
-      row.push(fmtCell(key, v));
-    }
-    trendRows.push(row);
-  }
-  const ws3 = XLSX.utils.aoa_to_sheet(trendRows);
-  XLSX.utils.book_append_sheet(wb, ws3, '历史趋势');
-
-  // Sheet 4: 同期对比 (当月 vs 去年同期) — only show metrics available in trend series
+  // 段 4: 同期对比（保留原 yoyRows 构建逻辑）
   const yoy = (() => {
     const [y, m] = input.month.split('-').map(Number);
     return `${y - 1}-${String(m).padStart(2, '0')}`;
@@ -118,7 +92,6 @@ export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
     gross_profit_rate_pct: input.trend.series.gross_profit_rate_pct?.[yoyIndex] ?? null,
     net_profit_rate_pct: input.trend.series.net_profit_rate_pct?.[yoyIndex] ?? null,
   } : null;
-
   const yoyRows: any[][] = [
     ['指标', `当月 (${input.month})`, `去年同期 (${yoy})`, '同比%'],
   ];
@@ -136,10 +109,68 @@ export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
       delta,
     ]);
   }
-  const ws4 = XLSX.utils.aoa_to_sheet(yoyRows);
-  XLSX.utils.book_append_sheet(wb, ws4, '同期对比');
 
+  // 段 3: 历史趋势（保留原 trendRows 构建逻辑）
+  const trendHeader = ['月份', ...ALL_METRICS.map(k => EXCEL_METRIC_LABELS[k] ?? k)];
+  const trendRows: any[][] = [trendHeader];
+  for (let i = 0; i < input.trend.months.length; i++) {
+    const row: any[] = [input.trend.months[i]];
+    for (const key of ALL_METRICS) {
+      const v = (input.trend.series as any)[key]?.[i];
+      row.push(fmtCell(key, v));
+    }
+    trendRows.push(row);
+  }
+
+  // 合并为单 sheet
+  const sections: Array<{ title: string; rows: any[][] }> = [
+    {
+      title: '门店信息',
+      rows: [
+        ['品牌', input.brand],
+        ['门店', input.store],
+        ['月份', input.month],
+        ['生成时间', input.generatedAt.toISOString()],
+      ],
+    },
+    { title: '当月快照', rows: snapRows },
+    { title: '同期对比', rows: yoyRows },
+    { title: '历史趋势', rows: trendRows },
+  ];
+
+  const { rows, headerRowIndices } = buildAllRows(sections);
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  for (const rowIdx of headerRowIndices) {
+    const ref = XLSX.utils.encode_cell({ r: rowIdx, c: 0 });
+    if (ws[ref]) ws[ref].s = { font: { bold: true, sz: 12 } };
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, '门店月报');
   return wb;
+}
+
+function buildAllRows(sections: Array<{ title: string; rows: any[][] }>): {
+  rows: any[][];
+  headerRowIndices: number[];
+} {
+  const rows: any[][] = [];
+  const headerRowIndices: number[] = [];
+  let cursor = 0;
+
+  sections.forEach((section, i) => {
+    headerRowIndices.push(cursor);
+    rows.push([section.title]);
+    cursor += 1;
+    rows.push(...section.rows);
+    cursor += section.rows.length;
+    if (i < sections.length - 1) {
+      rows.push([]);
+      cursor += 1;
+    }
+  });
+
+  return { rows, headerRowIndices };
 }
 
 export function workbookToBuffer(wb: XLSX.WorkBook): Buffer {
