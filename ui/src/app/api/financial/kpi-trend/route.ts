@@ -80,8 +80,8 @@ export async function GET(request: Request) {
     );
 
     // Build monthly trend
-    const profitMap = new Map<string, { revenue: number; material: number; net: number; expenses: number }>();
-    for (const r of profitTrend.rows) profitMap.set(r.month, { revenue: Number(r.revenue), material: Number(r.material_cost), net: Number(r.net_profit), expenses: Number(r.expenses) });
+    const profitMap = new Map<string, { revenue: number; material: number; expenses: number }>();
+    for (const r of profitTrend.rows) profitMap.set(r.month, { revenue: Number(r.revenue), material: Number(r.material_cost), expenses: Number(r.expenses) });
 
     const cfMap = new Map<string, number>();
     for (const r of cfTrend.rows) cfMap.set(r.month, Number(r.operating_cashflow));
