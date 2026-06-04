@@ -98,3 +98,107 @@ def test_validate_rejects_non_numeric_qty():
     assert len(accepted) == 1
     assert len(rejected) == 1
     assert rejected[0][0].sku == 'X'
+
+
+# === Integration tests (DB) ===
+import os
+import psycopg2
+import pytest
+
+DB_DSN = {
+    'host': os.getenv('DB_HOST', 'localhost'),
+    'port': int(os.getenv('DB_PORT', '5432')),
+    'database': os.getenv('DB_NAME', 'dataplatform'),
+    'user': os.getenv('DB_USER', 'postgres'),
+    'password': os.environ['DB_PASSWORD'],
+}
+
+TEST_STORE = 'hz_fuyang_test'
+
+
+@pytest.fixture(scope='module')
+def db():
+    conn = psycopg2.connect(**DB_DSN)
+    yield conn
+    conn.close()
+
+
+def _truncate_test_data(conn):
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM brand_tamkoko_ods.inventory_month_end WHERE store_code = %s",
+            (TEST_STORE,)
+        )
+        cur.execute(
+            """DELETE FROM brand_tamkoko_cfg.material_sku
+               WHERE sku IN (
+                 SELECT sku FROM brand_tamkoko_ods.inventory_month_end
+                 WHERE store_code = %s
+               )""",
+            (TEST_STORE,)
+        )
+    conn.commit()
+
+
+def test_import_persists_rows_and_material_sku(db):
+    """导入 5 月 fixture 后 ODS 应有 50+ 行，cfg.material_sku 有相同 SKU 数。"""
+    from import_tamkoko_inventory import run_import
+
+    _truncate_test_data(db)
+    summary = run_import(
+        path=str(FIXTURE_DIR / 'tamkoko_inventory_5m.xlsx'),
+        period='2026-05',
+        store_code=TEST_STORE,
+        brand_code='tamkoko',
+        source_type='tamkoko_inventory',
+        conn=db,
+    )
+    db.commit()
+    assert summary['ods_rows'] >= 50, f"only {summary['ods_rows']} ods rows"
+    assert summary['sku_count'] >= 50
+
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) FROM brand_tamkoko_ods.inventory_month_end WHERE store_code=%s",
+            (TEST_STORE,)
+        )
+        assert cur.fetchone()[0] == summary['ods_rows']
+
+
+def test_import_idempotent_on_repeat(db):
+    """同文件重导不增加 ODS 行。"""
+    from import_tamkoko_inventory import run_import
+
+    _truncate_test_data(db)
+    s1 = run_import(
+        path=str(FIXTURE_DIR / 'tamkoko_inventory_5m.xlsx'),
+        period='2026-05', store_code=TEST_STORE,
+        brand_code='tamkoko', source_type='tamkoko_inventory', conn=db,
+    )
+    s2 = run_import(
+        path=str(FIXTURE_DIR / 'tamkoko_inventory_5m.xlsx'),
+        period='2026-05', store_code=TEST_STORE,
+        brand_code='tamkoko', source_type='tamkoko_inventory', conn=db,
+    )
+    db.commit()
+    assert s1['ods_rows'] == s2['ods_rows']
+
+
+def test_material_sku_first_seen_preserved(db):
+    """第二次导入 5 月后，first_seen_period 仍是 2026-05（不被更新为 last）。"""
+    from import_tamkoko_inventory import run_import
+
+    _truncate_test_data(db)
+    run_import(
+        path=str(FIXTURE_DIR / 'tamkoko_inventory_5m.xlsx'),
+        period='2026-05', store_code=TEST_STORE,
+        brand_code='tamkoko', source_type='tamkoko_inventory', conn=db,
+    )
+    with db.cursor() as cur:
+        cur.execute(
+            """SELECT first_seen_period, last_seen_period
+               FROM brand_tamkoko_cfg.material_sku WHERE sku='001365'"""
+        )
+        row = cur.fetchone()
+        assert row[0] == '2026-05', f"first_seen_period = {row[0]}"
+        assert row[1] == '2026-05'

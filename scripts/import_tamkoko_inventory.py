@@ -166,5 +166,113 @@ def main():
         print(f'  REJECT {r.sku}: {reason}')
 
 
+# ── DB 写入 ────────────────────────────────────────────
+import hashlib
+
+from psycopg2.extras import execute_values
+
+
+def calculate_sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(65536), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _register_source_file(conn, brand_code: str, store_code: str,
+                          source_type: str, month: str,
+                          file_name: str, file_path: str,
+                          file_hash: str) -> int:
+    """注册 raw.ingest_file，返回 source_file_id。幂等：同 (brand, hash) 复用。
+
+    month 入参允许 'YYYY-MM'（period）或 'YYYY-MM-DD'。raw.ingest_file.month 是
+    DATE 类型，仅 'YYYY-MM' 不能直接转换，需补齐到月首日。
+    """
+    month_date = f"{month}-01" if len(month) == 7 else month
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO raw.ingest_file
+              (brand_code, store_code, source_type, month,
+               file_name, file_path, file_hash, status, row_count)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'running', 0)
+            ON CONFLICT (brand_code, file_hash) DO UPDATE
+              SET status='running', updated_at=NOW()
+            RETURNING id
+        """, (brand_code, store_code, source_type, month_date,
+              file_name, file_path, file_hash))
+        return cur.fetchone()[0]
+
+
+def _upsert_material_sku(conn, rows: list[InventoryRow]):
+    """cfg.material_sku UPSERT。first_seen_period 仅在 INSERT 时写入。"""
+    if not rows:
+        return
+    with conn.cursor() as cur:
+        for r in rows:
+            cur.execute("""
+                INSERT INTO brand_tamkoko_cfg.material_sku
+                  (sku, material_name, category, spec, unit, unit_price,
+                   first_seen_period, last_seen_period, enabled)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+                ON CONFLICT (sku) DO UPDATE SET
+                  material_name     = EXCLUDED.material_name,
+                  category          = EXCLUDED.category,
+                  spec              = EXCLUDED.spec,
+                  unit              = EXCLUDED.unit,
+                  unit_price        = EXCLUDED.unit_price,
+                  last_seen_period  = EXCLUDED.last_seen_period,
+                  updated_at        = NOW()
+            """, (r.sku, r.material_name, r.category, r.spec, r.unit,
+                  r.unit_price, r.period, r.period))
+
+
+def _write_ods(conn, rows: list[InventoryRow], source_file_id: int, store_code: str):
+    """DELETE WHERE source_file_id=? 后 INSERT。store_code 由调用方提供。"""
+    with conn.cursor() as cur:
+        cur.execute("""
+            DELETE FROM brand_tamkoko_ods.inventory_month_end
+            WHERE source_file_id = %s
+        """, (source_file_id,))
+        if not rows:
+            return
+        payload = [(
+            store_code, r.period, r.category, r.sku, r.material_name, r.spec,
+            r.unit_price, r.qty, r.unit, r.amount, source_file_id
+        ) for r in rows]
+        execute_values(cur, """
+            INSERT INTO brand_tamkoko_ods.inventory_month_end
+              (store_code, period, category, sku, material_name, spec,
+               unit_price, qty, unit, amount, source_file_id)
+            VALUES %s
+        """, payload)
+
+
+def run_import(path: str, period: str, store_code: str,
+               brand_code: str, source_type: str,
+               conn) -> dict:
+    """
+    全流程导入：解析 → 校验 → 写 raw.ingest_file → UPSERT cfg.material_sku → 写 ODS。
+    返回 {ods_rows, sku_count, rejected, source_file_id}。
+    注意：本函数不 commit，由调用方决定 commit 时机。
+    """
+    rows = parse_inventory_excel(path, period)
+    accepted, rejected = validate_rows(rows)
+    file_hash = calculate_sha256(path)
+    file_name = Path(path).name
+    source_file_id = _register_source_file(
+        conn, brand_code, store_code, source_type, period,
+        file_name, str(Path(path).resolve()), file_hash,
+    )
+    _upsert_material_sku(conn, accepted)
+    _write_ods(conn, accepted, source_file_id, store_code)
+    return {
+        'ods_rows': len(accepted),
+        'sku_count': len({r.sku for r in accepted}),
+        'rejected': len(rejected),
+        'source_file_id': source_file_id,
+    }
+
+
 if __name__ == '__main__':
     main()
