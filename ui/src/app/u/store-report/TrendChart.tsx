@@ -22,8 +22,8 @@ const RATE_KEYS: Set<KpiMetricKey> = new Set([
 function fmtY(key: KpiMetricKey, n: number): string {
   if (RATE_KEYS.has(key)) return `${n.toFixed(1)}%`;
   if (key === 'cashflow_runway_months') return n.toFixed(1);
-  if (Math.abs(n) >= 10000) return `${(n / 10000).toFixed(0)}万`;
-  return n.toFixed(0);
+  if (Math.abs(n) >= 10000) return `${(n / 10000).toFixed(1)}万`;
+  return n.toFixed(1);
 }
 
 function getAxisId(k: KpiMetricKey): 'left' | 'right' {
