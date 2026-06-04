@@ -156,15 +156,10 @@ function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: 
   const sorted = [...data].reverse();
   // Filter out null values for range calculation (null bars render as "—" placeholder).
   const numericValues = sorted.map(d => d[trendKey]).filter((v): v is number => typeof v === 'number');
-  // 毛利率/净利率: y轴固定 0-100%（range=1），柱子从底部向上长
-  const isRate = trendKey === 'gross_margin_rate' || trendKey === 'net_profit_rate';
-  const range = isRate
-    ? 1
-    : (numericValues.length > 0
-        ? Math.max(Math.max(...numericValues, 0), Math.abs(Math.min(...numericValues, 0)), 1)
-        : 1);
+  const range = numericValues.length > 0
+    ? Math.max(Math.max(...numericValues, 0), Math.abs(Math.min(...numericValues, 0)), 1)
+    : 1;
   const halfH = 132;
-  const barAreaH = 264;
   const fmt = format || ((v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 2 }));
 
   return (
@@ -174,46 +169,41 @@ function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: 
         {/* y-axis labels */}
         <div className="absolute left-0 text-[9px] text-gray-400" style={{ top: '4px' }}>{fmt(range)}</div>
         <div className="absolute left-0 text-[9px] text-gray-400" style={{ bottom: '24px' }}>{fmt(-range)}</div>
-        {/* center baseline (x-axis) — only for non-rate trends */}
-        {!isRate && (
-          <div className="absolute left-6 right-2" style={{ top: `${halfH + 12}px`, height: '1px', backgroundColor: '#9CA3AF' }} />
-        )}
-        {/* bars: rate 用 items-end（柱子贴底），其他用 items-start + center baseline */}
-        <div
-          className={`absolute left-6 right-2 flex gap-[3px] ${isRate ? 'items-end' : 'items-start'}`}
-          style={{ top: '12px', height: `${barAreaH}px` }}
-        >
+        {/* center baseline (x-axis) */}
+        <div className="absolute left-6 right-2" style={{ top: `${halfH + 12}px`, height: '1px', backgroundColor: '#9CA3AF' }} />
+        {/* bars */}
+        <div className="absolute left-6 right-2 flex items-start gap-[3px]" style={{ top: '12px', height: '264px' }}>
           {sorted.map(d => {
             const val = d[trendKey];
             if (val == null) {
               return (
-                <div key={d.month} className="flex-1 flex flex-col items-center justify-end relative" style={{ height: '100%' }}>
-                  <div className="text-[10px] text-gray-400" style={{ marginBottom: '2px' }}>—</div>
+                <div key={d.month} className="flex-1 flex flex-col items-center justify-center relative" style={{ height: '100%' }}>
+                  <div className="text-[10px] text-gray-400" style={{ marginTop: `${halfH - 6}px` }}>—</div>
                   <div className="absolute text-[9px] text-gray-400" style={{ bottom: '-18px' }}>{d.month.slice(5)}</div>
                 </div>
               );
             }
-            let barH: number;
-            let barTop: number;
-            if (isRate) {
-              // 0% (底部) → 100% (顶部)；柱子从底部向上
-              barH = Math.max(1, val * barAreaH);
-              barTop = barAreaH - barH;
-            } else {
-              const isPos = val >= 0;
-              const pct = range > 0 ? (Math.abs(val) / range) : 0;
-              barH = Math.max(1, pct * halfH);
-              barTop = isPos ? (halfH - barH) : halfH;
-            }
-            const barColor = isRate ? (trendKey === 'gross_margin_rate' ? '#22C55E' : '#A855F7') : (val >= 0 ? '#22C55E' : '#EF4444');
+            const isPos = val >= 0;
+            const pct = range > 0 ? (Math.abs(val) / range) : 0;
+            const barH = Math.max(1, pct * halfH);
+            const barColor = isPos ? '#22C55E' : '#EF4444';
             return (
-              <div key={d.month} className="flex-1 flex flex-col items-center justify-end relative" style={{ height: '100%' }}>
-                <div
-                  className="w-full cursor-pointer hover:opacity-80"
-                  style={{ height: `${barH}px`, marginTop: `${barTop}px`, backgroundColor: barColor, opacity: 0.85, borderTopLeftRadius: '2px', borderTopRightRadius: '2px' }}
-                  onMouseEnter={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setTooltip({ month: d.month, value: val, x: r.left + r.width/2, y: r.top }); }}
-                  onMouseLeave={() => setTooltip(null)}
-                />
+              <div key={d.month} className="flex-1 flex flex-col items-center relative" style={{ height: '100%' }}>
+                {isPos ? (
+                  <div
+                    className="w-full cursor-pointer hover:opacity-80"
+                    style={{ height: `${barH}px`, backgroundColor: barColor, opacity: 0.85, marginTop: `${halfH - barH}px`, borderTopLeftRadius: '2px', borderTopRightRadius: '2px' }}
+                    onMouseEnter={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setTooltip({ month: d.month, value: val, x: r.left + r.width/2, y: r.top }); }}
+                    onMouseLeave={() => setTooltip(null)}
+                  />
+                ) : (
+                  <div
+                    className="w-full cursor-pointer hover:opacity-80"
+                    style={{ height: `${barH}px`, backgroundColor: barColor, opacity: 0.85, marginTop: `${halfH}px`, borderBottomLeftRadius: '2px', borderBottomRightRadius: '2px' }}
+                    onMouseEnter={(e) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setTooltip({ month: d.month, value: val, x: r.left + r.width/2, y: r.top }); }}
+                    onMouseLeave={() => setTooltip(null)}
+                  />
+                )}
                 <div className="absolute text-[9px] text-gray-400" style={{ bottom: '-18px' }}>{d.month.slice(5)}</div>
               </div>
             );
