@@ -63,11 +63,29 @@ export function KpiCards({ current, previous }: Props) {
           <div key={key} className="bg-white rounded border p-3">
             <div className="text-xs text-gray-500 mb-1">{KPI_LABELS[key]}</div>
             <div className="text-lg font-semibold text-gray-900">{fmtValue(key, curV)}</div>
-            {key === 'gross_profit_amt' && current.gross_profit_rate_pct != null && (
-              <div className="text-xs text-gray-500 mt-0.5">毛利率 {current.gross_profit_rate_pct.toFixed(1)}%</div>
+            {key === 'gross_profit_amt' && (
+              <div
+                className="text-xs text-gray-500 mt-0.5"
+                title={current.gross_profit_rate_pct == null
+                  ? '首期缺期初库存，毛利率暂不显示。从有上月期末的月份开始展示。'
+                  : undefined}
+              >
+                {current.gross_profit_rate_pct != null
+                  ? `毛利率 ${current.gross_profit_rate_pct.toFixed(1)}%`
+                  : '毛利率 -'}
+              </div>
             )}
-            {key === 'net_profit_amt' && current.net_profit_rate_pct != null && (
-              <div className="text-xs text-gray-500 mt-0.5">利润率 {current.net_profit_rate_pct.toFixed(1)}%</div>
+            {key === 'net_profit_amt' && (
+              <div
+                className="text-xs text-gray-500 mt-0.5"
+                title={current.net_profit_rate_pct == null
+                  ? '首期缺期初库存，净利润率暂不显示。'
+                  : undefined}
+              >
+                {current.net_profit_rate_pct != null
+                  ? `利润率 ${current.net_profit_rate_pct.toFixed(1)}%`
+                  : '利润率 -'}
+              </div>
             )}
             <div className={`text-xs ${color} mt-1`}>{arrow} {text}</div>
           </div>
