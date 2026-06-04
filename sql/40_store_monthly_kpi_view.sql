@@ -87,6 +87,8 @@ LEFT JOIN brand_gelatomiiix_dm.v_balance_sheet b USING (month, store_code);
 --   - 其他列（cashflow / balance_sheet）保持原状。
 -- 注意：cogs_amt 加在 SELECT 中间，列顺序与 bonjur/gelatomiiix 不同，
 --       CREATE OR REPLACE VIEW 无法重排列，必须先 DROP 再 CREATE。
+-- 注意：net_profit = revenue - cogs - non_cogs_expense（不再用 expense_amt），
+--       否则 MATERIAL 会被 cogs 与 expense 各减一次（double-count）。
 DROP VIEW IF EXISTS brand_tamkoko_dm.v_store_monthly_kpi;
 CREATE OR REPLACE VIEW brand_tamkoko_dm.v_store_monthly_kpi AS
 WITH profit_agg AS (
@@ -95,6 +97,7 @@ WITH profit_agg AS (
     SUM(CASE WHEN section = 'revenue' THEN amount ELSE 0 END) AS revenue_amt,
     SUM(CASE WHEN lvl1_code = 'MATERIAL' THEN ABS(amount) ELSE 0 END) AS cost_amt,
     SUM(CASE WHEN lvl1_code IN ('HR','MATERIAL','MKT','RENT_UTIL','SHIP','ADMIN') THEN ABS(amount) ELSE 0 END) AS expense_amt,
+    SUM(CASE WHEN lvl1_code IN ('HR','MKT','RENT_UTIL','SHIP','ADMIN') THEN ABS(amount) ELSE 0 END) AS non_cogs_expense_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'HR'        THEN amount ELSE 0 END) AS hr_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'RENT_UTIL' THEN amount ELSE 0 END) AS rent_amt
   FROM brand_tamkoko_dm.v_profit_statement GROUP BY month, store_code
@@ -118,7 +121,7 @@ SELECT
   CASE WHEN cg.cogs_amt IS NULL THEN NULL
        ELSE p.revenue_amt - cg.cogs_amt END AS gross_profit_amt,
   CASE WHEN cg.cogs_amt IS NULL THEN NULL
-       ELSE p.revenue_amt - cg.cogs_amt - p.expense_amt END AS net_profit_amt,
+       ELSE p.revenue_amt - cg.cogs_amt - p.non_cogs_expense_amt END AS net_profit_amt,
   cf.operating_cf_amt, cf.total_in_amt, cf.total_out_amt,
   b.cash_balance, b.loan_balance,
   CASE WHEN cf.operating_cf_amt < 0
@@ -130,7 +133,7 @@ SELECT
        ELSE ROUND((p.revenue_amt - cg.cogs_amt)::numeric / p.revenue_amt * 100, 1) END
     AS gross_profit_rate_pct,
   CASE WHEN cg.cogs_amt IS NULL OR p.revenue_amt = 0 THEN NULL
-       ELSE ROUND((p.revenue_amt - cg.cogs_amt - p.expense_amt)::numeric / p.revenue_amt * 100, 1) END
+       ELSE ROUND((p.revenue_amt - cg.cogs_amt - p.non_cogs_expense_amt)::numeric / p.revenue_amt * 100, 1) END
     AS net_profit_rate_pct
 FROM profit_agg p
 LEFT JOIN cogs_agg cg
