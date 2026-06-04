@@ -32,6 +32,10 @@ function getAxisId(k: KpiMetricKey): 'left' | 'right' {
 
 function getPaddedDomain(data: any[], metrics: KpiMetricKey[], axis: 'left' | 'right'): [number, number] {
   const axisMetrics = metrics.filter(m => getAxisId(m) === axis);
+  // 毛利率 / 净利率 / 人力占比率 / 租金占比率：y 轴固定 0-100%
+  if (axisMetrics.length > 0 && axisMetrics.every(m => RATE_KEYS.has(m))) {
+    return [0, 100];
+  }
   const values: number[] = [];
   for (const row of data) {
     for (const m of axisMetrics) {
