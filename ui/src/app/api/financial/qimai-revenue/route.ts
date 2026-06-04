@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
-import { normalizeBrand } from '@/lib/brand-server';
+import { normalizeBrand, getDmSchema, getOdsSchema } from '@/lib/brand-server';
 import { parsePeriod } from '../period-utils';
 
 // GET /api/financial/qimai-revenue?brand=gelatomiiix&period=2026-06&span=month&store=xxx
@@ -23,8 +23,9 @@ export async function GET(request: Request) {
     if (!boundaries) return NextResponse.json({ success: false, error: 'Invalid period' }, { status: 400 });
     const [, endDate] = boundaries;
 
-    const dmSchema = ['bonjur', 'yufeng'].includes(brand) ? `${brand}_dm` : `brand_${brand}_dm`;
-    const odsSchema = `${brand}_ods`;
+    const dmSchema = getDmSchema(brand);
+    const odsSchema = getOdsSchema(brand);
+    const incomeOds = brand === 'gelatomiiix' ? 'gelatomiiix_ods' : odsSchema;
 
     // Cumulative bank revenue up to endDate
     const storeClause = store !== 'all' ? 'AND store_code = $2' : '';
@@ -51,7 +52,7 @@ export async function GET(request: Request) {
     try {
       const qiRes = await pool.query(
         `SELECT COALESCE(SUM(net_amt), 0)::numeric as qimai_revenue
-         FROM ${odsSchema}.income_detail
+         FROM ${incomeOds}.income_detail
          WHERE NOT is_member_payment AND NOT is_refund
            AND biz_date < $1::date ${storeClause}`,
         storeParams
