@@ -135,12 +135,12 @@ export default function StoreReportPage() {
 
       {trend && trend.months.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
-          <TrendChart title="营业收入趋势 (12月)" trend={trend} metrics={['revenue_amt']} />
-          <TrendChart title="营业支出趋势 (12月)" trend={trend} metrics={['expense_amt']} />
+          <TrendChart title="营业收入趋势 (12月)" trend={trend} metrics={['revenue_amt']} barMetric="revenue_amt" />
+          <TrendChart title="营业支出趋势 (12月)" trend={trend} metrics={['expense_amt']} barMetric="expense_amt" />
           <TrendChart title="毛利 / 毛利率趋势" trend={trend} metrics={['gross_profit_amt', 'gross_profit_rate_pct']} barMetric="gross_profit_amt" />
           <TrendChart title="净利润 / 利润率趋势" trend={trend} metrics={['net_profit_amt', 'net_profit_rate_pct']} barMetric="net_profit_amt" />
-          <TrendChart title="经营现金流趋势" trend={trend} metrics={['operating_cf_amt']} />
-          <TrendChart title="银行余额趋势" trend={trend} metrics={['cash_balance']} />
+          <TrendChart title="经营现金流趋势" trend={trend} metrics={['operating_cf_amt']} barMetric="operating_cf_amt" />
+          <TrendChart title="银行余额趋势" trend={trend} metrics={['cash_balance']} barMetric="cash_balance" />
           <TrendChart title="人力占比率趋势" trend={trend} metrics={['hr_ratio_pct']} />
           <TrendChart title="租金占比率趋势" trend={trend} metrics={['rent_ratio_pct']} />
         </div>
