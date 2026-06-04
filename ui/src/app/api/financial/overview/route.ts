@@ -156,7 +156,6 @@ export async function GET(request: Request) {
       const prevMap = new Map(prevProfitRes.rows.map((r: ProfitRow) => [r.lvl1_code, Number(r.amount)]));
       const prevRev = prevMap.get('REV_BIZ') || 0;
       const prevMat = prevMap.get('MATERIAL') || 0;
-      const prevNet = Array.from(prevMap.values()).reduce((s: number, v: number) => s + v, 0);
       const prevOcf = Number(prevCfRes.rows[0]?.net_amount || 0);
 
       vsRevenue = (revenue > 0 && prevRev > 0) ? (revenue - prevRev) / prevRev : 0;
