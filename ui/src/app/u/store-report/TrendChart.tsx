@@ -30,6 +30,26 @@ function getAxisId(k: KpiMetricKey): 'left' | 'right' {
   return RATE_KEYS.has(k) || k === 'cashflow_runway_months' ? 'right' : 'left';
 }
 
+function getPaddedDomain(data: any[], metrics: KpiMetricKey[], axis: 'left' | 'right'): [number, number] {
+  const axisMetrics = metrics.filter(m => getAxisId(m) === axis);
+  const values: number[] = [];
+  for (const row of data) {
+    for (const m of axisMetrics) {
+      const v = row[m];
+      if (typeof v === 'number' && isFinite(v)) values.push(v);
+    }
+  }
+  if (values.length === 0) return [0, 1];
+  let min = Math.min(...values);
+  let max = Math.max(...values);
+  if (min === max) {
+    if (min === 0) { min = -1; max = 1; }
+    else { min = min - Math.abs(min) * 0.1; max = max + Math.abs(max) * 0.1; }
+  }
+  const range = max - min;
+  return [min, max + range * 0.1];
+}
+
 export function TrendChart({ title, trend, metrics, barMetric, colors = DEFAULT_COLORS }: Props) {
   const data = trend.months.map((m, i) => {
     const row: any = { month: m };
@@ -57,6 +77,8 @@ export function TrendChart({ title, trend, metrics, barMetric, colors = DEFAULT_
                 tick={{ fontSize: 10 }}
                 tickFormatter={v => fmtY(leftAnchor, Number(v))}
                 width={50}
+                domain={getPaddedDomain(data, metrics, 'left')}
+                allowDataOverflow
               />
             )}
             {usedRight && rightAnchor && (
@@ -66,6 +88,8 @@ export function TrendChart({ title, trend, metrics, barMetric, colors = DEFAULT_
                 tick={{ fontSize: 10 }}
                 tickFormatter={v => fmtY(rightAnchor, Number(v))}
                 width={50}
+                domain={getPaddedDomain(data, metrics, 'right')}
+                allowDataOverflow
               />
             )}
             <Tooltip
