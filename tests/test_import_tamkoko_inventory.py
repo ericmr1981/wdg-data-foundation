@@ -124,17 +124,21 @@ def db():
 
 
 def _truncate_test_data(conn):
+    # Snapshot the SKUs first (before the ODS DELETE wipes them out),
+    # otherwise the subquery below returns empty and material_sku is left dirty.
+    # Future improvement: add a test_marker column on material_sku to scope
+    # cleanup more precisely (the table has no store_code).
     with conn.cursor() as cur:
-        cur.execute(
-            "DELETE FROM brand_tamkoko_ods.inventory_month_end WHERE store_code = %s",
-            (TEST_STORE,)
-        )
         cur.execute(
             """DELETE FROM brand_tamkoko_cfg.material_sku
                WHERE sku IN (
-                 SELECT sku FROM brand_tamkoko_ods.inventory_month_end
+                 SELECT DISTINCT sku FROM brand_tamkoko_ods.inventory_month_end
                  WHERE store_code = %s
                )""",
+            (TEST_STORE,)
+        )
+        cur.execute(
+            "DELETE FROM brand_tamkoko_ods.inventory_month_end WHERE store_code = %s",
             (TEST_STORE,)
         )
     conn.commit()
