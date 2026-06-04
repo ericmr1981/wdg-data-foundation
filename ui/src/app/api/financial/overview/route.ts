@@ -90,11 +90,11 @@ export async function GET(request: Request) {
         `SELECT cash_balance FROM ${dmSchema}.v_balance_sheet WHERE month < $1::date ${store !== 'all' ? 'AND store_code = $2' : ''} ORDER BY month DESC LIMIT 1`,
         store !== 'all' ? [startDate, store] : [startDate]
       ),
-      // 营业支出 = sum of operating categories only (excludes BUILD investing, FINANCE financing, etc.)
+      // 营业支出 = sum of operating categories only (excludes BUILD investing, EXP_OTHER misc, FINANCE financing, etc.)
       pool.query(
         `SELECT COALESCE(SUM(ABS(amount)), 0)::numeric AS operating_expenses
          FROM ${dmSchema}.v_profit_statement
-         WHERE lvl1_code IN ('MATERIAL','HR','MKT','RENT_UTIL','SHIP','ADMIN','TAX_SURCHARGE','EXP_OTHER')
+         WHERE lvl1_code IN ('MATERIAL','HR','MKT','RENT_UTIL','SHIP','ADMIN','TAX_SURCHARGE')
            AND month >= $1::date AND month < $2::date ${cp.clause}`,
         cp.params
       ),
