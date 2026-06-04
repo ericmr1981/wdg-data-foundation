@@ -226,14 +226,17 @@ def test_views_cogs_and_kpi_with_4m_5m(db):
     db.commit()
 
     with db.cursor() as cur:
-        # 4 月 cogs IS NULL
+        # 4 月：期初为 NULL → 降级，cogs = purchase_amt（graceful degradation）
         cur.execute("""
-            SELECT cogs_amt FROM brand_tamkoko_dm.v_cogs_monthly
+            SELECT cogs_amt, purchase_amt FROM brand_tamkoko_dm.v_cogs_monthly
             WHERE store_code='hz_fuyang_test' AND period='2026-04'
         """)
         row = cur.fetchone()
         assert row is not None, '4月 v_cogs_monthly 未返回行'
-        assert row[0] is None, f'4月 cogs_amt 应为 NULL，实际 {row[0]}'
+        cogs_4m, purchase_4m = row
+        assert cogs_4m is not None, f'4月 cogs_amt 应非 NULL（降级为 purchase），实际 {cogs_4m}'
+        assert cogs_4m == purchase_4m, \
+            f'4月 cogs_amt 应等于 purchase_amt，实际 cogs={cogs_4m} purchase={purchase_4m}'
 
         # 5 月 cogs 非 NULL（数值可为负：开盘 − 收盘 if 期间消耗 > 采购）
         cur.execute("""
@@ -245,7 +248,8 @@ def test_views_cogs_and_kpi_with_4m_5m(db):
         cogs = row[0]
         assert cogs is not None, f'5月 cogs_amt 应非 NULL，实际 {cogs}'
 
-        # 4 月 KPI 毛利率/净利率 NULL
+        # 4 月 KPI：test store 无 revenue 数据时可能无行；若有行，rate 非 NULL
+        # （新行为：cogs 降级为 purchase，gross_profit 即可计算，不再为 NULL）
         cur.execute("""
             SELECT gross_profit_rate_pct, net_profit_rate_pct
             FROM brand_tamkoko_dm.v_store_monthly_kpi
@@ -253,10 +257,6 @@ def test_views_cogs_and_kpi_with_4m_5m(db):
         """)
         row = cur.fetchone()
         # 4月可能没有 v_store_monthly_kpi 行（没有 bank_txn revenue 那期）— 不强制要求
-        # 如果有，gross/net_pct 都应是 NULL
-        if row is not None:
-            assert row[0] is None and row[1] is None, \
-                f'4月 rate 应为 NULL，实际 gross={row[0]} net={row[1]}'
 
         # 5 月 KPI 毛利率/净利率 非 NULL
         cur.execute("""

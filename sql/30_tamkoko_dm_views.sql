@@ -17,7 +17,9 @@ GROUP BY store_code, period;
 --    opening_amt = LAG(closing_amt) per store  （首期 NULL）
 --    purchase_amt = bank_txn EXP_MATERIAL 期间合计（lvl1_code='MATERIAL'）
 --    closing_amt  = current period total_inventory_amt
---    cogs_amt     = opening + purchase − closing （首期 NULL）
+--    cogs_amt     = opening + purchase − closing
+--      当期初或期末任一为 NULL 时，cogs 降级为 purchase
+--      （无法计算库存变动 → 假设"无变动"，仅记银行侧采购）
 -- ============================================================
 
 CREATE OR REPLACE VIEW brand_tamkoko_dm.v_cogs_monthly AS
@@ -46,13 +48,12 @@ SELECT
   COALESCE(mp.purchase_amt, 0) AS purchase_amt,
   inv.total_inventory_amt AS closing_amt,
   CASE
-    WHEN LAG(inv.total_inventory_amt) OVER (
-           PARTITION BY inv.store_code ORDER BY inv.period
-         ) IS NULL THEN NULL
+    WHEN LAG(inv.total_inventory_amt) OVER (PARTITION BY inv.store_code ORDER BY inv.period) IS NULL
+      OR inv.total_inventory_amt IS NULL
+    THEN COALESCE(mp.purchase_amt, 0)
     ELSE
-      LAG(inv.total_inventory_amt) OVER (
-        PARTITION BY inv.store_code ORDER BY inv.period
-      ) + COALESCE(mp.purchase_amt, 0) - inv.total_inventory_amt
+      LAG(inv.total_inventory_amt) OVER (PARTITION BY inv.store_code ORDER BY inv.period)
+      + COALESCE(mp.purchase_amt, 0) - inv.total_inventory_amt
   END AS cogs_amt
 FROM inv
 LEFT JOIN material_purchase mp
