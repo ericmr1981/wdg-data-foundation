@@ -39,15 +39,9 @@ function getPaddedDomain(data: any[], metrics: KpiMetricKey[], axis: 'left' | 'r
       if (typeof v === 'number' && isFinite(v)) values.push(v);
     }
   }
-  if (values.length === 0) return [0, 1];
-  let min = Math.min(...values);
-  let max = Math.max(...values);
-  if (min === max) {
-    if (min === 0) { min = -1; max = 1; }
-    else { min = min - Math.abs(min) * 0.1; max = max + Math.abs(max) * 0.1; }
-  }
-  const range = max - min;
-  return [min, max + range * 0.1];
+  const max = values.length ? Math.max(...values, 0) : 1;
+  const padded = max + Math.abs(max) * 0.1;
+  return [0, padded > 0 ? padded : 1];
 }
 
 export function TrendChart({ title, trend, metrics, barMetric, colors = DEFAULT_COLORS }: Props) {
