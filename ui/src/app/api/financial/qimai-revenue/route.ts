@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
-import { normalizeBrand } from '@/lib/brand-server';
+import { normalizeBrand, getOdsSchema } from '@/lib/brand-server';
 import { parsePeriod } from '../period-utils';
 
 // GET /api/financial/qimai-revenue?brand=gelatomiiix&period=2026-06&span=month&store=xxx
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
     const [, endDate] = boundaries;
 
     const dmSchema = ['bonjur', 'yufeng'].includes(brand) ? `${brand}_dm` : `brand_${brand}_dm`;
-    const odsSchema = `${brand}_ods`;
+    const odsSchema = getOdsSchema(brand);
 
     // Cumulative bank revenue up to endDate
     const storeClause = store !== 'all' ? 'AND store_code = $2' : '';

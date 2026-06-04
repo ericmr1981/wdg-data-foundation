@@ -67,7 +67,7 @@ export async function GET(request: Request) {
     // Current period queries
     const cp = withStore([startDate, endDate]);
 
-    const [profitRes, cfRes, balanceRes, storesRes, beginBalanceRes] = await Promise.all([
+    const [profitRes, cfRes, balanceRes, storesRes, beginBalanceRes, expensesRes] = await Promise.all([
       pool.query(
         `SELECT lvl1_code, sum(amount) as amount FROM ${dmSchema}.v_profit_statement WHERE month >= $1::date AND month < $2::date ${cp.clause} GROUP BY lvl1_code`,
         cp.params
@@ -90,14 +90,22 @@ export async function GET(request: Request) {
         `SELECT cash_balance FROM ${dmSchema}.v_balance_sheet WHERE month < $1::date ${store !== 'all' ? 'AND store_code = $2' : ''} ORDER BY month DESC LIMIT 1`,
         store !== 'all' ? [startDate, store] : [startDate]
       ),
+      // 营业支出 = sum of operating categories only (excludes BUILD investing, FINANCE financing, etc.)
+      pool.query(
+        `SELECT COALESCE(SUM(ABS(amount)), 0)::numeric AS operating_expenses
+         FROM ${dmSchema}.v_profit_statement
+         WHERE lvl1_code IN ('MATERIAL','HR','MKT','RENT_UTIL','SHIP','ADMIN','TAX_SURCHARGE','EXP_OTHER')
+           AND month >= $1::date AND month < $2::date ${cp.clause}`,
+        cp.params
+      ),
     ]);
 
     const pMap = new Map(profitRes.rows.map((r: ProfitRow) => [r.lvl1_code, Number(r.amount)]));
     const revenue = pMap.get('REV_BIZ') || 0;
     const materialCost = pMap.get('MATERIAL') || 0;
     const allProfits = Array.from(pMap.values()).reduce((s: number, v: number) => s + v, 0);
-    // Expenses = total in - net profit = sum of all out-direction amounts
-    const expenses = revenue + (pMap.get('REV_OTHER') || 0) - allProfits;
+    // 营业支出: explicit sum of operating categories. Excludes BUILD (investing) and any non-operating amounts.
+    const expenses = Number(expensesRes.rows[0]?.operating_expenses || 0);
 
     // For tamkoko: use cogs-based margins from v_cogs_monthly (replaces MATERIAL in COGS formula).
     // Revenue includes REV_OTHER (matches v_store_monthly_kpi definition) to align with /u/store-report.

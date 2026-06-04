@@ -159,20 +159,20 @@ function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: 
   const range = numericValues.length > 0
     ? Math.max(Math.max(...numericValues, 0), Math.abs(Math.min(...numericValues, 0)), 1)
     : 1;
-  const halfH = 88;
+  const halfH = 132;
   const fmt = format || ((v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 2 }));
 
   return (
     <div className="bg-white border rounded-lg p-4">
       <h3 className="text-sm font-semibold text-gray-700 mb-3">{TREND_LABELS[trendKey]}趋势</h3>
-      <div className="relative" style={{ height: '200px' }}>
+      <div className="relative" style={{ height: '300px' }}>
         {/* y-axis labels */}
         <div className="absolute left-0 text-[9px] text-gray-400" style={{ top: '4px' }}>{fmt(range)}</div>
         <div className="absolute left-0 text-[9px] text-gray-400" style={{ bottom: '24px' }}>{fmt(-range)}</div>
         {/* center baseline (x-axis) */}
         <div className="absolute left-6 right-2" style={{ top: `${halfH + 12}px`, height: '1px', backgroundColor: '#9CA3AF' }} />
         {/* bars */}
-        <div className="absolute left-6 right-2 flex items-start gap-[3px]" style={{ top: '12px', height: '176px' }}>
+        <div className="absolute left-6 right-2 flex items-start gap-[3px]" style={{ top: '12px', height: '264px' }}>
           {sorted.map(d => {
             const val = d[trendKey];
             if (val == null) {
