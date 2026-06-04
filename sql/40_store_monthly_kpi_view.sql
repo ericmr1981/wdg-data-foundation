@@ -85,6 +85,9 @@ LEFT JOIN brand_gelatomiiix_dm.v_balance_sheet b USING (month, store_code);
 --   - 成本/毛利/净利/毛利率/净利率：cogs 口径（v_cogs_monthly.cogs_amt 非 NULL 时）；
 --   - 首期（opening_amt NULL → cogs_amt NULL）→ 以上指标返回 NULL；
 --   - 其他列（cashflow / balance_sheet）保持原状。
+-- 注意：cogs_amt 加在 SELECT 中间，列顺序与 bonjur/gelatomiiix 不同，
+--       CREATE OR REPLACE VIEW 无法重排列，必须先 DROP 再 CREATE。
+DROP VIEW IF EXISTS brand_tamkoko_dm.v_store_monthly_kpi;
 CREATE OR REPLACE VIEW brand_tamkoko_dm.v_store_monthly_kpi AS
 WITH profit_agg AS (
   SELECT
