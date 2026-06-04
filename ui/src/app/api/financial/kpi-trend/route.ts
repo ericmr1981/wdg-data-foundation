@@ -47,6 +47,20 @@ export async function GET(request: Request) {
       storeParams
     );
 
+    const npTrend = await pool.query(
+      `SELECT
+         to_char(month, 'YYYY-MM') as m,
+         AVG(net_profit_rate_pct) as rate_pct
+       FROM ${dmSchema}.v_store_monthly_kpi
+       WHERE month >= (current_date - interval '12 months')::date
+         ${store !== 'all' ? 'AND store_code = $1' : ''}
+       GROUP BY 1`,
+      store !== 'all' ? [store] : []
+    );
+    const npTrendMap = new Map<string, number>(
+      (npTrend.rows as { m: string; rate_pct: string }[]).map(r => [r.m, Number(r.rate_pct) / 100])
+    );
+
     const cfTrend = await pool.query(
       `SELECT
         to_char(date_trunc('month', t.txn_time)::date, 'YYYY-MM') as month,
@@ -66,8 +80,8 @@ export async function GET(request: Request) {
     );
 
     // Build monthly trend
-    const profitMap = new Map<string, { revenue: number; material: number; net: number; expenses: number }>();
-    for (const r of profitTrend.rows) profitMap.set(r.month, { revenue: Number(r.revenue), material: Number(r.material_cost), net: Number(r.net_profit), expenses: Number(r.expenses) });
+    const profitMap = new Map<string, { revenue: number; material: number; expenses: number }>();
+    for (const r of profitTrend.rows) profitMap.set(r.month, { revenue: Number(r.revenue), material: Number(r.material_cost), expenses: Number(r.expenses) });
 
     const cfMap = new Map<string, number>();
     for (const r of cfTrend.rows) cfMap.set(r.month, Number(r.operating_cashflow));
@@ -81,7 +95,7 @@ export async function GET(request: Request) {
         month: m,
         revenue: rev,
         gross_margin_rate: rev > 0 ? (rev + (p?.material || 0)) / rev : 0,
-        net_profit_rate: rev > 0 ? (p?.net || 0) / rev : 0,
+        net_profit_rate: npTrendMap.get(m) ?? null,
         operating_cashflow: cf || 0,
         expenses: p?.expenses || 0,
       };

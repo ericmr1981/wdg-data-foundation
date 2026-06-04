@@ -67,7 +67,7 @@ export async function GET(request: Request) {
     // Current period queries
     const cp = withStore([startDate, endDate]);
 
-    const [profitRes, cfRes, balanceRes, storesRes, beginBalanceRes] = await Promise.all([
+    const [profitRes, cfRes, balanceRes, storesRes, beginBalanceRes, npRes] = await Promise.all([
       pool.query(
         `SELECT lvl1_code, sum(amount) as amount FROM ${dmSchema}.v_profit_statement WHERE month >= $1::date AND month < $2::date ${cp.clause} GROUP BY lvl1_code`,
         cp.params
@@ -90,6 +90,12 @@ export async function GET(request: Request) {
         `SELECT cash_balance FROM ${dmSchema}.v_balance_sheet WHERE month < $1::date ${store !== 'all' ? 'AND store_code = $2' : ''} ORDER BY month DESC LIMIT 1`,
         store !== 'all' ? [startDate, store] : [startDate]
       ),
+      pool.query(
+        `SELECT AVG(net_profit_rate_pct) as rate_pct
+         FROM ${dmSchema}.v_store_monthly_kpi
+         WHERE month >= $1::date AND month < $2::date ${cp.clause}`,
+        cp.params
+      ),
     ]);
 
     const pMap = new Map(profitRes.rows.map((r: ProfitRow) => [r.lvl1_code, Number(r.amount)]));
@@ -99,7 +105,7 @@ export async function GET(request: Request) {
     // Expenses = total in - net profit = sum of all out-direction amounts
     const expenses = revenue + (pMap.get('REV_OTHER') || 0) - allProfits;
     const grossMarginRate = revenue > 0 ? (revenue + materialCost) / revenue : 0;
-    const netProfitRate = revenue > 0 ? allProfits / revenue : 0;
+    const netProfitRate = Number(npRes.rows[0]?.rate_pct || 0) / 100;
     const operatingCashflow = Number(cfRes.rows.find((r: CashflowRow) => r.activity === 'operating')?.net_amount || 0);
     const cashBalance = Number(balanceRes.rows[0]?.cash_balance || 0);
     const beginningBalance = Number(beginBalanceRes.rows[0]?.cash_balance || 0);
@@ -130,7 +136,7 @@ export async function GET(request: Request) {
 
     if (prevBounds) {
       const pp = withStore(prevBounds);
-      const [prevProfitRes, prevCfRes] = await Promise.all([
+      const [prevProfitRes, prevCfRes, prevNpRes] = await Promise.all([
         pool.query(
           `SELECT lvl1_code, sum(amount) as amount FROM ${dmSchema}.v_profit_statement WHERE month >= $1::date AND month < $2::date ${pp.clause} GROUP BY lvl1_code`,
           pp.params
@@ -139,17 +145,23 @@ export async function GET(request: Request) {
           `SELECT sum(net_amount) as net_amount FROM ${dmSchema}.v_cashflow_statement WHERE activity = 'operating' AND month >= $1::date AND month < $2::date ${pp.clause}`,
           pp.params
         ),
+        pool.query(
+          `SELECT AVG(net_profit_rate_pct) as rate_pct
+           FROM ${dmSchema}.v_store_monthly_kpi
+           WHERE month >= $1::date AND month < $2::date ${pp.clause}`,
+          pp.params
+        ),
       ]);
 
       const prevMap = new Map(prevProfitRes.rows.map((r: ProfitRow) => [r.lvl1_code, Number(r.amount)]));
       const prevRev = prevMap.get('REV_BIZ') || 0;
       const prevMat = prevMap.get('MATERIAL') || 0;
-      const prevNet = Array.from(prevMap.values()).reduce((s: number, v: number) => s + v, 0);
       const prevOcf = Number(prevCfRes.rows[0]?.net_amount || 0);
 
       vsRevenue = (revenue > 0 && prevRev > 0) ? (revenue - prevRev) / prevRev : 0;
       vsGm = (revenue > 0 && prevRev > 0) ? ((revenue + materialCost) / revenue) - ((prevRev + prevMat) / prevRev) : 0;
-      vsNp = (revenue > 0 && prevRev > 0) ? (allProfits / revenue) - (prevNet / prevRev) : 0;
+      const prevNpRate = Number(prevNpRes.rows[0]?.rate_pct || 0) / 100;
+      vsNp = revenue > 0 ? netProfitRate - prevNpRate : 0;
       vsOcf = prevOcf !== 0 ? (operatingCashflow - prevOcf) / Math.abs(prevOcf) : 0;
     }
 
