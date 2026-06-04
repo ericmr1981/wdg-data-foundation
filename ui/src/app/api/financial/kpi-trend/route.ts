@@ -35,9 +35,11 @@ export async function GET(request: Request) {
       `SELECT
         to_char(date_trunc('month', t.txn_time)::date, 'YYYY-MM') as month,
         COALESCE(SUM(CASE WHEN c.lvl1_code = 'REV_BIZ' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as revenue,
+        COALESCE(SUM(CASE WHEN c.lvl1_code = 'REV_OTHER' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as rev_other,
         COALESCE(SUM(CASE WHEN c.lvl1_code = 'MATERIAL' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as material_cost,
         COALESCE(SUM(coalesce(t.in_amt,0) - coalesce(t.out_amt,0)), 0) as net_profit,
-        COALESCE(ABS(SUM(CASE WHEN c.lvl1_code IN ('MATERIAL','HR','RENT_UTIL','MKT','ADMIN','SHIP','TAX_SURCHARGE','EXP_OTHER','BUILD') THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END)), 0) as expenses
+        COALESCE(ABS(SUM(CASE WHEN c.lvl1_code IN ('MATERIAL','HR','RENT_UTIL','MKT','ADMIN','SHIP','TAX_SURCHARGE','EXP_OTHER','BUILD') THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END)), 0) as expenses,
+        COALESCE(ABS(SUM(CASE WHEN c.lvl1_code IN ('HR','MKT','RENT_UTIL','SHIP','ADMIN') THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END)), 0) as non_cogs_exp
       FROM ${dmSchema}.bank_txn_classified_snapshot c
       JOIN ${dmSchema.replace('_dm', '_ods')}.bank_txn t ON t.id = c.bank_txn_id
       WHERE c.classified_source IN ('rule', 'override') ${storeClause}
@@ -66,24 +68,76 @@ export async function GET(request: Request) {
     );
 
     // Build monthly trend
-    const profitMap = new Map<string, { revenue: number; material: number; net: number; expenses: number }>();
-    for (const r of profitTrend.rows) profitMap.set(r.month, { revenue: Number(r.revenue), material: Number(r.material_cost), net: Number(r.net_profit), expenses: Number(r.expenses) });
+    const profitMap = new Map<string, { revenue: number; revOther: number; material: number; net: number; expenses: number; nonCogsExp: number }>();
+    for (const r of profitTrend.rows) profitMap.set(r.month, {
+      revenue: Number(r.revenue),
+      revOther: Number(r.rev_other),
+      material: Number(r.material_cost),
+      net: Number(r.net_profit),
+      expenses: Number(r.expenses),
+      nonCogsExp: Number(r.non_cogs_exp),
+    });
 
     const cfMap = new Map<string, number>();
     for (const r of cfTrend.rows) cfMap.set(r.month, Number(r.operating_cashflow));
+
+    // For tamkoko: pull cogs_amt per month from v_cogs_monthly (sum across stores when store='all').
+    // Months without cogs return null rates.
+    let cogsMap: Map<string, number> = new Map();
+    if (brand === 'tamkoko') {
+      const cogsRes = await pool.query(
+        `SELECT c.period, COALESCE(SUM(c.cogs_amt), 0)::numeric AS total_cogs,
+                COUNT(*) FILTER (WHERE c.cogs_amt IS NULL) AS missing,
+                COUNT(*) AS total
+         FROM ${dmSchema}.v_cogs_monthly c
+         WHERE 1=1 ${store !== 'all' ? 'AND c.store_code = $1' : ''}
+         GROUP BY c.period`,
+        storeParams
+      );
+      for (const r of cogsRes.rows) {
+        // A month is "missing cogs" only if EVERY store-month row is null.
+        if (Number(r.missing) === Number(r.total)) continue;
+        cogsMap.set(r.period, Number(r.total_cogs));
+      }
+    }
 
     const allMonths = Array.from(new Set([...profitMap.keys(), ...cfMap.keys()])).sort();
     const monthly = allMonths.slice(0, 12).map(m => {
       const p = profitMap.get(m);
       const cf = cfMap.get(m);
       const rev = p?.revenue || 0;
+      const revOther = p?.revOther || 0;
+      const material = p?.material || 0;  // negative
+      const netCash = p?.net || 0;
+      const expCash = p?.expenses || 0;
+      const nonCogsExp = p?.nonCogsExp || 0;
+
+      let gross_margin_rate: number | null;
+      let net_profit_rate: number | null;
+      if (brand === 'tamkoko') {
+        if (cogsMap.has(m)) {
+          // cogs-based: revenue (REV_BIZ+REV_OTHER) - cogs (gross); then subtract non-MATERIAL expenses (HR/MKT/RENT_UTIL/SHIP/ADMIN) for net
+          const cogs = cogsMap.get(m)!;
+          const cogsRevenue = rev + revOther;  // align with v_store_monthly_kpi.revenue_amt
+          gross_margin_rate = cogsRevenue > 0 ? (cogsRevenue - cogs) / cogsRevenue : null;
+          net_profit_rate = cogsRevenue > 0 ? (cogsRevenue - cogs - nonCogsExp) / cogsRevenue : null;
+        } else {
+          // No cogs for this month (e.g. first month with no opening inventory)
+          gross_margin_rate = null;
+          net_profit_rate = null;
+        }
+      } else {
+        gross_margin_rate = rev > 0 ? (rev + material) / rev : 0;
+        net_profit_rate = rev > 0 ? netCash / rev : 0;
+      }
+
       return {
         month: m,
         revenue: rev,
-        gross_margin_rate: rev > 0 ? (rev + (p?.material || 0)) / rev : 0,
-        net_profit_rate: rev > 0 ? (p?.net || 0) / rev : 0,
+        gross_margin_rate,
+        net_profit_rate,
         operating_cashflow: cf || 0,
-        expenses: p?.expenses || 0,
+        expenses: expCash,
       };
     });
 

@@ -98,8 +98,49 @@ export async function GET(request: Request) {
     const allProfits = Array.from(pMap.values()).reduce((s: number, v: number) => s + v, 0);
     // Expenses = total in - net profit = sum of all out-direction amounts
     const expenses = revenue + (pMap.get('REV_OTHER') || 0) - allProfits;
-    const grossMarginRate = revenue > 0 ? (revenue + materialCost) / revenue : 0;
-    const netProfitRate = revenue > 0 ? allProfits / revenue : 0;
+
+    // For tamkoko: use cogs-based margins from v_cogs_monthly (replaces MATERIAL in COGS formula).
+    // Revenue includes REV_OTHER (matches v_store_monthly_kpi definition) to align with /u/store-report.
+    // For other brands: keep existing cash-basis formula.
+    let grossMarginRate: number | null;
+    let netProfitRate: number | null;
+    if (brand === 'tamkoko') {
+      const cogsRes = await pool.query(
+        `SELECT
+           COALESCE(SUM(c.cogs_amt), 0)::numeric AS total_cogs,
+           COUNT(*) FILTER (WHERE c.cogs_amt IS NULL) AS missing_months,
+           COUNT(*) FILTER (WHERE c.cogs_amt IS NOT NULL) AS present_months
+         FROM ${dmSchema}.v_cogs_monthly c
+         WHERE c.period >= to_char($1::date, 'YYYY-MM') AND c.period < to_char($2::date, 'YYYY-MM') ${cp.clause.replace('store_code =', 'c.store_code =')}`,
+        cp.params
+      );
+      const present = Number(cogsRes.rows[0]?.present_months || 0);
+      if (present === 0) {
+        grossMarginRate = null;
+        netProfitRate = null;
+      } else {
+        const totalCogs = Number(cogsRes.rows[0]?.total_cogs || 0);
+        const nonCogsExpense =
+          Math.abs(Number(pMap.get('HR') || 0)) +
+          Math.abs(Number(pMap.get('MKT') || 0)) +
+          Math.abs(Number(pMap.get('RENT_UTIL') || 0)) +
+          Math.abs(Number(pMap.get('SHIP') || 0)) +
+          Math.abs(Number(pMap.get('ADMIN') || 0));
+        // Use REV_BIZ + REV_OTHER to match v_store_monthly_kpi.revenue_amt
+        const cogsRevenue = revenue + (pMap.get('REV_OTHER') || 0);
+        if (cogsRevenue > 0) {
+          grossMarginRate = (cogsRevenue - totalCogs) / cogsRevenue;
+          netProfitRate = (cogsRevenue - totalCogs - nonCogsExpense) / cogsRevenue;
+        } else {
+          grossMarginRate = null;
+          netProfitRate = null;
+        }
+      }
+    } else {
+      grossMarginRate = revenue > 0 ? (revenue + materialCost) / revenue : 0;
+      netProfitRate = revenue > 0 ? allProfits / revenue : 0;
+    }
+
     const operatingCashflow = Number(cfRes.rows.find((r: CashflowRow) => r.activity === 'operating')?.net_amount || 0);
     const cashBalance = Number(balanceRes.rows[0]?.cash_balance || 0);
     const beginningBalance = Number(beginBalanceRes.rows[0]?.cash_balance || 0);
@@ -148,8 +189,39 @@ export async function GET(request: Request) {
       const prevOcf = Number(prevCfRes.rows[0]?.net_amount || 0);
 
       vsRevenue = (revenue > 0 && prevRev > 0) ? (revenue - prevRev) / prevRev : 0;
-      vsGm = (revenue > 0 && prevRev > 0) ? ((revenue + materialCost) / revenue) - ((prevRev + prevMat) / prevRev) : 0;
-      vsNp = (revenue > 0 && prevRev > 0) ? (allProfits / revenue) - (prevNet / prevRev) : 0;
+      if (brand === 'tamkoko') {
+        // Use cogs-based prev period too. If either current or prev has no cogs → vs = 0.
+        const prevCogsRes = await pool.query(
+          `SELECT
+             COALESCE(SUM(c.cogs_amt), 0)::numeric AS total_cogs,
+             COUNT(*) FILTER (WHERE c.cogs_amt IS NOT NULL) AS present_months
+           FROM ${dmSchema}.v_cogs_monthly c
+           WHERE c.period >= to_char($1::date, 'YYYY-MM') AND c.period < to_char($2::date, 'YYYY-MM') ${pp.clause.replace('store_code =', 'c.store_code =')}`,
+          pp.params
+        );
+        const prevPresent = Number(prevCogsRes.rows[0]?.present_months || 0);
+        if (prevPresent === 0 || grossMarginRate === null) {
+          vsGm = 0;
+          vsNp = 0;
+        } else {
+          const prevTotalCogs = Number(prevCogsRes.rows[0]?.total_cogs || 0);
+          const prevNonCogsExpense =
+            Math.abs(Number(prevMap.get('HR') || 0)) +
+            Math.abs(Number(prevMap.get('MKT') || 0)) +
+            Math.abs(Number(prevMap.get('RENT_UTIL') || 0)) +
+            Math.abs(Number(prevMap.get('SHIP') || 0)) +
+            Math.abs(Number(prevMap.get('ADMIN') || 0));
+          // Use REV_BIZ + REV_OTHER to match v_store_monthly_kpi.revenue_amt
+          const prevCogsRevenue = prevRev + (prevMap.get('REV_OTHER') || 0);
+          const prevGm = prevCogsRevenue > 0 ? (prevCogsRevenue - prevTotalCogs) / prevCogsRevenue : 0;
+          const prevNp = prevCogsRevenue > 0 ? (prevCogsRevenue - prevTotalCogs - prevNonCogsExpense) / prevCogsRevenue : 0;
+          vsGm = grossMarginRate - prevGm;
+          vsNp = netProfitRate! - prevNp;
+        }
+      } else {
+        vsGm = (revenue > 0 && prevRev > 0) ? ((revenue + materialCost) / revenue) - ((prevRev + prevMat) / prevRev) : 0;
+        vsNp = (revenue > 0 && prevRev > 0) ? (allProfits / revenue) - (prevNet / prevRev) : 0;
+      }
       vsOcf = prevOcf !== 0 ? (operatingCashflow - prevOcf) / Math.abs(prevOcf) : 0;
     }
 

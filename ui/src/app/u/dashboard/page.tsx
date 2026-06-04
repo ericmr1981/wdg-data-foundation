@@ -10,8 +10,8 @@ interface Store { code: string; name: string; }
 interface OverviewData {
   revenue: number;
   expenses: number;
-  grossMarginRate: number;
-  netProfitRate: number;
+  grossMarginRate: number | null;
+  netProfitRate: number | null;
   operatingCashflow: number;
   cashBalance: number;
   cashRunway: number | null;
@@ -33,8 +33,8 @@ interface ExpenseItem {
 interface MonthlyKpi {
   month: string;
   revenue: number;
-  gross_margin_rate: number;
-  net_profit_rate: number;
+  gross_margin_rate: number | null;
+  net_profit_rate: number | null;
   operating_cashflow: number;
   expenses: number;
 }
@@ -122,16 +122,22 @@ function MiniBar({ pct, color }: { pct: number; color: string }) {
 }
 
 function KpiCard({ label, value, prefix = '¥', vsPrev, isRate = false, invert = false, trendKey, active, onClick, noClick }: {
-  label: string; value: number; prefix?: string; vsPrev?: number; isRate?: boolean; invert?: boolean;
+  label: string; value: number | null; prefix?: string; vsPrev?: number; isRate?: boolean; invert?: boolean;
   trendKey?: TrendKey; active?: boolean; onClick?: () => void; noClick?: boolean;
 }) {
-  const display = isRate ? `${(value * 100).toFixed(1)}%` : `${prefix}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const display = value == null
+    ? '-'
+    : isRate
+      ? `${(value * 100).toFixed(1)}%`
+      : `${prefix}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const vs = vsPrev !== undefined;
   const good = vs ? (invert ? vsPrev <= 0 : vsPrev >= 0) : true;
+  const nullTooltip = value == null && isRate ? '首期缺期初库存，毛利率/净利润率暂不显示。从有上月期末的月份开始展示。' : undefined;
   return (
     <div
       className={`bg-white border rounded-lg p-3 transition-all ${noClick ? '' : 'cursor-pointer'} ${active ? 'ring-2 ring-blue-400 shadow-md' : 'hover:shadow-sm'}`}
       onClick={!noClick && trendKey ? onClick : undefined}
+      title={nullTooltip}
     >
       <div className="text-[11px] text-gray-500 mb-0.5 truncate">{label}</div>
       <div className="text-lg font-bold text-gray-900">{display}</div>
@@ -146,10 +152,13 @@ function KpiCard({ label, value, prefix = '¥', vsPrev, isRate = false, invert =
 
 // ── Tooltip bar chart (x-axis baseline, pos↑ neg↓) ────
 function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: TrendKey; format?: (v: number) => string }) {
-  const [tooltip, setTooltip] = useState<{ month: string; value: number; x: number; y: number } | null>(null);
+  const [tooltip, setTooltip] = useState<{ month: string; value: number | null; x: number; y: number } | null>(null);
   const sorted = [...data].reverse();
-  const values = sorted.map(d => d[trendKey]);
-  const range = Math.max(Math.max(...values, 0), Math.abs(Math.min(...values, 0)), 1);
+  // Filter out null values for range calculation (null bars render as "—" placeholder).
+  const numericValues = sorted.map(d => d[trendKey]).filter((v): v is number => typeof v === 'number');
+  const range = numericValues.length > 0
+    ? Math.max(Math.max(...numericValues, 0), Math.abs(Math.min(...numericValues, 0)), 1)
+    : 1;
   const halfH = 88;
   const fmt = format || ((v: number) => v.toLocaleString(undefined, { minimumFractionDigits: 2 }));
 
@@ -166,6 +175,14 @@ function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: 
         <div className="absolute left-6 right-2 flex items-start gap-[3px]" style={{ top: '12px', height: '176px' }}>
           {sorted.map(d => {
             const val = d[trendKey];
+            if (val == null) {
+              return (
+                <div key={d.month} className="flex-1 flex flex-col items-center justify-center relative" style={{ height: '100%' }}>
+                  <div className="text-[10px] text-gray-400" style={{ marginTop: `${halfH - 6}px` }}>—</div>
+                  <div className="absolute text-[9px] text-gray-400" style={{ bottom: '-18px' }}>{d.month.slice(5)}</div>
+                </div>
+              );
+            }
             const isPos = val >= 0;
             const pct = range > 0 ? (Math.abs(val) / range) : 0;
             const barH = Math.max(1, pct * halfH);
@@ -197,7 +214,7 @@ function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: 
         <div className="fixed z-50 bg-gray-900 text-white text-xs rounded px-2 py-1 pointer-events-none"
           style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, -100%)' }}
         >
-          {tooltip.month}: {fmt(tooltip.value)}
+          {tooltip.month}: {tooltip.value == null ? '—' : fmt(tooltip.value)}
         </div>
       )}
     </div>
