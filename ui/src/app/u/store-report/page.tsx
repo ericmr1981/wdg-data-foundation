@@ -18,9 +18,10 @@ const BRAND_OPTIONS_HARDCODED = [
 interface StoreOpt { code: string; name: string; }
 
 export default function StoreReportPage() {
-  const { brand: ctxBrand } = useBrand();
+  const { brand: ctxBrand, setBrand: setCtxBrand } = useBrand();
   const [brandOptions, setBrandOptions] = useState(BRAND_OPTIONS_HARDCODED);
-  const [brand, setBrand] = useState(ctxBrand || BRAND_OPTIONS_HARDCODED[0]?.code || 'gelatomiiix');
+  const brand = ctxBrand;
+  const setBrand = setCtxBrand;
   const [stores, setStores] = useState<StoreOpt[]>([]);
   const [store, setStore] = useState('');
   const [month, setMonth] = useState(defaultMonth());
