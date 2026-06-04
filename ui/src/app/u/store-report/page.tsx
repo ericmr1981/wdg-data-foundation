@@ -41,13 +41,19 @@ export default function StoreReportPage() {
   }, []);
 
   // PDF mode: hide nav/buttons for cleaner output
+  // Also: read ?brand= from URL on mount, so quick links with brand param take effect
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       if (params.get('pdfMode') === '1') {
         document.body.classList.add('pdf-mode');
       }
+      const urlBrand = params.get('brand');
+      if (urlBrand && urlBrand !== brand) {
+        setBrand(urlBrand);
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 拉门店列表

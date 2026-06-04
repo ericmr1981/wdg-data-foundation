@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 type Brand = string;
 
@@ -10,9 +10,25 @@ interface BrandContextType {
 }
 
 const BrandContext = createContext<BrandContextType | undefined>(undefined);
+const STORAGE_KEY = 'wdg.brand';
+const DEFAULT_BRAND = 'bonjur';
 
 export function BrandProvider({ children }: { children: ReactNode }) {
-  const [brand, setBrand] = useState<Brand>('bonjur');
+  const [brand, setBrandState] = useState<Brand>(DEFAULT_BRAND);
+
+  // Hydrate from localStorage on mount (client-only)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored) setBrandState(stored);
+  }, []);
+
+  const setBrand = (b: Brand) => {
+    setBrandState(b);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(STORAGE_KEY, b);
+    }
+  };
 
   return (
     <BrandContext.Provider value={{ brand, setBrand }}>

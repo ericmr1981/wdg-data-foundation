@@ -353,8 +353,8 @@ function DataHealth({ brand }: { brand: string }) {
   );
 }
 
-function QuickLinks({ span, period, store }: { span: string; period: string; store: string }) {
-  const params = new URLSearchParams({ span, period, store }).toString();
+function QuickLinks({ span, period, store, brand }: { span: string; period: string; store: string; brand: string }) {
+  const params = new URLSearchParams({ span, period, store, brand }).toString();
   const links = [
     { href: `/u/financial?${params}`, label: '财务报表', desc: '利润表 / 现金流量表 / 资产负债表' },
     { href: `/u/payment?${params}`, label: '付款分析', desc: '按科目 / 往来方查看支出' },
@@ -535,7 +535,7 @@ export default function DashboardPage() {
           {/* Bottom row */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <DataHealth brand={brand} />
-            <QuickLinks span={span} period={period} store={store} />
+            <QuickLinks span={span} period={period} store={store} brand={brand} />
           </div>
         </>
       )}
