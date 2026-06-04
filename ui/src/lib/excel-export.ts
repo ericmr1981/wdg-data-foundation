@@ -50,7 +50,7 @@ export interface ExportInput {
 export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
 
-  // 段 2: 当月快照（保留原 snapRows 构建逻辑）
+  // 段 2: 当月快照
   const cur = input.snapshot.current;
   const prev = input.snapshot.previous;
   const snapRows: any[][] = [['指标', '当月值', '上月值', '环比%']];
@@ -69,7 +69,7 @@ export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
     ]);
   }
 
-  // 段 4: 同期对比（保留原 yoyRows 构建逻辑）
+  // 段 4: 同期对比
   const yoy = (() => {
     const [y, m] = input.month.split('-').map(Number);
     return `${y - 1}-${String(m).padStart(2, '0')}`;
@@ -110,7 +110,7 @@ export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
     ]);
   }
 
-  // 段 3: 历史趋势（保留原 trendRows 构建逻辑）
+  // 段 3: 历史趋势
   const trendHeader = ['月份', ...ALL_METRICS.map(k => EXCEL_METRIC_LABELS[k] ?? k)];
   const trendRows: any[][] = [trendHeader];
   for (let i = 0; i < input.trend.months.length; i++) {
