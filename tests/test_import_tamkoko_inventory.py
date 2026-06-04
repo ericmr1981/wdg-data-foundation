@@ -206,3 +206,65 @@ def test_material_sku_first_seen_preserved(db):
         row = cur.fetchone()
         assert row[0] == '2026-05', f"first_seen_period = {row[0]}"
         assert row[1] == '2026-05'
+
+
+def test_views_cogs_and_kpi_with_4m_5m(db):
+    """灌入 4/5 月后，v_cogs_monthly 与 v_store_monthly_kpi 行为正确。"""
+    from import_tamkoko_inventory import run_import
+
+    _truncate_test_data(db)
+    run_import(
+        path=str(FIXTURE_DIR / 'tamkoko_inventory_4m.xlsx'),
+        period='2026-04', store_code=TEST_STORE,
+        brand_code='tamkoko', source_type='tamkoko_inventory', conn=db,
+    )
+    run_import(
+        path=str(FIXTURE_DIR / 'tamkoko_inventory_5m.xlsx'),
+        period='2026-05', store_code=TEST_STORE,
+        brand_code='tamkoko', source_type='tamkoko_inventory', conn=db,
+    )
+    db.commit()
+
+    with db.cursor() as cur:
+        # 4 月 cogs IS NULL
+        cur.execute("""
+            SELECT cogs_amt FROM brand_tamkoko_dm.v_cogs_monthly
+            WHERE store_code='hz_fuyang_test' AND period='2026-04'
+        """)
+        row = cur.fetchone()
+        assert row is not None, '4月 v_cogs_monthly 未返回行'
+        assert row[0] is None, f'4月 cogs_amt 应为 NULL，实际 {row[0]}'
+
+        # 5 月 cogs 非 NULL（数值可为负：开盘 − 收盘 if 期间消耗 > 采购）
+        cur.execute("""
+            SELECT cogs_amt FROM brand_tamkoko_dm.v_cogs_monthly
+            WHERE store_code='hz_fuyang_test' AND period='2026-05'
+        """)
+        row = cur.fetchone()
+        assert row is not None, '5月 v_cogs_monthly 未返回行'
+        cogs = row[0]
+        assert cogs is not None, f'5月 cogs_amt 应非 NULL，实际 {cogs}'
+
+        # 4 月 KPI 毛利率/净利率 NULL
+        cur.execute("""
+            SELECT gross_profit_rate_pct, net_profit_rate_pct
+            FROM brand_tamkoko_dm.v_store_monthly_kpi
+            WHERE store_code='hz_fuyang_test' AND to_char(month,'YYYY-MM')='2026-04'
+        """)
+        row = cur.fetchone()
+        # 4月可能没有 v_store_monthly_kpi 行（没有 bank_txn revenue 那期）— 不强制要求
+        # 如果有，gross/net_pct 都应是 NULL
+        if row is not None:
+            assert row[0] is None and row[1] is None, \
+                f'4月 rate 应为 NULL，实际 gross={row[0]} net={row[1]}'
+
+        # 5 月 KPI 毛利率/净利率 非 NULL
+        cur.execute("""
+            SELECT gross_profit_rate_pct, net_profit_rate_pct
+            FROM brand_tamkoko_dm.v_store_monthly_kpi
+            WHERE store_code='hz_fuyang_test' AND to_char(month,'YYYY-MM')='2026-05'
+        """)
+        row = cur.fetchone()
+        if row is not None:
+            assert row[0] is not None and row[1] is not None, \
+                f'5月 rate 应非 NULL，实际 gross={row[0]} net={row[1]}'
