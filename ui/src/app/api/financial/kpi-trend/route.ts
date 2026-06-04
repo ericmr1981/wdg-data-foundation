@@ -35,9 +35,11 @@ export async function GET(request: Request) {
       `SELECT
         to_char(date_trunc('month', t.txn_time)::date, 'YYYY-MM') as month,
         COALESCE(SUM(CASE WHEN c.lvl1_code = 'REV_BIZ' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as revenue,
+        COALESCE(SUM(CASE WHEN c.lvl1_code = 'REV_OTHER' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as rev_other,
         COALESCE(SUM(CASE WHEN c.lvl1_code = 'MATERIAL' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as material_cost,
         COALESCE(SUM(coalesce(t.in_amt,0) - coalesce(t.out_amt,0)), 0) as net_profit,
-        COALESCE(ABS(SUM(CASE WHEN c.lvl1_code IN ('MATERIAL','HR','RENT_UTIL','MKT','ADMIN','SHIP','TAX_SURCHARGE','EXP_OTHER','BUILD') THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END)), 0) as expenses
+        COALESCE(ABS(SUM(CASE WHEN c.lvl1_code IN ('MATERIAL','HR','RENT_UTIL','MKT','ADMIN','SHIP','TAX_SURCHARGE','EXP_OTHER','BUILD') THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END)), 0) as expenses,
+        COALESCE(ABS(SUM(CASE WHEN c.lvl1_code IN ('HR','MKT','RENT_UTIL','SHIP','ADMIN') THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END)), 0) as non_cogs_exp
       FROM ${dmSchema}.bank_txn_classified_snapshot c
       JOIN ${dmSchema.replace('_dm', '_ods')}.bank_txn t ON t.id = c.bank_txn_id
       WHERE c.classified_source IN ('rule', 'override') ${storeClause}
@@ -80,21 +82,58 @@ export async function GET(request: Request) {
     );
 
     // Build monthly trend
-    const profitMap = new Map<string, { revenue: number; material: number; expenses: number }>();
-    for (const r of profitTrend.rows) profitMap.set(r.month, { revenue: Number(r.revenue), material: Number(r.material_cost), expenses: Number(r.expenses) });
+    const profitMap = new Map<string, { revenue: number; revOther: number; material: number; net: number; expenses: number; nonCogsExp: number }>();
+    for (const r of profitTrend.rows) profitMap.set(r.month, {
+      revenue: Number(r.revenue),
+      revOther: Number(r.rev_other),
+      material: Number(r.material_cost),
+      net: Number(r.net_profit),
+      expenses: Number(r.expenses),
+      nonCogsExp: Number(r.non_cogs_exp),
+    });
 
     const cfMap = new Map<string, number>();
     for (const r of cfTrend.rows) cfMap.set(r.month, Number(r.operating_cashflow));
+
+    // For tamkoko: pull cogs_amt per month from v_cogs_monthly (sum across stores when store='all').
+    let cogsMap: Map<string, number> = new Map();
+    if (brand === 'tamkoko') {
+      try {
+        const cogsTrend = await pool.query(
+          `SELECT
+             c.period,
+             SUM(c.cogs_amt) as total_cogs
+           FROM ${dmSchema}.v_cogs_monthly c
+           WHERE c.cogs_amt IS NOT NULL
+             ${store !== 'all' ? 'AND c.store_code = $1' : ''}
+           GROUP BY 1`,
+          store !== 'all' ? [store] : []
+        );
+        for (const r of cogsTrend.rows) cogsMap.set(r.period, Number(r.total_cogs));
+      } catch {
+        // view not ready
+      }
+    }
 
     const allMonths = Array.from(new Set([...profitMap.keys(), ...cfMap.keys()])).sort();
     const monthly = allMonths.slice(0, 12).map(m => {
       const p = profitMap.get(m);
       const cf = cfMap.get(m);
       const rev = p?.revenue || 0;
+      const revOther = p?.revOther || 0;
+      const nonCogsExp = p?.nonCogsExp || 0;
+      let grossMarginRate: number;
+      if (brand === 'tamkoko' && cogsMap.has(m)) {
+        const cogs = cogsMap.get(m)!;
+        const cogsRevenue = rev + revOther;
+        grossMarginRate = cogsRevenue > 0 ? (cogsRevenue - cogs) / cogsRevenue : 0;
+      } else {
+        grossMarginRate = rev > 0 ? (rev + (p?.material || 0)) / rev : 0;
+      }
       return {
         month: m,
         revenue: rev,
-        gross_margin_rate: rev > 0 ? (rev + (p?.material || 0)) / rev : 0,
+        gross_margin_rate: grossMarginRate,
         net_profit_rate: npTrendMap.get(m) ?? null,
         operating_cashflow: cf || 0,
         expenses: p?.expenses || 0,

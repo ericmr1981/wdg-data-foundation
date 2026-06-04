@@ -27,6 +27,32 @@ export default function UploadPage() {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const yyyyMM = `${year}-${month}`;
 
+  // === 泰柯月盘（独立 section，不复用 brand/store/source 状态） ===
+  const [inventoryPeriod, setInventoryPeriod] = useState(`${year}-${month}`);
+  const [inventoryUploading, setInventoryUploading] = useState(false);
+  const [inventoryResult, setInventoryResult] = useState<any>(null);
+  const inventoryFileRef = useRef<HTMLInputElement>(null);
+
+  async function uploadInventory() {
+    const f = inventoryFileRef.current?.files?.[0];
+    if (!f) { alert('请选择 Excel 文件'); return; }
+    setInventoryUploading(true);
+    setInventoryResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', f);
+      fd.append('period', inventoryPeriod);
+      fd.append('storeCode', 'hz_fuyang');
+      const res = await fetch('/api/tamkoko/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      setInventoryResult(data);
+    } catch (e: any) {
+      setInventoryResult({ success: false, error: e?.message });
+    } finally {
+      setInventoryUploading(false);
+    }
+  }
+
   const [brands, setBrands] = useState<Array<{ code: string; name: string }>>([]);
   const [stores, setStores] = useState<Array<{ code: string; name: string }>>([]);
 
@@ -315,6 +341,48 @@ export default function UploadPage() {
           <li>6. 勾选"触发导入"后，上传成功会显示该文件的覆盖率统计</li>
         </ul>
       </div>
+
+      {/* === 泰柯月盘（独立 section） === */}
+      <section className="mt-8 border-t pt-6">
+        <h2 className="text-lg font-semibold mb-2">泰柯月度盘点</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          上传富阳门店月度盘点 Excel，自动计算物料字典与库存金额。store-report 5 月起会显示真实 COGS 毛利率。
+        </p>
+        <div className="flex items-end gap-3 flex-wrap">
+          <label className="block">
+            <span className="text-xs text-gray-600">期间 (YYYY-MM)</span>
+            <input
+              type="text"
+              pattern="\d{4}-\d{2}"
+              className="block border rounded px-2 py-1 mt-1"
+              value={inventoryPeriod}
+              onChange={e => setInventoryPeriod(e.target.value)}
+              placeholder="2026-05"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs text-gray-600">盘点 Excel</span>
+            <input
+              ref={inventoryFileRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="block mt-1"
+            />
+          </label>
+          <button
+            onClick={uploadInventory}
+            disabled={inventoryUploading}
+            className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+          >
+            {inventoryUploading ? '上传中...' : '上传月盘'}
+          </button>
+          {inventoryResult && (
+            <pre className="text-xs text-gray-700 whitespace-pre-wrap">
+              {JSON.stringify(inventoryResult, null, 2)}
+            </pre>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

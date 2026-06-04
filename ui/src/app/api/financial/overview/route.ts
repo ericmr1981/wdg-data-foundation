@@ -67,7 +67,7 @@ export async function GET(request: Request) {
     // Current period queries
     const cp = withStore([startDate, endDate]);
 
-    const [profitRes, cfRes, balanceRes, storesRes, beginBalanceRes, npRes] = await Promise.all([
+    const [profitRes, cfRes, balanceRes, storesRes, beginBalanceRes, npRes, expensesRes] = await Promise.all([
       pool.query(
         `SELECT lvl1_code, sum(amount) as amount FROM ${dmSchema}.v_profit_statement WHERE month >= $1::date AND month < $2::date ${cp.clause} GROUP BY lvl1_code`,
         cp.params
@@ -96,16 +96,57 @@ export async function GET(request: Request) {
          WHERE month >= $1::date AND month < $2::date ${cp.clause}`,
         cp.params
       ),
+      // 营业支出 = sum of operating categories only (excludes BUILD investing, EXP_OTHER misc, FINANCE financing, etc.)
+      pool.query(
+        `SELECT COALESCE(SUM(ABS(amount)), 0)::numeric AS operating_expenses
+         FROM ${dmSchema}.v_profit_statement
+         WHERE lvl1_code IN ('MATERIAL','HR','MKT','RENT_UTIL','SHIP','ADMIN','TAX_SURCHARGE')
+           AND month >= $1::date AND month < $2::date ${cp.clause}`,
+        cp.params
+      ),
     ]);
 
     const pMap = new Map(profitRes.rows.map((r: ProfitRow) => [r.lvl1_code, Number(r.amount)]));
     const revenue = pMap.get('REV_BIZ') || 0;
     const materialCost = pMap.get('MATERIAL') || 0;
     const allProfits = Array.from(pMap.values()).reduce((s: number, v: number) => s + v, 0);
-    // Expenses = total in - net profit = sum of all out-direction amounts
-    const expenses = revenue + (pMap.get('REV_OTHER') || 0) - allProfits;
-    const grossMarginRate = revenue > 0 ? (revenue + materialCost) / revenue : 0;
-    const netProfitRate = Number(npRes.rows[0]?.rate_pct || 0) / 100;
+    // 营业支出: explicit sum of operating categories. Excludes BUILD (investing) and any non-operating amounts.
+    const expenses = Number(expensesRes.rows[0]?.operating_expenses || 0);
+
+    // For tamkoko: use cogs-based margins from v_cogs_monthly (replaces MATERIAL in COGS formula).
+    // For other brands: keep existing cash-basis formula.
+    let grossMarginRate: number;
+    let netProfitRate: number;
+    if (brand === 'tamkoko') {
+      const cogsRes = await pool.query(
+        `SELECT
+           COALESCE(SUM(c.cogs_amt), 0)::numeric AS total_cogs,
+           COUNT(*) FILTER (WHERE c.cogs_amt IS NOT NULL) AS present_months
+         FROM ${dmSchema}.v_cogs_monthly c
+         WHERE c.period >= to_char($1::date, 'YYYY-MM') AND c.period < to_char($2::date, 'YYYY-MM') ${cp.clause.replace('store_code =', 'c.store_code =')}`,
+        cp.params
+      );
+      const present = Number(cogsRes.rows[0]?.present_months || 0);
+      if (present === 0) {
+        // No cogs for any month in the period — fall back to NULL so UI shows "-"
+        grossMarginRate = NaN as unknown as number;
+        netProfitRate = NaN as unknown as number;
+      } else {
+        const totalCogs = Number(cogsRes.rows[0]?.total_cogs || 0);
+        const nonCogsExpense =
+          Math.abs(Number(pMap.get('HR') || 0)) +
+          Math.abs(Number(pMap.get('MKT') || 0)) +
+          Math.abs(Number(pMap.get('RENT_UTIL') || 0)) +
+          Math.abs(Number(pMap.get('SHIP') || 0)) +
+          Math.abs(Number(pMap.get('ADMIN') || 0));
+        const cogsRevenue = revenue + (pMap.get('REV_OTHER') || 0);
+        grossMarginRate = cogsRevenue > 0 ? (cogsRevenue - totalCogs) / cogsRevenue : 0;
+        netProfitRate = cogsRevenue > 0 ? (cogsRevenue - totalCogs - nonCogsExpense) / cogsRevenue : 0;
+      }
+    } else {
+      grossMarginRate = revenue > 0 ? (revenue + materialCost) / revenue : 0;
+      netProfitRate = Number(npRes.rows[0]?.rate_pct || 0) / 100;
+    }
     const operatingCashflow = Number(cfRes.rows.find((r: CashflowRow) => r.activity === 'operating')?.net_amount || 0);
     const cashBalance = Number(balanceRes.rows[0]?.cash_balance || 0);
     const beginningBalance = Number(beginBalanceRes.rows[0]?.cash_balance || 0);
@@ -161,7 +202,38 @@ export async function GET(request: Request) {
       vsRevenue = (revenue > 0 && prevRev > 0) ? (revenue - prevRev) / prevRev : 0;
       vsGm = (revenue > 0 && prevRev > 0) ? ((revenue + materialCost) / revenue) - ((prevRev + prevMat) / prevRev) : 0;
       const prevNpRate = Number(prevNpRes.rows[0]?.rate_pct || 0) / 100;
-      vsNp = revenue > 0 ? netProfitRate - prevNpRate : 0;
+      // For tamkoko, use cogs-based prev period too. If either current or prev has no cogs, vs = 0.
+      if (brand === 'tamkoko') {
+        const prevCogsRes = await pool.query(
+          `SELECT
+             COALESCE(SUM(c.cogs_amt), 0)::numeric AS total_cogs,
+             COUNT(*) FILTER (WHERE c.cogs_amt IS NOT NULL) AS present_months
+           FROM ${dmSchema}.v_cogs_monthly c
+           WHERE c.period >= to_char($1::date, 'YYYY-MM') AND c.period < to_char($2::date, 'YYYY-MM') ${pp.clause.replace('store_code =', 'c.store_code =')}`,
+          pp.params
+        );
+        const prevPresent = Number(prevCogsRes.rows[0]?.present_months || 0);
+        const currentCogsOk = !isNaN(grossMarginRate);
+        if (currentCogsOk && prevPresent > 0) {
+          const prevTotalCogs = Number(prevCogsRes.rows[0]?.total_cogs || 0);
+          const prevNonCogs =
+            Math.abs(Number(prevMap.get('HR') || 0)) +
+            Math.abs(Number(prevMap.get('MKT') || 0)) +
+            Math.abs(Number(prevMap.get('RENT_UTIL') || 0)) +
+            Math.abs(Number(prevMap.get('SHIP') || 0)) +
+            Math.abs(Number(prevMap.get('ADMIN') || 0));
+          const prevRevenue = prevRev + (prevMap.get('REV_OTHER') || 0);
+          const prevGrossRate = prevRevenue > 0 ? (prevRevenue - prevTotalCogs) / prevRevenue : 0;
+          const prevNetRate = prevRevenue > 0 ? (prevRevenue - prevTotalCogs - prevNonCogs) / prevRevenue : 0;
+          vsGm = grossMarginRate - prevGrossRate;
+          vsNp = netProfitRate - prevNetRate;
+        } else {
+          vsGm = 0;
+          vsNp = 0;
+        }
+      } else {
+        vsNp = revenue > 0 ? netProfitRate - prevNpRate : 0;
+      }
       vsOcf = prevOcf !== 0 ? (operatingCashflow - prevOcf) / Math.abs(prevOcf) : 0;
     }
 
