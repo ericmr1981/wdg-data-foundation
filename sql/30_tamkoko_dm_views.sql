@@ -20,6 +20,9 @@ GROUP BY store_code, period;
 --    cogs_amt     = opening + purchase − closing
 --      当期初或期末任一为 NULL 时，cogs 降级为 purchase
 --      （无法计算库存变动 → 假设"无变动"，仅记银行侧采购）
+--    期间集合 = UNION(有库存的月份, 有银行 MATERIAL 采购的月份)
+--      即便没有库存盘点，只要银行有物料采购，该月也出现在结果中
+--      此时 opening 与 closing 都为 NULL，cogs = purchase
 -- ============================================================
 
 CREATE OR REPLACE VIEW brand_tamkoko_dm.v_cogs_monthly AS
@@ -38,24 +41,37 @@ WITH material_purchase AS (
 inv AS (
   SELECT store_code, period, total_inventory_amt
   FROM brand_tamkoko_dm.v_inventory_summary
+),
+periods AS (
+  -- All periods that have either inventory OR bank MATERIAL purchase
+  SELECT store_code, period FROM inv
+  UNION
+  SELECT store_code, period FROM material_purchase
 )
 SELECT
-  inv.store_code,
-  inv.period,
-  LAG(inv.total_inventory_amt) OVER (
-    PARTITION BY inv.store_code ORDER BY inv.period
+  p.store_code,
+  p.period,
+  LAG(i.total_inventory_amt) OVER (
+    PARTITION BY p.store_code ORDER BY p.period
   ) AS opening_amt,
   COALESCE(mp.purchase_amt, 0) AS purchase_amt,
-  inv.total_inventory_amt AS closing_amt,
+  i.total_inventory_amt AS closing_amt,
   CASE
-    WHEN LAG(inv.total_inventory_amt) OVER (PARTITION BY inv.store_code ORDER BY inv.period) IS NULL
-      OR inv.total_inventory_amt IS NULL
+    WHEN LAG(i.total_inventory_amt) OVER (
+           PARTITION BY p.store_code ORDER BY p.period
+         ) IS NULL
+      AND i.total_inventory_amt IS NULL
+    THEN COALESCE(mp.purchase_amt, 0)
+    WHEN LAG(i.total_inventory_amt) OVER (
+           PARTITION BY p.store_code ORDER BY p.period
+         ) IS NULL
+      OR i.total_inventory_amt IS NULL
     THEN COALESCE(mp.purchase_amt, 0)
     ELSE
-      LAG(inv.total_inventory_amt) OVER (PARTITION BY inv.store_code ORDER BY inv.period)
-      + COALESCE(mp.purchase_amt, 0) - inv.total_inventory_amt
+      LAG(i.total_inventory_amt) OVER (
+        PARTITION BY p.store_code ORDER BY p.period
+      ) + COALESCE(mp.purchase_amt, 0) - i.total_inventory_amt
   END AS cogs_amt
-FROM inv
-LEFT JOIN material_purchase mp
-  ON mp.store_code = inv.store_code
- AND mp.period     = inv.period;
+FROM periods p
+LEFT JOIN inv           i  ON i.store_code  = p.store_code AND i.period  = p.period
+LEFT JOIN material_purchase mp ON mp.store_code = p.store_code AND mp.period = p.period;
