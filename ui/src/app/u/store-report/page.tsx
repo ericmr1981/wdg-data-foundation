@@ -58,9 +58,10 @@ export default function StoreReportPage() {
 
   // 拉门店列表
   useEffect(() => {
+    const controller = new AbortController();
     setStores([]);
     setStore('');
-    fetch(`/api/stores?brand=${encodeURIComponent(brand)}`)
+    fetch(`/api/stores?brand=${encodeURIComponent(brand)}`, { signal: controller.signal })
       .then(r => r.json())
       .then((d: ApiResult<Array<{ store_code: string; store_name: string }>>) => {
         if (d.success && d.data && d.data.length > 0) {
@@ -79,7 +80,11 @@ export default function StoreReportPage() {
           setStores([]);
         }
       })
-      .catch(() => setStores([]));
+      .catch((e: any) => {
+        if (e?.name === 'AbortError') return;
+        setStores([]);
+      });
+    return () => controller.abort();
   }, [brand]);
 
   const loadTrend = useCallback(async (b: string, s: string) => {
