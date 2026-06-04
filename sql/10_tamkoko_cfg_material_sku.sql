@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS brand_tamkoko_cfg.material_sku (
   unit_price        numeric(12, 2) NOT NULL,
   first_seen_period text NOT NULL,
   last_seen_period  text NOT NULL,
-  is_active         boolean NOT NULL DEFAULT TRUE,
+  enabled           boolean NOT NULL DEFAULT TRUE,
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now()
 );
