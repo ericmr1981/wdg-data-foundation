@@ -15,6 +15,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -22,6 +25,8 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import openpyxl
+import psycopg2
+from psycopg2.extras import execute_values
 
 
 @dataclass
@@ -165,11 +170,39 @@ def main():
     for r, reason in rejected:
         print(f'  REJECT {r.sku}: {reason}')
 
+    # DB 写入：raw.ingest_file + cfg.material_sku + ODS
+    try:
+        conn = psycopg2.connect(
+            host=os.environ['DB_HOST'],
+            port=int(os.environ['DB_PORT']),
+            database=os.environ['DB_NAME'],
+            user=os.environ['DB_USER'],
+            password=os.environ['DB_PASSWORD'],
+        )
+    except (KeyError, psycopg2.Error) as e:
+        print(f'DB connect failed: {e}', file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        summary = run_import(
+            path=args.path,
+            period=args.period,
+            store_code=args.store_code,
+            brand_code='tamkoko',
+            source_type='tamkoko_inventory',
+            conn=conn,
+        )
+        conn.commit()
+        print(f'summary: {json.dumps(summary, ensure_ascii=False)}')
+    except Exception as e:
+        conn.rollback()
+        print(f'DB import failed: {e}', file=sys.stderr)
+        sys.exit(1)
+    finally:
+        conn.close()
+
 
 # ── DB 写入 ────────────────────────────────────────────
-import hashlib
-
-from psycopg2.extras import execute_values
 
 
 def calculate_sha256(path: str) -> str:
