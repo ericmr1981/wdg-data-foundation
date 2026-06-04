@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useBrand } from '@/lib/brand-context';
 import { fetchBrands } from '@/lib/brands-client';
-import { fetchSnapshot, fetchTrend, exportUrl } from '@/lib/store-report-queries';
+import { fetchSnapshot, fetchTrend, exportUrl, pdfUrl } from '@/lib/store-report-queries';
 import type { ApiResult, SnapshotResponse, StoreKpi, TrendResponse } from '@/lib/store-report-types';
 import { StoreFilter, defaultMonth } from './StoreFilter';
 import { KpiCards } from './KpiCards';
@@ -37,6 +37,16 @@ export default function StoreReportPage() {
         if (rows.length) setBrandOptions(rows.map(r => ({ code: r.brand_code, name: r.brand_name })));
       })
       .catch(() => {});
+  }, []);
+
+  // PDF mode: hide nav/buttons for cleaner output
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('pdfMode') === '1') {
+        document.body.classList.add('pdf-mode');
+      }
+    }
   }, []);
 
   // 拉门店列表
@@ -95,13 +105,22 @@ export default function StoreReportPage() {
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-semibold text-gray-900">门店月报</h1>
         {store && month && (
-          <a
-            href={exportUrl(brand, store, month)}
-            className="text-sm border rounded px-3 py-1.5 bg-white hover:bg-gray-50"
-            download
-          >
-            ⬇ 下载 Excel
-          </a>
+          <div className="no-pdf flex items-center gap-2">
+            <a
+              href={exportUrl(brand, store, month)}
+              className="text-sm border rounded px-3 py-1.5 bg-white hover:bg-gray-50"
+              download
+            >
+              ⬇ 下载 Excel
+            </a>
+            <a
+              href={pdfUrl(brand, store, month)}
+              className="text-sm border rounded px-3 py-1.5 bg-white hover:bg-gray-50"
+              download
+            >
+              ⬇ 下载 PDF
+            </a>
+          </div>
         )}
       </div>
 

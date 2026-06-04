@@ -19,3 +19,8 @@ export function exportUrl(brand: string, store: string, month: string): string {
   const qs = new URLSearchParams({ brand, store, month }).toString();
   return `/api/store-report/export?${qs}`;
 }
+
+export function pdfUrl(brand: string, store: string, month: string): string {
+  const qs = new URLSearchParams({ brand, store, month }).toString();
+  return `/api/store-report/pdf?${qs}`;
+}

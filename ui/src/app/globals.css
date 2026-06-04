@@ -11,3 +11,11 @@ body {
   color: rgb(var(--foreground-rgb));
   background: rgb(var(--background-rgb));
 }
+
+body.pdf-mode nav,
+body.pdf-mode header {
+  display: none !important;
+}
+body.pdf-mode .no-pdf {
+  display: none !important;
+}
