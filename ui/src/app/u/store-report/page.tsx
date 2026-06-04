@@ -141,7 +141,6 @@ export default function StoreReportPage() {
           <TrendChart title="净利润 / 利润率趋势" trend={trend} metrics={['net_profit_amt', 'net_profit_rate_pct']} barMetric="net_profit_amt" />
           <TrendChart title="经营现金流趋势" trend={trend} metrics={['operating_cf_amt']} />
           <TrendChart title="银行余额趋势" trend={trend} metrics={['cash_balance']} />
-          <TrendChart title="现金流月数趋势" trend={trend} metrics={['cashflow_runway_months']} />
           <TrendChart title="人力占比率趋势" trend={trend} metrics={['hr_ratio_pct']} />
           <TrendChart title="租金占比率趋势" trend={trend} metrics={['rent_ratio_pct']} />
         </div>
