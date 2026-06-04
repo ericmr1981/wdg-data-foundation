@@ -66,7 +66,15 @@ export default function StoreReportPage() {
         if (d.success && d.data && d.data.length > 0) {
           const mapped = d.data.map(s => ({ code: s.store_code, name: s.store_name }));
           setStores(mapped);
-          setStore(mapped[0].code);
+          // Prefer ?store= from URL (e.g. quick link) if it exists in this brand's list
+          const urlStore = typeof window !== 'undefined'
+            ? new URLSearchParams(window.location.search).get('store')
+            : null;
+          if (urlStore && mapped.some(s => s.code === urlStore)) {
+            setStore(urlStore);
+          } else {
+            setStore(mapped[0].code);
+          }
         } else {
           setStores([]);
         }
