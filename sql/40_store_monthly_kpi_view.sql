@@ -11,8 +11,8 @@ WITH profit_agg AS (
   SELECT
     month, store_code,
     SUM(CASE WHEN section = 'revenue' THEN amount ELSE 0 END) AS revenue_amt,
-    SUM(CASE WHEN section = 'cost'     THEN ABS(amount) ELSE 0 END) AS cost_amt,
-    SUM(CASE WHEN section = 'expense' AND lvl1_code NOT IN ('EXP_OTHER', 'TAX_SURCHARGE', 'BUILD') THEN ABS(amount) ELSE 0 END) AS expense_amt,
+    SUM(CASE WHEN lvl1_code = 'MATERIAL' THEN ABS(amount) ELSE 0 END) AS cost_amt,
+    SUM(CASE WHEN lvl1_code IN ('HR','MATERIAL','MKT','RENT_UTIL','SHIP','ADMIN') THEN ABS(amount) ELSE 0 END) AS expense_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'HR'        THEN amount ELSE 0 END) AS hr_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'RENT_UTIL' THEN amount ELSE 0 END) AS rent_amt
   FROM bonjur_dm.v_profit_statement GROUP BY month, store_code
@@ -49,8 +49,8 @@ WITH profit_agg AS (
   SELECT
     month, store_code,
     SUM(CASE WHEN section = 'revenue' THEN amount ELSE 0 END) AS revenue_amt,
-    SUM(CASE WHEN section = 'cost'     THEN ABS(amount) ELSE 0 END) AS cost_amt,
-    SUM(CASE WHEN section = 'expense' AND lvl1_code NOT IN ('EXP_OTHER', 'TAX_SURCHARGE', 'BUILD') THEN ABS(amount) ELSE 0 END) AS expense_amt,
+    SUM(CASE WHEN lvl1_code = 'MATERIAL' THEN ABS(amount) ELSE 0 END) AS cost_amt,
+    SUM(CASE WHEN lvl1_code IN ('HR','MATERIAL','MKT','RENT_UTIL','SHIP','ADMIN') THEN ABS(amount) ELSE 0 END) AS expense_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'HR'        THEN amount ELSE 0 END) AS hr_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'RENT_UTIL' THEN amount ELSE 0 END) AS rent_amt
   FROM brand_gelatomiiix_dm.v_profit_statement GROUP BY month, store_code
@@ -87,8 +87,8 @@ WITH profit_agg AS (
   SELECT
     month, store_code,
     SUM(CASE WHEN section = 'revenue' THEN amount ELSE 0 END) AS revenue_amt,
-    SUM(CASE WHEN section = 'cost'     THEN ABS(amount) ELSE 0 END) AS cost_amt,
-    SUM(CASE WHEN section = 'expense' AND lvl1_code NOT IN ('EXP_OTHER', 'TAX_SURCHARGE', 'BUILD') THEN ABS(amount) ELSE 0 END) AS expense_amt,
+    SUM(CASE WHEN lvl1_code = 'MATERIAL' THEN ABS(amount) ELSE 0 END) AS cost_amt,
+    SUM(CASE WHEN lvl1_code IN ('HR','MATERIAL','MKT','RENT_UTIL','SHIP','ADMIN') THEN ABS(amount) ELSE 0 END) AS expense_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'HR'        THEN amount ELSE 0 END) AS hr_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'RENT_UTIL' THEN amount ELSE 0 END) AS rent_amt
   FROM brand_tamkoko_dm.v_profit_statement GROUP BY month, store_code
