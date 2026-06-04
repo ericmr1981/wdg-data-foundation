@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS brand_tamkoko_ods.inventory_month_end (
   qty             numeric(12, 3) NOT NULL,
   unit            text NOT NULL,
   amount          numeric(14, 2) NOT NULL,
-  source_file_id  bigint NOT NULL REFERENCES raw.ingest_file(id) ON DELETE CASCADE,
+  source_file_id  integer NOT NULL REFERENCES raw.ingest_file(id) ON DELETE CASCADE,
   created_at      timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT uq_tamkoko_inventory_per_file
     UNIQUE (store_code, period, sku, source_file_id)
