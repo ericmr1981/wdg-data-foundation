@@ -15,6 +15,9 @@ function ToolCallBlock({ call }: { call: ToolCallLite }) {
       >
         {status} <code>{call.name}</code>
         {call.durationMs != null && <span className="ml-2 text-gray-400">{call.durationMs}ms</span>}
+        {call.retry && (
+          <span className="ml-2 text-yellow-600">重试 {call.retry.attempt}/{call.retry.maxAttempts}</span>
+        )}
       </button>
       {open && (
         <div className="border-t border-gray-200 px-2 py-1">
@@ -52,6 +55,20 @@ export function MessageList({ messages }: { messages: ChatMessage[] }) {
         }
         if (m.type === 'tool_call') {
           return <ToolCallBlock key={i} call={m.call} />;
+        }
+        if (m.type === 'thinking') {
+          return (
+            <div key={i} className="rounded border border-dashed border-gray-200 bg-gray-50 px-3 py-1 text-xs italic text-gray-500">
+              💭 {m.content}
+            </div>
+          );
+        }
+        if (m.type === 'token_notice') {
+          return (
+            <div key={i} className="rounded border border-yellow-200 bg-yellow-50 px-3 py-1 text-xs text-yellow-800">
+              ⚠️ Token 用量已达 {m.used} / 软限 {m.softLimit}（{m.level}）— 后续 prompt 已压缩
+            </div>
+          );
         }
         return (
           <div key={i} className="rounded bg-red-50 px-3 py-2 text-red-800">
