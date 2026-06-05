@@ -61,3 +61,30 @@ test('buildSystemPrompt mentions brand codes for tool parameter guidance', () =>
   assert.match(out, /bonjur/);
   assert.match(out, /tamkoko/);
 });
+
+test('buildSystemPrompt compact mode drops brand code hints and operator redirect', () => {
+  const ctx: PageCtx = { brand: 'bonjur', store: 'wz_ra' };
+  const out = buildSystemPrompt(ctx, baseTools, { compact: true });
+  // The compact prompt drops the long "Tool usage conventions" section,
+  // which includes brand/store code hints and the operator-role redirect.
+  assert.doesNotMatch(out, /For tamkoko, store codes are/i);
+  assert.doesNotMatch(out, /store codes are hz_fuyang/i);
+  assert.doesNotMatch(out, /权限不足/i);
+  // It also raises the in-chain tool limit from 5 to 10.
+  assert.match(out, /Don't call more than 10 tools/i);
+  assert.doesNotMatch(out, /Don't call more than 5 tools/i);
+});
+
+test('buildSystemPrompt compact mode keeps the bank classification direction rule', () => {
+  const out = buildSystemPrompt({}, baseTools, { compact: true });
+  // Core rules must survive compaction.
+  assert.match(out, /in_amt > 0/);
+  assert.match(out, /REV_BIZ/);
+  assert.match(out, /EXP_/);
+  // Forbidden shortcuts (security-critical) are also kept.
+  assert.match(out, /xintiandi/);
+  assert.match(out, /export_rules/);
+  // And the general "use tools, do not make up numbers" rule.
+  assert.match(out, /use tools/i);
+  assert.match(out, /don't make up numbers/i);
+});
