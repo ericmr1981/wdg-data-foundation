@@ -104,10 +104,27 @@ export function ChatWidget() {
             assistantBufferRef.current += evt.text;
             lastAssistantTs = Date.now();
             flushAssistantText();
+          } else if (evt.type === 'thinking_delta' && typeof evt.text === 'string') {
+            // Append to the last 'thinking' block, or create one
+            setMessages(m => {
+              const copy = m.slice();
+              const last = copy[copy.length - 1];
+              if (last && last.type === 'thinking') {
+                copy[copy.length - 1] = { ...last, content: last.content + evt.text };
+              } else {
+                copy.push({ type: 'thinking', content: evt.text, ts: Date.now() });
+              }
+              return copy;
+            });
           } else if (evt.type === 'tool_start') {
             const tc: ToolCallLite = { id: evt.id, name: evt.name, input: {} };
             toolCallsRef.current.set(evt.id, tc);
             setMessages(m => [...m, { type: 'tool_call', call: tc, ts: Date.now() }]);
+          } else if (evt.type === 'tool_retry') {
+            // Annotate the existing tool_call block with retry info
+            setMessages(m => m.map(x => (x.type === 'tool_call' && x.call.id === evt.id)
+              ? { ...x, call: { ...x.call, retry: { attempt: evt.attempt, maxAttempts: evt.maxAttempts, lastError: evt.lastError } } }
+              : x));
           } else if (evt.type === 'tool_end') {
             const tc = toolCallsRef.current.get(evt.id);
             if (tc) {
@@ -116,6 +133,8 @@ export function ChatWidget() {
               tc.durationMs = evt.durationMs;
               setMessages(m => m.map(x => (x.type === 'tool_call' && x.call.id === evt.id) ? { ...x, call: { ...tc } } : x));
             }
+          } else if (evt.type === 'token_warning') {
+            setMessages(m => [...m, { type: 'token_notice', level: evt.level, used: evt.used, softLimit: evt.softLimit, ts: Date.now() }]);
           } else if (evt.type === 'error') {
             setMessages(m => [...m, { type: 'error', message: evt.message, ts: Date.now() }]);
           }
