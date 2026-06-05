@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetPipelineKpiInput = z.object({
   brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).optional().default('yufeng')
@@ -16,10 +17,9 @@ export const getPipelineKpiTool = {
   inputSchema: GetPipelineKpiInput,
   async execute(params: z.infer<typeof GetPipelineKpiInput>) {
     const { brand = 'yufeng' } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand });
 
-    const res = await fetch(`${baseUrl}/api/pipeline/kpi?${qs}`, {
+    const res = await mcpFetch(`/api/pipeline/kpi?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
 

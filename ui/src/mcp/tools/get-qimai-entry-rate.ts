@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetQimaiEntryRateInput = z.object({
   period: z.string().describe('Period in YYYY-MM format'),
@@ -22,11 +23,10 @@ export const getQimaiEntryRateTool = {
   inputSchema: GetQimaiEntryRateInput,
   async execute(params: z.infer<typeof GetQimaiEntryRateInput>) {
     const { period, span = 'month', store } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand: 'gelatomiiix', period, span });
     if (store) qs.set('store', store);
 
-    const res = await fetch(`${baseUrl}/api/gelatomiiix/income/bank-entry-stats?${qs}`, {
+    const res = await mcpFetch(`/api/gelatomiiix/income/bank-entry-stats?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
 

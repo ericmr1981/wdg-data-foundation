@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetBrandStoresInput = z.object({
   brand: z.string().describe('Brand code: yufeng | gelatomiiix | bonjur').optional(),
@@ -9,10 +10,9 @@ export const getBrandStoresTool = {
   description: 'Get brand and store metadata: brand codes, brand names, and store codes with store names. Use this after fetching transactions so you can look up human-readable names for store_code fields before presenting to the user.',
   inputSchema: GetBrandStoresInput,
   async execute(params: z.infer<typeof GetBrandStoresInput>) {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
     // Fetch all brands
-    const brandsRes = await fetch(`${baseUrl}/api/brands`, {
+    const brandsRes = await mcpFetch(`/api/brands`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     if (!brandsRes.ok) {
@@ -30,7 +30,7 @@ export const getBrandStoresTool = {
     // Fetch stores for each brand
     const storeResults: Record<string, Array<{ store_code: string; store_name: string }>> = {};
     for (const brand of targetBrands) {
-      const storesRes = await fetch(`${baseUrl}/api/stores?brand=${brand.brand_code}`, {
+      const storesRes = await mcpFetch(`/api/stores?brand=${brand.brand_code}`, {
         headers: { 'x-mcp-session': 'internal' },
       });
       if (storesRes.ok) {

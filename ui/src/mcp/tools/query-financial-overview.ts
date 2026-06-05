@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const QueryFinancialOverviewInput = z.object({
   brand: z.enum(['gelatomiiix', 'bonjur', 'tamkoko']).optional().default('gelatomiiix')
@@ -23,9 +24,8 @@ export const queryFinancialOverviewTool = {
   inputSchema: QueryFinancialOverviewInput,
   async execute(params: z.infer<typeof QueryFinancialOverviewInput>) {
     const { brand = 'gelatomiiix', period, span = 'month', store = 'all' } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand, period, span, store });
-    const res = await fetch(`${baseUrl}/api/financial/overview?${qs}`, {
+    const res = await mcpFetch(`/api/financial/overview?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     if (!res.ok) throw new Error(`query_financial_overview failed: ${await res.text()}`);

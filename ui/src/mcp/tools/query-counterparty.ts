@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const QueryCounterpartyInput = z.object({
   period: z.string().regex(/^\d{4}-\d{2}$/, 'YYYY-MM').describe('Period in YYYY-MM format'),
@@ -26,9 +27,8 @@ export const queryCounterpartyTool = {
   inputSchema: QueryCounterpartyInput,
   async execute(params: z.infer<typeof QueryCounterpartyInput>) {
     const { period, span = 'month', store = 'all', counterparty = '', direction = 'out' } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ period, span, store, counterparty, direction });
-    const res = await fetch(`${baseUrl}/api/financial/counterparty?${qs}`, {
+    const res = await mcpFetch(`/api/financial/counterparty?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     if (!res.ok) throw new Error(`query_counterparty failed: ${await res.text()}`);

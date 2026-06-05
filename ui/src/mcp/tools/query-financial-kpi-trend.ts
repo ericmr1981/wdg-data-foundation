@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const QueryFinancialKpiTrendInput = z.object({
   brand: z.enum(['gelatomiiix', 'bonjur', 'tamkoko']).describe('Brand code'),
@@ -22,9 +23,8 @@ export const queryFinancialKpiTrendTool = {
   inputSchema: QueryFinancialKpiTrendInput,
   async execute(params: z.infer<typeof QueryFinancialKpiTrendInput>) {
     const { brand, period, span = 'month', store = 'all' } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand, period, span, store });
-    const res = await fetch(`${baseUrl}/api/financial/kpi-trend?${qs}`, {
+    const res = await mcpFetch(`/api/financial/kpi-trend?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     if (!res.ok) throw new Error(`query_financial_kpi_trend failed: ${await res.text()}`);

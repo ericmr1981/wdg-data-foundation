@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetRulesInput = z.object({
   brand: z.string().describe('Brand code: yufeng | gelatomiiix | bonjur').optional().default('yufeng'),
@@ -9,8 +10,7 @@ export const getRulesTool = {
   description: 'Fetch all existing bank transaction classification rules for a brand.',
   inputSchema: GetRulesInput,
   async execute({ brand = 'yufeng' }: z.infer<typeof GetRulesInput>) {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const res = await fetch(`${baseUrl}/api/rules?brand=${brand}`, {
+    const res = await mcpFetch(`/api/rules?brand=${brand}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     const json = await res.json();

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const QueryStatusInput = z.object({
   brand:    z.string().describe('Brand code: yufeng | gelatomiiix | bonjur').optional().default('yufeng'),
@@ -10,10 +11,9 @@ export const queryStatusTool = {
   description: 'Query approval proposal status counts grouped by status (pending / approved / rejected) for a brand or batch.',
   inputSchema: QueryStatusInput,
   async execute({ brand = 'yufeng', batch_id }: z.infer<typeof QueryStatusInput>) {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand });
     if (batch_id) qs.set('batch_id', batch_id);
-    const res = await fetch(`${baseUrl}/api/approval/proposals?${qs}`, {
+    const res = await mcpFetch(`/api/approval/proposals?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     if (!res.ok) throw new Error(`query_status failed: ${await res.text()}`);

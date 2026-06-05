@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetTxnDetailInput = z.object({
   brand:       z.string().describe('Brand code: yufeng | gelatomiiix | bonjur').optional().default('yufeng'),
@@ -10,14 +11,13 @@ export const getTxnDetailTool = {
   description: 'Fetch full detail for a specific bank transaction including counterparty, summary, memo, purpose, and keyword candidates for classification.',
   inputSchema: GetTxnDetailInput,
   async execute({ brand = 'yufeng', bank_txn_id }: z.infer<typeof GetTxnDetailInput>) {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
     // Fetch candidates and the full unclassified list (filter locally for this txn)
     const [candRes, listRes] = await Promise.all([
-      fetch(`${baseUrl}/api/match/candidates?brand=${brand}&bank_txn_id=${bank_txn_id}`, {
+      mcpFetch(`/api/match/candidates?brand=${brand}&bank_txn_id=${bank_txn_id}`, {
         headers: { 'x-mcp-session': 'internal' },
       }),
-      fetch(`${baseUrl}/api/match?brand=${brand}&pageSize=500`, {
+      mcpFetch(`/api/match?brand=${brand}&pageSize=500`, {
         headers: { 'x-mcp-session': 'internal' },
       }),
     ]);

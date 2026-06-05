@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const QueryQimaiRevenueInput = z.object({
   brand: z.enum(['gelatomiiix', 'bonjur', 'tamkoko']).describe('Brand code'),
@@ -22,9 +23,8 @@ export const queryQimaiRevenueTool = {
   inputSchema: QueryQimaiRevenueInput,
   async execute(params: z.infer<typeof QueryQimaiRevenueInput>) {
     const { brand, period, span = 'month', store = 'all' } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand, period, span, store });
-    const res = await fetch(`${baseUrl}/api/financial/qimai-revenue?${qs}`, {
+    const res = await mcpFetch(`/api/financial/qimai-revenue?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     if (!res.ok) throw new Error(`query_qimai_revenue failed: ${await res.text()}`);

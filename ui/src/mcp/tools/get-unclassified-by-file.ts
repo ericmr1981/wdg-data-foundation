@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetUnclassifiedByFileInput = z.object({
   brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).optional().default('yufeng')
@@ -24,10 +25,9 @@ export const getUnclassifiedByFileTool = {
   inputSchema: GetUnclassifiedByFileInput,
   async execute(params: z.infer<typeof GetUnclassifiedByFileInput>) {
     const { brand = 'yufeng', file_id, limit = 100 } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand, limit: String(limit) });
     if (file_id !== undefined) qs.set('file_id', String(file_id));
-    const res = await fetch(`${baseUrl}/api/coverage/unclassified-by-file?${qs}`, {
+    const res = await mcpFetch(`/api/coverage/unclassified-by-file?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     if (!res.ok) throw new Error(`get_unclassified_by_file failed: ${await res.text()}`);

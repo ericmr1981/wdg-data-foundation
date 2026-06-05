@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const QueryStoreReportTrendInput = z.object({
   brand: z.enum(['gelatomiiix', 'bonjur', 'tamkoko']).describe('Brand code'),
@@ -20,10 +21,9 @@ export const queryStoreReportTrendTool = {
   inputSchema: QueryStoreReportTrendInput,
   async execute(params: z.infer<typeof QueryStoreReportTrendInput>) {
     const { brand, store, months = 12 } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand, store, months: String(months) });
 
-    const res = await fetch(`${baseUrl}/api/store-report/trend?${qs}`, {
+    const res = await mcpFetch(`/api/store-report/trend?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
 

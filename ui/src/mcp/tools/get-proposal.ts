@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetProposalInput = z.object({
   proposal_id: z.number().int().positive().describe('Proposal ID (integer from approval queue)'),
@@ -17,8 +18,7 @@ export const getProposalTool = {
   inputSchema: GetProposalInput,
   async execute(params: z.infer<typeof GetProposalInput>) {
     const { proposal_id } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const res = await fetch(`${baseUrl}/api/approval/proposals/${proposal_id}`, {
+    const res = await mcpFetch(`/api/approval/proposals/${proposal_id}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     if (!res.ok) throw new Error(`get_proposal failed: ${await res.text()}`);

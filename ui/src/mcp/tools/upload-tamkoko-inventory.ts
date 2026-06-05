@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const UploadTamkokoInventoryInput = z.object({
   file_path: z.string().describe('Absolute path to the inventory .xlsx/.xls file'),
@@ -22,14 +23,13 @@ export const uploadTamkokoInventoryTool = {
     const { file_path, period, store_code = 'hz_fuyang' } = params;
     const { readFile } = await import('fs/promises');
     const fileBuffer = await readFile(file_path);
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const form = new FormData();
     const filename = file_path.split('/').pop() || 'inventory.xlsx';
     form.append('file', new Blob([fileBuffer]), filename);
     form.append('period', period);
     form.append('storeCode', store_code);
 
-    const res = await fetch(`${baseUrl}/api/tamkoko/upload`, {
+    const res = await mcpFetch(`/api/tamkoko/upload`, {
       method: 'POST',
       headers: { 'x-mcp-session': 'internal' },
       body: form,
