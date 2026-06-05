@@ -68,13 +68,7 @@ function applyFormats(ws: XLSX.WorkSheet, formats: CellFormats): void {
   for (const [ref, numFmt] of formats) {
     if (ws[ref]) {
       if (!ws[ref].s) ws[ref].s = {};
-      // xlsx-js-style 写时只支持 cell.s.numFmtId (内置 index)，
-      // 用字符串会丢失 cell。
-      let numFmtId = 0;
-      if (numFmt === '¥#,##0.00;(¥#,##0.00)') numFmtId = 165;
-      else if (numFmt === '0.0"%"') numFmtId = 166;
-      else if (numFmt === '0.0') numFmtId = 167;
-      ws[ref].s = { numFmtId, ...ws[ref].s };
+      ws[ref].s.numFmt = numFmt;
     }
   }
 }
