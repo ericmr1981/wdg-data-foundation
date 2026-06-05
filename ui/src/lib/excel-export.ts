@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 import type { SnapshotResponse, StoreKpi, TrendResponse } from './store-report-types';
 import { ExcelMetricKey, EXCEL_METRIC_LABELS, KpiMetricKey, KPI_LABELS } from './store-report-types';
 
@@ -17,27 +17,29 @@ const SERIES_KEYS: KpiMetricKey[] = [
   'hr_ratio_pct', 'rent_ratio_pct',
 ];
 
-type Formatted = { value: number; numFmt: string };
+const FMT_AMT = '¥#,##0.00;(¥#,##0.00)';
+const FMT_PCT = '0.0"%"';
+const FMT_MONTHS = '0.0';
+const FMT_DATE = 'yyyy-mm-dd';
 
-function fmtAmt(n: number | null | undefined): Formatted | null {
-  if (n == null) return null;
-  return { value: Math.round(Number(n) * 100) / 100, numFmt: '¥#,##0.00;(¥#,##0.00)' };
+const FILL_HEADER = { patternType: 'solid', fgColor: { rgb: 'FFD9D9D9' } } as const;
+const FONT_HEADER = { bold: true, sz: 12 } as const;
+
+function numFmtFor(key: ExcelMetricKey): string {
+  if (key === 'hr_ratio_pct' || key === 'rent_ratio_pct' || key === 'gross_profit_rate_pct' || key === 'net_profit_rate_pct') return FMT_PCT;
+  if (key === 'cashflow_runway_months') return FMT_MONTHS;
+  return FMT_AMT;
 }
 
-function fmtPct(n: number | null | undefined): Formatted | null {
-  if (n == null) return null;
-  return { value: Math.round(Number(n) * 10) / 10, numFmt: '0.0"%"' };
-}
-
-function fmtMonths(n: number | null | undefined): Formatted | null {
-  if (n == null) return null;
-  return { value: Math.round(Number(n) * 10) / 10, numFmt: '0.0' };
-}
-
-function fmtCell(key: ExcelMetricKey, v: number | null | undefined): Formatted | null {
-  if (key === 'hr_ratio_pct' || key === 'rent_ratio_pct' || key === 'gross_profit_rate_pct' || key === 'net_profit_rate_pct') return fmtPct(v);
-  if (key === 'cashflow_runway_months') return fmtMonths(v);
-  return fmtAmt(v);
+function roundForKey(key: ExcelMetricKey, v: number | null | undefined): number | null {
+  if (v == null) return null;
+  if (key === 'hr_ratio_pct' || key === 'rent_ratio_pct' || key === 'gross_profit_rate_pct' || key === 'net_profit_rate_pct') {
+    return Math.round(Number(v) * 10) / 10;
+  }
+  if (key === 'cashflow_runway_months') {
+    return Math.round(Number(v) * 10) / 10;
+  }
+  return Math.round(Number(v) * 100) / 100;
 }
 
 export interface ExportInput {
@@ -49,19 +51,45 @@ export interface ExportInput {
   trend: TrendResponse;
 }
 
+// Sheet-scoped cell-formatter: row/col → numFmt
+type CellFormats = Map<string, string>;
+
+function setFmt(formats: CellFormats, row: number, col: number, numFmt: string): void {
+  formats.set(XLSX.utils.encode_cell({ r: row, c: col }), numFmt);
+}
+
+function applyFormats(ws: XLSX.WorkSheet, formats: CellFormats): void {
+  for (const [ref, numFmt] of formats) {
+    if (ws[ref]) {
+      if (!ws[ref].s) ws[ref].s = {};
+      ws[ref].s.numFmt = numFmt;
+    }
+  }
+}
+
+function applyHeaderStyle(ws: XLSX.WorkSheet, colCount: number): void {
+  for (let c = 0; c < colCount; c++) {
+    const ref = XLSX.utils.encode_cell({ r: 0, c });
+    if (ws[ref]) {
+      ws[ref].s = { font: FONT_HEADER, fill: FILL_HEADER };
+    }
+  }
+}
+
 export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
 
-  // Sheet 1: 门店信息
+  // Sheet 1: 门店信息 (key-value, no header row)
+  // Format the date as ISO string so xlsx-js-style doesn't auto-assign a
+  // locale-dependent built-in numFmt (numFmtId=14 = m/d/yyyy).
+  const generatedAtStr = input.generatedAt.toISOString().slice(0, 10);
   const infoRows: any[][] = [
     ['品牌', input.brand],
     ['门店', input.store],
     ['月份', input.month],
-    ['生成时间', { value: input.generatedAt, numFmt: 'yyyy-mm-dd' }],
+    ['生成时间', generatedAtStr],
   ];
   const ws1 = XLSX.utils.aoa_to_sheet(infoRows);
-  applyNumFmts(ws1, infoRows);
-  // Sheet 1 is a key-value list; no header row to style.
   ws1['!cols'] = [{ wch: 14 }, { wch: 22 }];
   XLSX.utils.book_append_sheet(wb, ws1, '门店信息');
 
@@ -69,48 +97,62 @@ export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
   const cur = input.snapshot.current;
   const prev = input.snapshot.previous;
   const snapRows: any[][] = [['指标', '当月值', '上月值', '环比%']];
-  for (const key of ALL_METRICS) {
+  const snapFmts: CellFormats = new Map();
+  for (let i = 0; i < ALL_METRICS.length; i++) {
+    const key = ALL_METRICS[i];
     const curV = (cur as any)[key];
     const prevV = prev ? (prev as any)[key] : null;
-    let delta: Formatted | null = null;
-    if (prevV != null && curV != null && Number(prevV) !== 0) {
-      const d = Math.round(((Number(curV) - Number(prevV)) / Math.abs(Number(prevV))) * 1000) / 10;
-      delta = { value: d, numFmt: '0.0"%"' };
-    }
+    const row = i + 1;
+
+    const curRounded = roundForKey(key, curV);
+    const prevRounded = roundForKey(key, prevV);
+
     snapRows.push([
       EXCEL_METRIC_LABELS[key] ?? key,
-      fmtCell(key, curV),
-      prevV == null ? '' : fmtCell(key, prevV),
-      delta,
+      curRounded,
+      prevV == null ? '' : prevRounded,
+      null,
     ]);
+    setFmt(snapFmts, row, 1, numFmtFor(key));
+    if (prevV != null) setFmt(snapFmts, row, 2, numFmtFor(key));
+
+    if (prevV != null && curV != null && Number(prevV) !== 0) {
+      const d = Math.round(((Number(curV) - Number(prevV)) / Math.abs(Number(prevV))) * 1000) / 10;
+      snapRows[row][3] = d;
+      setFmt(snapFmts, row, 3, FMT_PCT);
+    }
   }
   const ws2 = XLSX.utils.aoa_to_sheet(snapRows);
-  applyNumFmts(ws2, snapRows);
-  styleHeaderRow(ws2, snapRows[0].length);
+  applyFormats(ws2, snapFmts);
+  applyHeaderStyle(ws2, snapRows[0].length);
   ws2['!cols'] = [{ wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 10 }];
   XLSX.utils.book_append_sheet(wb, ws2, '当月快照');
 
   // Sheet 3: 历史趋势
   const trendHeader = ['月份', ...ALL_METRICS.map(k => EXCEL_METRIC_LABELS[k] ?? k)];
   const trendRows: any[][] = [trendHeader];
+  const trendFmts: CellFormats = new Map();
   for (let i = 0; i < input.trend.months.length; i++) {
     const row: any[] = [input.trend.months[i]];
-    for (const key of ALL_METRICS) {
+    for (let j = 0; j < ALL_METRICS.length; j++) {
+      const key = ALL_METRICS[j];
       const v = (input.trend.series as any)[key]?.[i];
-      row.push(fmtCell(key, v));
+      const rounded = roundForKey(key, v);
+      row.push(rounded);
+      setFmt(trendFmts, i + 1, j + 1, numFmtFor(key));
     }
     trendRows.push(row);
   }
   const ws3 = XLSX.utils.aoa_to_sheet(trendRows);
-  applyNumFmts(ws3, trendRows);
-  styleHeaderRow(ws3, trendRows[0].length);
+  applyFormats(ws3, trendFmts);
+  applyHeaderStyle(ws3, trendRows[0].length);
   ws3['!cols'] = [
-    { wch: 12 },                  // A: 月份
-    ...Array(15).fill({ wch: 14 }), // B-P: 15 metrics
+    { wch: 12 },
+    ...Array(15).fill({ wch: 14 }),
   ];
   XLSX.utils.book_append_sheet(wb, ws3, '历史趋势');
 
-  // Sheet 4: 同期对比 (当月 vs 去年同期) — only show metrics available in trend series
+  // Sheet 4: 同期对比 (当月 vs 去年同期)
   const yoy = (() => {
     const [y, m] = input.month.split('-').map(Number);
     return `${y - 1}-${String(m).padStart(2, '0')}`;
@@ -137,52 +179,38 @@ export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
   const yoyRows: any[][] = [
     ['指标', `当月 (${input.month})`, `去年同期 (${yoy})`, '同比%'],
   ];
-  for (const key of SERIES_KEYS) {
+  const yoyFmts: CellFormats = new Map();
+  for (let i = 0; i < SERIES_KEYS.length; i++) {
+    const key = SERIES_KEYS[i];
     const curV = (cur as any)[key];
     const yoyV = yoyKpi ? (yoyKpi as any)[key] : null;
-    let delta: Formatted | null = null;
-    if (yoyV != null && curV != null && Number(yoyV) !== 0) {
-      const d = Math.round(((Number(curV) - Number(yoyV)) / Math.abs(Number(yoyV))) * 1000) / 10;
-      delta = { value: d, numFmt: '0.0"%"' };
-    }
+    const row = i + 1;
+
+    const curRounded = roundForKey(key, curV);
+    const yoyRounded = yoyV == null ? null : roundForKey(key, yoyV);
+
     yoyRows.push([
       KPI_LABELS[key] ?? key,
-      fmtCell(key, curV),
-      yoyV == null ? '(无数据)' : fmtCell(key, yoyV),
-      delta,
+      curRounded,
+      yoyV == null ? '(无数据)' : yoyRounded,
+      null,
     ]);
+    setFmt(yoyFmts, row, 1, numFmtFor(key));
+    if (yoyV != null) setFmt(yoyFmts, row, 2, numFmtFor(key));
+
+    if (yoyV != null && curV != null && Number(yoyV) !== 0) {
+      const d = Math.round(((Number(curV) - Number(yoyV)) / Math.abs(Number(yoyV))) * 1000) / 10;
+      yoyRows[row][3] = d;
+      setFmt(yoyFmts, row, 3, FMT_PCT);
+    }
   }
   const ws4 = XLSX.utils.aoa_to_sheet(yoyRows);
-  applyNumFmts(ws4, yoyRows);
-  styleHeaderRow(ws4, yoyRows[0].length);
+  applyFormats(ws4, yoyFmts);
+  applyHeaderStyle(ws4, yoyRows[0].length);
   ws4['!cols'] = [{ wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 10 }];
   XLSX.utils.book_append_sheet(wb, ws4, '同期对比');
 
   return wb;
-}
-
-function applyNumFmts(ws: XLSX.WorkSheet, rows: any[][]): void {
-  for (let r = 0; r < rows.length; r++) {
-    for (let c = 0; c < rows[r].length; c++) {
-      const cell = rows[r][c];
-      if (cell !== null && typeof cell === 'object' && 'numFmt' in cell) {
-        const ref = XLSX.utils.encode_cell({ r, c });
-        if (ws[ref]) ws[ref].s = { numFmt: (cell as Formatted).numFmt };
-      }
-    }
-  }
-}
-
-function styleHeaderRow(ws: XLSX.WorkSheet, colCount: number): void {
-  for (let c = 0; c < colCount; c++) {
-    const ref = XLSX.utils.encode_cell({ r: 0, c });
-    if (ws[ref]) {
-      ws[ref].s = {
-        font: { bold: true, sz: 12 },
-        fill: { patternType: 'solid', fgColor: { rgb: 'FFD9D9D9' } },
-      };
-    }
-  }
 }
 
 export function workbookToBuffer(wb: XLSX.WorkBook): Buffer {
