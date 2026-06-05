@@ -10,7 +10,7 @@ import { filterToolsByRole, isWriteAllowedForRole, ALLOWED_WRITE_TOOLS } from '.
 const fakeTools = [
   { name: 'get_brand_stores',          description: 'a', input_schema: {} },
   { name: 'upload_bank_txn_file',      description: 'a', input_schema: {} },
-  { name: 'submit_approval_proposal',  description: 'a', input_schema: {} },
+  { name: 'submit_proposal',  description: 'a', input_schema: {} },
   { name: 'rerun_match_by_file',       description: 'a', input_schema: {} },
   { name: 'query_financial_statement', description: 'a', input_schema: {} },
 ];
@@ -25,7 +25,7 @@ test('ALLOWED_WRITE_TOOLS contains the 8 write tools from spec §5', () => {
       'upload_bonjur_product_sales',
       'upload_bonjur_sales_self_service',
       'upload_tamkoko_inventory',
-      'submit_approval_proposal',
+      'submit_proposal',
       'rerun_match_by_file',
     ]),
   );

@@ -15,7 +15,7 @@ export const ALLOWED_WRITE_TOOLS: Set<string> = new Set([
   'upload_bonjur_product_sales',
   'upload_bonjur_sales_self_service',
   'upload_tamkoko_inventory',
-  'submit_approval_proposal',
+  'submit_proposal',
   'rerun_match_by_file',
 ]);
 
