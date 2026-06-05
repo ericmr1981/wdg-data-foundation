@@ -1,34 +1,42 @@
-// ui/src/components/chat/MessageList.tsx
 'use client';
 import { useState } from 'react';
 import type { ChatMessage, ToolCallLite } from './types';
+import { UserAvatar } from './UserAvatar';
+import { MarkdownMessage } from './MarkdownMessage';
+import { JsonBlock } from './JsonBlock';
 
 function ToolCallBlock({ call }: { call: ToolCallLite }) {
   const [open, setOpen] = useState(false);
   const status = call.isError ? '❌' : '✅';
+  // Parse result for syntax highlighting (it's typically a JSON string)
+  let parsedResult: unknown = call.result;
+  try {
+    if (typeof call.result === 'string' && call.result.trim().startsWith('{')) {
+      parsedResult = JSON.parse(call.result);
+    }
+  } catch { /* leave as string */ }
+
   return (
-    <div className="my-1 rounded border border-gray-200 bg-gray-50 text-xs">
+    <div className="my-1 overflow-hidden rounded border border-slate-200 bg-slate-50 text-xs">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        className="w-full px-2 py-1 text-left text-gray-700 hover:bg-gray-100"
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-slate-700 hover:bg-slate-100"
       >
-        {status} <code>{call.name}</code>
-        {call.durationMs != null && <span className="ml-2 text-gray-400">{call.durationMs}ms</span>}
-        {call.retry && (
-          <span className="ml-2 text-yellow-600">重试 {call.retry.attempt}/{call.retry.maxAttempts}</span>
+        <span className="font-mono">{status}</span>
+        <code className="font-mono text-[11px] font-semibold">{call.name}</code>
+        {call.durationMs != null && (
+          <span className="text-slate-400">{call.durationMs}ms</span>
         )}
+        {call.retry && (
+          <span className="text-yellow-600">重试 {call.retry.attempt}/{call.retry.maxAttempts}</span>
+        )}
+        <span className="ml-auto text-slate-400">{open ? '▼' : '▶'}</span>
       </button>
       {open && (
-        <div className="border-t border-gray-200 px-2 py-1">
-          <div className="text-gray-500">input:</div>
-          <pre className="overflow-auto text-[10px]">{JSON.stringify(call.input, null, 2)}</pre>
-          {call.result && (
-            <>
-              <div className="mt-1 text-gray-500">result:</div>
-              <pre className="overflow-auto text-[10px]">{call.result.slice(0, 2000)}</pre>
-            </>
-          )}
+        <div className="border-t border-slate-200 px-3 py-2">
+          <JsonBlock data={call.input} label="input" />
+          {call.result && <JsonBlock data={parsedResult} label="result" />}
         </div>
       )}
     </div>
@@ -37,19 +45,25 @@ function ToolCallBlock({ call }: { call: ToolCallLite }) {
 
 export function MessageList({ messages }: { messages: ChatMessage[] }) {
   return (
-    <div className="flex-1 space-y-2 overflow-y-auto p-3 text-sm">
+    <div className="flex-1 space-y-3 overflow-y-auto bg-gray-50 p-3">
       {messages.map((m, i) => {
         if (m.type === 'user') {
           return (
-            <div key={i} className="rounded bg-blue-50 px-3 py-2 text-gray-900">
-              {m.content}
+            <div key={i} className="flex items-start justify-end gap-2">
+              <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-blue-500 px-3 py-2 text-sm text-white shadow-sm">
+                {m.content}
+              </div>
+              <UserAvatar role="user" />
             </div>
           );
         }
         if (m.type === 'assistant_text') {
           return (
-            <div key={i} className="rounded bg-white px-3 py-2 text-gray-900 shadow-sm">
-              {m.content}
+            <div key={i} className="flex items-start justify-start gap-2">
+              <UserAvatar role="assistant" />
+              <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-white px-3 py-2 text-sm text-gray-900 shadow-sm">
+                <MarkdownMessage content={m.content} />
+              </div>
             </div>
           );
         }
@@ -58,23 +72,26 @@ export function MessageList({ messages }: { messages: ChatMessage[] }) {
         }
         if (m.type === 'thinking') {
           return (
-            <div key={i} className="rounded border border-dashed border-gray-200 bg-gray-50 px-3 py-1 text-xs italic text-gray-500">
+            <div key={i} className="mx-2 rounded border border-dashed border-gray-200 bg-white px-3 py-1 text-xs italic text-gray-500">
               💭 {m.content}
             </div>
           );
         }
         if (m.type === 'token_notice') {
           return (
-            <div key={i} className="rounded border border-yellow-200 bg-yellow-50 px-3 py-1 text-xs text-yellow-800">
+            <div key={i} className="rounded border border-yellow-200 bg-yellow-50 px-3 py-1 text-center text-xs text-yellow-800">
               ⚠️ Token 用量已达 {m.used} / 软限 {m.softLimit}（{m.level}）— 后续 prompt 已压缩
             </div>
           );
         }
-        return (
-          <div key={i} className="rounded bg-red-50 px-3 py-2 text-red-800">
-            ⚠️ {m.message}
-          </div>
-        );
+        if (m.type === 'error') {
+          return (
+            <div key={i} className="rounded border border-red-200 bg-red-50 px-3 py-2 text-center text-sm text-red-800">
+              ⚠️ {m.message}
+            </div>
+          );
+        }
+        return null;
       })}
     </div>
   );
