@@ -9,14 +9,15 @@ import { getOrCreateSession, appendMessage, updateSession } from '@/lib/chat/ses
 import { listToolSchemas } from '@/mcp/server';
 import { filterToolsByRole, isWriteAllowedForRole, ALLOWED_WRITE_TOOLS } from '@/lib/chat/auth';
 import { buildSystemPrompt } from '@/lib/chat/prompt';
-import { callMcp, McpCallError } from '@/lib/chat/mcp-bridge';
+import { callMcpWithRetry, McpCallError } from '@/lib/chat/mcp-bridge';
 import { encodeSseEvent } from '@/lib/chat/stream';
 import { checkRateLimit } from '@/lib/chat/rate-limit';
+import { createTokenTracker } from '@/lib/chat/token-tracker';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;  // seconds; 1 message turn
 
-const MAX_TOOL_CHAIN_DEPTH = 5;
+const MAX_TOOL_CHAIN_DEPTH = 10;
 
 function getBaseUrl(req: NextRequest): string {
   return process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
@@ -64,10 +65,13 @@ export async function POST(req: NextRequest) {
   sessionId = sess.id;
   appendMessage(sess.id, { role: 'user', content: userText, ts: Date.now() });
 
-  // ---------- 4. build prompt + tools ----------
+  // ---------- 4. build tools (system prompt is re-evaluated per loop iteration) ----------
   const allTools = listToolSchemas();
   const tools = filterToolsByRole(user.role, allTools);
-  const system = buildSystemPrompt(sess.context, tools);
+
+  // ---------- 4.5 token tracker (per session) ----------
+  const tokens = createTokenTracker();
+  let lastTokenLevel: 'normal' | 'soft' | 'hard' = 'normal';
 
   // ---------- 5. SSE stream ----------
   const cookieHeader = req.headers.get('cookie');
@@ -93,7 +97,11 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const send = (evt: Record<string, unknown>) => {
-        controller.enqueue(encoder.encode(encodeSseEvent(evt as { type: string })));
+        try {
+          controller.enqueue(encoder.encode(encodeSseEvent(evt as { type: string })));
+        } catch {
+          // controller may be closed (e.g. onRetry fires after stream close); ignore
+        }
       };
       try {
         send({ type: 'session', sessionId: sess.id });
@@ -107,6 +115,13 @@ export async function POST(req: NextRequest) {
             break;
           }
 
+          // Re-evaluate system prompt each iteration based on current token level
+          const system = buildSystemPrompt(
+            sess.context,
+            tools,
+            lastTokenLevel === 'soft' || lastTokenLevel === 'hard' ? { compact: true } : undefined,
+          );
+
           const response = await client.messages.create({
             model: anthropicModel,
             system,
@@ -114,6 +129,23 @@ export async function POST(req: NextRequest) {
             messages: runningMessages,
             max_tokens: 4096,
           });
+
+          // Record token usage for this round (defensive: usage may be missing)
+          const usage = response.usage ?? { input_tokens: 0, output_tokens: 0 };
+          const t = tokens.record(usage.input_tokens, usage.output_tokens);
+          if (t.level === 'soft' && lastTokenLevel === 'normal') {
+            send({
+              type: 'token_warning',
+              used: t.usage.inputTokens + t.usage.outputTokens,
+              softLimit: 80_000,
+              level: 'soft',
+            });
+          }
+          if (t.level === 'hard') {
+            send({ type: 'error', message: '对话超过 token 上限 (200K)，请重置会话后重试' });
+            break;
+          }
+          lastTokenLevel = t.level;
 
           // Stream text + collect tool_use blocks
           const assistantTextParts: string[] = [];
@@ -156,7 +188,7 @@ export async function POST(req: NextRequest) {
               continue;
             }
             const t0 = Date.now();
-            const result = await callMcp(
+            const result = await callMcpWithRetry(
               {
                 jsonrpc: '2.0',
                 id: rpcIdCounter++,
@@ -165,6 +197,10 @@ export async function POST(req: NextRequest) {
               },
               cookieHeader,
               baseUrl,
+              (attempt, max, err) => {
+                send({ type: 'tool_retry', id: tb.id, name: tb.name, attempt, maxAttempts: max, lastError: err.message });
+              },
+              2,
             );
             const durMs = Date.now() - t0;
             if (result instanceof McpCallError) {
