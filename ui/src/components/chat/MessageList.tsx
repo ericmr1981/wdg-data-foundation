@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, ToolCallLite } from './types';
 import { UserAvatar } from './UserAvatar';
 import { MarkdownMessage } from './MarkdownMessage';
@@ -44,8 +44,17 @@ function ToolCallBlock({ call }: { call: ToolCallLite }) {
 }
 
 export function MessageList({ messages }: { messages: ChatMessage[] }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom whenever messages change (new content or streaming)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [messages]);
+
   return (
-    <div className="flex-1 space-y-3 overflow-y-auto bg-gray-50 p-3">
+    <div ref={containerRef} className="flex-1 space-y-3 overflow-y-auto bg-gray-50 p-3">
       {messages.map((m, i) => {
         if (m.type === 'user') {
           return (

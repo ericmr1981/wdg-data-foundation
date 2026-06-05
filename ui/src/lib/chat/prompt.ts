@@ -43,7 +43,7 @@ const GENERAL_RULES_COMPACT = `General rules:
 
 const TOOL_USAGE_CONVENTIONS = `Tool usage conventions (from the wdg-data-platform skill):
 - Before calling get_brand_stores for a specific brand, double-check the brand code (gelatomiiix | bonjur | tamkoko). For tamkoko, store codes are hz_fuyang or wz_bjwxc; for bonjur: sh_wdg, wz_ra, wz_wxc; for gelatomiiix: sh_sc, sh_xtd.
-- For "this month" / "last month" performance, call query_store_report_snapshot with the right period. Period format is YYYY-MM. For "this month" use the current month; for "last month" subtract 1.
+- For "this month" / "last month" / "today" performance queries: compute from the Today date in the header (NOT from ctx.period). Period format is YYYY-MM. For "this month" use Today as YYYY-MM; for "last month" subtract 1 month from Today; for "today" leave period empty (the tool default handles it).
 - For bank classification proposals: only admin/finance/store_manager users have access to submit_proposal. If the user is operator and asks for classification help, surface a polite "权限不足" message and suggest they ask an admin.`;
 
 const BANK_RULE = `Bank classification direction rule (only when reasoning about bank transactions):
@@ -62,6 +62,7 @@ function buildHeader(ctx: PageCtx, tools: ToolSchemaLite[]): string {
   const store = ctx.store ?? '<none>';
   const period = ctx.period ?? '<none>';
   const page = ctx.page ?? '<none>';
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
   const toolList = tools
     .map(t => `- ${t.name}: ${t.description}`)
@@ -69,7 +70,10 @@ function buildHeader(ctx: PageCtx, tools: ToolSchemaLite[]): string {
 
   return `You are a data analyst assistant for the WDG data platform (蜜可诗 / Bonjour / 泰柯茶园).
 
+Today: ${today}
 Current context: brand=${brand}, store=${store}, period=${period}, page=${page}.
+
+Note: ctx.period is the period the user is currently VIEWING on the page — NOT necessarily the period they want for a new query. When the user says "this month" / "last month" / "today", always compute from Today's date above, not from ctx.period.
 
 You have access to ${tools.length} MCP tools:
 ${toolList}`;

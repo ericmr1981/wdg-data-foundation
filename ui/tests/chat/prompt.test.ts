@@ -62,6 +62,18 @@ test('buildSystemPrompt mentions brand codes for tool parameter guidance', () =>
   assert.match(out, /tamkoko/);
 });
 
+test('buildSystemPrompt injects today date in YYYY-MM-DD format', () => {
+  const out = buildSystemPrompt({}, baseTools);
+  // Today should be present and in YYYY-MM-DD format
+  const today = new Date().toISOString().slice(0, 10);
+  assert.match(out, new RegExp(`Today: ${today}`));
+});
+
+test('buildSystemPrompt warns that ctx.period is viewing context, not query period', () => {
+  const out = buildSystemPrompt({ period: '2026-04' }, baseTools);
+  assert.match(out, /NOT necessarily the period they want/i);
+});
+
 test('buildSystemPrompt compact mode drops brand code hints and operator redirect', () => {
   const ctx: PageCtx = { brand: 'bonjur', store: 'wz_ra' };
   const out = buildSystemPrompt(ctx, baseTools, { compact: true });
