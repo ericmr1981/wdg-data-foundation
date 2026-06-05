@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const QueryBonjurSalesSummaryInput = z.object({
   view: z.enum(['overview', 'trend', 'channels'])
@@ -30,11 +31,10 @@ export const queryBonjurSalesSummaryTool = {
   inputSchema: QueryBonjurSalesSummaryInput,
   async execute(params: z.infer<typeof QueryBonjurSalesSummaryInput>) {
     const { view, store_code, month } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ store_code });
     if (view !== 'trend') qs.set('month', month);
 
-    const res = await fetch(`${baseUrl}${VIEW_PATH[view]}?${qs}`, {
+    const res = await mcpFetch(`${VIEW_PATH[view]}?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
 

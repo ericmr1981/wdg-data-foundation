@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const ListRuleFilesInput = z.object({
   brand: z.string().optional().describe('Filter by brand code (optional)'),
@@ -18,10 +19,9 @@ export const listRuleFilesTool = {
   inputSchema: ListRuleFilesInput,
   async execute(params: z.infer<typeof ListRuleFilesInput>) {
     const { brand, limit = 20 } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ limit: String(limit) });
     if (brand) qs.set('brand', brand);
-    const res = await fetch(`${baseUrl}/api/rules/files?${qs}`, {
+    const res = await mcpFetch(`/api/rules/files?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     if (!res.ok) throw new Error(`list_rule_files failed: ${await res.text()}`);

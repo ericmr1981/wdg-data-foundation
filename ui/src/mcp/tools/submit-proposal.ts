@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const RecordSchema = z.object({
   bank_txn_id:  z.number().int().positive().describe('Bank transaction ID'),
@@ -28,7 +29,6 @@ export const submitProposalTool = {
   description: 'Submit LLM-generated classification proposals for bank transactions into the approval queue.',
   inputSchema: SubmitProposalInput,
   async execute(params: z.infer<typeof SubmitProposalInput>) {
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
     // Transform flat record fields into the API's nested format
     const apiRecords = params.records.map(r => ({
@@ -54,7 +54,7 @@ export const submitProposalTool = {
       records: apiRecords,
     };
 
-    const res = await fetch(`${baseUrl}/api/approval/proposals`, {
+    const res = await mcpFetch(`/api/approval/proposals`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

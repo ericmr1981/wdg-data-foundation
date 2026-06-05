@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const QueryFinancialStatementInput = z.object({
   statement: z.enum(['profit', 'cashflow', 'balance_sheet'])
@@ -32,10 +33,9 @@ export const queryFinancialStatementTool = {
   inputSchema: QueryFinancialStatementInput,
   async execute(params: z.infer<typeof QueryFinancialStatementInput>) {
     const { statement, brand = 'gelatomiiix', period, span = 'month', store = 'all' } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand, period, span, store });
 
-    const res = await fetch(`${baseUrl}${STATEMENT_PATH[statement]}?${qs}`, {
+    const res = await mcpFetch(`${STATEMENT_PATH[statement]}?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetCoverageByFileInput = z.object({
   brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).optional().default('yufeng')
@@ -18,9 +19,8 @@ export const getCoverageByFileTool = {
   inputSchema: GetCoverageByFileInput,
   async execute(params: z.infer<typeof GetCoverageByFileInput>) {
     const { brand = 'yufeng' } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand });
-    const res = await fetch(`${baseUrl}/api/coverage/by-file?${qs}`, {
+    const res = await mcpFetch(`/api/coverage/by-file?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     if (!res.ok) throw new Error(`get_coverage_by_file failed: ${await res.text()}`);

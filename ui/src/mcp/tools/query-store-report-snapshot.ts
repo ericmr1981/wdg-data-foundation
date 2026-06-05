@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const QueryStoreReportSnapshotInput = z.object({
   brand: z.enum(['gelatomiiix', 'bonjur', 'tamkoko']).describe('Brand code'),
@@ -19,10 +20,9 @@ export const queryStoreReportSnapshotTool = {
   inputSchema: QueryStoreReportSnapshotInput,
   async execute(params: z.infer<typeof QueryStoreReportSnapshotInput>) {
     const { brand, store, month } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand, store, month });
 
-    const res = await fetch(`${baseUrl}/api/store-report/snapshot?${qs}`, {
+    const res = await mcpFetch(`/api/store-report/snapshot?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
 

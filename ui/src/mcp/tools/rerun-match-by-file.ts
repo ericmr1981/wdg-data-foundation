@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const RerunMatchByFileInput = z.object({
   brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).describe('Brand code'),
@@ -28,11 +29,10 @@ export const rerunMatchByFileTool = {
     if (!all_files && (!source_file_ids || source_file_ids.length === 0)) {
       throw new Error('Provide source_file_ids or set all_files=true');
     }
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const body: Record<string, unknown> = { brand };
     if (all_files) body.all_files = true;
     if (source_file_ids && source_file_ids.length > 0) body.source_file_ids = source_file_ids;
-    const res = await fetch(`${baseUrl}/api/pipeline/rerun-match-by-file`, {
+    const res = await mcpFetch(`/api/pipeline/rerun-match-by-file`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

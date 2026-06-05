@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const QueryBonjurQimaiSalesInput = z.object({
   month: z.string().optional().describe('Month in YYYY-MM format (required if date_from/date_to not provided)'),
@@ -21,7 +22,6 @@ export const queryBonjurQimaiSalesTool = {
   inputSchema: QueryBonjurQimaiSalesInput,
   async execute(params: z.infer<typeof QueryBonjurQimaiSalesInput>) {
     const { month, date_from, date_to, store, summary_only = false } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams();
     if (month) qs.set('month', month);
     if (date_from) qs.set('date_from', date_from);
@@ -29,7 +29,7 @@ export const queryBonjurQimaiSalesTool = {
     if (store) qs.set('store', store);
     if (summary_only) qs.set('summary_only', 'true');
 
-    const res = await fetch(`${baseUrl}/api/bonjur/sales/qimai-pos?${qs}`, {
+    const res = await mcpFetch(`/api/bonjur/sales/qimai-pos?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
 

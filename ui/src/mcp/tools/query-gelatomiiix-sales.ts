@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const baseInput = {
   store_code: z.string().describe('Store code'),
@@ -17,11 +18,10 @@ export const queryGelatomiiixSalesOverviewTool = {
   }),
   async execute(params: { store_code: string; month: string; pure_mode?: boolean; payment_method?: string }) {
     const { store_code, month, pure_mode = false, payment_method } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ store_code, month });
     if (pure_mode) qs.set('pure_mode', 'true');
     if (payment_method) qs.set('payment_method', payment_method);
-    const res = await fetch(`${baseUrl}/api/gelatomiiix/sales/overview?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
+    const res = await mcpFetch(`/api/gelatomiiix/sales/overview?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
     if (!res.ok) throw new Error(`query_gelatomiiix_sales_overview failed: ${await res.text()}`);
     const json = await res.json();
     if (!json.success) throw new Error(json.error || 'Unknown error');
@@ -36,10 +36,9 @@ export const queryGelatomiiixSalesTrendTool = {
   inputSchema: z.object(baseInput),
   async execute(params: { store_code: string; month: string; pure_mode?: boolean }) {
     const { store_code, month, pure_mode = false } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ store_code, month });
     if (pure_mode) qs.set('pure_mode', 'true');
-    const res = await fetch(`${baseUrl}/api/gelatomiiix/sales/trend?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
+    const res = await mcpFetch(`/api/gelatomiiix/sales/trend?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
     if (!res.ok) throw new Error(`query_gelatomiiix_sales_trend failed: ${await res.text()}`);
     const json = await res.json();
     if (!json.success) throw new Error(json.error || 'Unknown error');
@@ -54,10 +53,9 @@ export const queryGelatomiiixSalesChannelsTool = {
   inputSchema: z.object(baseInput),
   async execute(params: { store_code: string; month: string; pure_mode?: boolean }) {
     const { store_code, month, pure_mode = false } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ store_code, month });
     if (pure_mode) qs.set('pure_mode', 'true');
-    const res = await fetch(`${baseUrl}/api/gelatomiiix/sales/channels?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
+    const res = await mcpFetch(`/api/gelatomiiix/sales/channels?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
     if (!res.ok) throw new Error(`query_gelatomiiix_sales_channels failed: ${await res.text()}`);
     const json = await res.json();
     if (!json.success) throw new Error(json.error || 'Unknown error');
@@ -72,10 +70,9 @@ export const queryGelatomiiixSalesProductsTool = {
   inputSchema: z.object(baseInput),
   async execute(params: { store_code: string; month: string; pure_mode?: boolean }) {
     const { store_code, month, pure_mode = false } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ store_code, month });
     if (pure_mode) qs.set('pure_mode', 'true');
-    const res = await fetch(`${baseUrl}/api/gelatomiiix/sales/products?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
+    const res = await mcpFetch(`/api/gelatomiiix/sales/products?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
     if (!res.ok) throw new Error(`query_gelatomiiix_sales_products failed: ${await res.text()}`);
     const json = await res.json();
     if (!json.success) throw new Error(json.error || 'Unknown error');
@@ -95,10 +92,9 @@ export const queryGelatomiiixSalesDetailsTool = {
   }),
   async execute(params: { store_code: string; month: string; pure_mode?: boolean; type?: 'cash_register' | 'qimai'; page?: number }) {
     const { store_code, month, pure_mode = false, type = 'cash_register', page = 1 } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ store_code, month, type, page: String(page) });
     if (pure_mode) qs.set('pure_mode', 'true');
-    const res = await fetch(`${baseUrl}/api/gelatomiiix/sales/details?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
+    const res = await mcpFetch(`/api/gelatomiiix/sales/details?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
     if (!res.ok) throw new Error(`query_gelatomiiix_sales_details failed: ${await res.text()}`);
     const json = await res.json();
     if (!json.success) throw new Error(json.error || 'Unknown error');
@@ -113,10 +109,9 @@ export const queryGelatomiiixSalesDistributionTool = {
   inputSchema: z.object(baseInput),
   async execute(params: { store_code: string; month: string; pure_mode?: boolean }) {
     const { store_code, month, pure_mode = false } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ store_code, month });
     if (pure_mode) qs.set('pure_mode', 'true');
-    const res = await fetch(`${baseUrl}/api/gelatomiiix/sales/distribution?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
+    const res = await mcpFetch(`/api/gelatomiiix/sales/distribution?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
     if (!res.ok) throw new Error(`query_gelatomiiix_sales_distribution failed: ${await res.text()}`);
     const json = await res.json();
     if (!json.success) throw new Error(json.error || 'Unknown error');
@@ -131,10 +126,9 @@ export const queryGelatomiiixSalesHourlyTool = {
   inputSchema: z.object(baseInput),
   async execute(params: { store_code: string; month: string; pure_mode?: boolean }) {
     const { store_code, month, pure_mode = false } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ store_code, month });
     if (pure_mode) qs.set('pure_mode', 'true');
-    const res = await fetch(`${baseUrl}/api/gelatomiiix/sales/hourly?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
+    const res = await mcpFetch(`/api/gelatomiiix/sales/hourly?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
     if (!res.ok) throw new Error(`query_gelatomiiix_sales_hourly failed: ${await res.text()}`);
     const json = await res.json();
     if (!json.success) throw new Error(json.error || 'Unknown error');

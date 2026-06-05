@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const ListCategoriesInput = z.object({
   brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).optional().default('yufeng')
@@ -21,9 +22,8 @@ export const listCategoriesTool = {
   inputSchema: ListCategoriesInput,
   async execute(params: z.infer<typeof ListCategoriesInput>) {
     const { brand = 'yufeng', level = 'all' } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand, level });
-    const res = await fetch(`${baseUrl}/api/categories?${qs}`, {
+    const res = await mcpFetch(`/api/categories?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     if (!res.ok) throw new Error(`list_categories failed: ${await res.text()}`);

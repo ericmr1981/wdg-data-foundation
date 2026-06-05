@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types';
+import { runWithMcpContext } from '@/lib/mcp-request-context';
 
 // Tool registry — keyed by method name, same as tool.name
 import { uploadBankTxnTool } from './tools/upload-bank-txn';
@@ -166,7 +167,12 @@ async function handleToolsCall(id: string | number | null, params: Record<string
       return jsonRpcError(id, -32602, `Invalid params for ${toolName}: ${parsed.error.message}`);
     }
 
-    const rawResult = await tool.execute(parsed.data);
+    // Derive base URL from env (or localhost:3000 fallback). The chat SSE route
+    // forwards its own URL, but for direct /api/mcp calls (e.g. from curl or
+    // mcp-cli) we fall back to env. The tools' internal fetch() calls read this
+    // via AsyncLocalStorage (see mcp-request-context.ts).
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const rawResult = await runWithMcpContext({ baseUrl }, () => tool.execute(parsed.data));
 
     // Convert plain object result → MCP CallToolResult content array
     const result: CallToolResult = {

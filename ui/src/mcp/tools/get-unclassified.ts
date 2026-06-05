@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetUnclassifiedInput = z.object({
   brand:          z.string().describe('Brand code: yufeng | gelatomiiix | bonjur').optional().default('yufeng'),
@@ -24,11 +25,10 @@ export const getUnclassifiedTool = {
   inputSchema: GetUnclassifiedInput,
   async execute(params: z.infer<typeof GetUnclassifiedInput>) {
     const { brand = 'yufeng', source_file_id, month, page = 1, pageSize = 100 } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand, page: String(page), pageSize: String(pageSize) });
     if (source_file_id) qs.set('source_file_id', String(source_file_id));
     if (month) qs.set('month', month);
-    const res = await fetch(`${baseUrl}/api/match?${qs}`, {
+    const res = await mcpFetch(`/api/match?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     if (!res.ok) {

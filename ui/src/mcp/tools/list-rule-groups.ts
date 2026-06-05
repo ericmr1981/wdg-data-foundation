@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const ListRuleGroupsInput = z.object({
   brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).optional().default('yufeng')
@@ -16,9 +17,8 @@ export const listRuleGroupsTool = {
   inputSchema: ListRuleGroupsInput,
   async execute(params: z.infer<typeof ListRuleGroupsInput>) {
     const { brand = 'yufeng' } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand });
-    const res = await fetch(`${baseUrl}/api/rule-groups?${qs}`, {
+    const res = await mcpFetch(`/api/rule-groups?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     if (!res.ok) throw new Error(`list_rule_groups failed: ${await res.text()}`);

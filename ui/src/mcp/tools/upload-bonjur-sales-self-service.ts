@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 import { readFile } from 'fs/promises';
 
 const UploadBonjurSalesInput = z.object({
@@ -19,13 +20,12 @@ export const uploadBonjurSalesSelfServiceTool = {
   async execute(params: z.infer<typeof UploadBonjurSalesInput>) {
     const { file_path, store } = params;
     const fileBuffer = await readFile(file_path);
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const form = new FormData();
     const filename = file_path.split('/').pop() || 'sales.csv';
     form.append('file', new Blob([fileBuffer]), filename);
     form.append('store', store);
 
-    const res = await fetch(`${baseUrl}/api/bonjur/sales/upload-self-service`, {
+    const res = await mcpFetch(`/api/bonjur/sales/upload-self-service`, {
       method: 'POST',
       headers: { 'x-mcp-session': 'internal' },
       body: form,

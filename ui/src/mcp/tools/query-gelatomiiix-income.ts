@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const QueryGelatomiiixIncomeInput = z.object({
   month: z.string().optional().describe('Month in YYYY-MM format (required if date_from/date_to not provided)'),
@@ -26,7 +27,6 @@ export const queryGelatomiiixIncomeTool = {
   inputSchema: QueryGelatomiiixIncomeInput,
   async execute(params: z.infer<typeof QueryGelatomiiixIncomeInput>) {
     const { month, date_from, date_to, channel, store, summary_only = false, page = 1, page_size = 100 } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams();
     if (month) qs.set('month', month);
     if (date_from) qs.set('date_from', date_from);
@@ -37,7 +37,7 @@ export const queryGelatomiiixIncomeTool = {
     qs.set('page', String(page));
     qs.set('page_size', String(page_size));
 
-    const res = await fetch(`${baseUrl}/api/gelatomiiix/income/qimai-detail?${qs}`, {
+    const res = await mcpFetch(`/api/gelatomiiix/income/qimai-detail?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
 

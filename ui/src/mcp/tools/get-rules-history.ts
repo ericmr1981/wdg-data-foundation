@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetRulesHistoryInput = z.object({
   brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).optional().default('yufeng')
@@ -24,10 +25,9 @@ export const getRulesHistoryTool = {
   inputSchema: GetRulesHistoryInput,
   async execute(params: z.infer<typeof GetRulesHistoryInput>) {
     const { brand = 'yufeng', rule_id, limit = 50 } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand, limit: String(limit) });
     if (rule_id !== undefined) qs.set('rule_id', String(rule_id));
-    const res = await fetch(`${baseUrl}/api/rules/history?${qs}`, {
+    const res = await mcpFetch(`/api/rules/history?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     if (!res.ok) throw new Error(`get_rules_history failed: ${await res.text()}`);

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 export const queryBonjurSalesProductsTool = {
   name: 'query_bonjur_sales_products',
@@ -9,9 +10,8 @@ export const queryBonjurSalesProductsTool = {
   }),
   async execute(params: { store_code: string; month: string }) {
     const { store_code, month } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ store_code, month });
-    const res = await fetch(`${baseUrl}/api/bonjur/sales/products?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
+    const res = await mcpFetch(`/api/bonjur/sales/products?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
     if (!res.ok) throw new Error(`query_bonjur_sales_products failed: ${await res.text()}`);
     const json = await res.json();
     if (!json.success) throw new Error(json.error || 'Unknown error');
@@ -33,9 +33,8 @@ export const queryBonjurSalesDetailsTool = {
   }),
   async execute(params: { store_code: string; month: string; type?: 'cash_register' | 'qimai'; page?: number; limit?: number }) {
     const { store_code, month, type = 'cash_register', page = 1, limit = 50 } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ store_code, month, type, page: String(page), limit: String(limit) });
-    const res = await fetch(`${baseUrl}/api/bonjur/sales/details?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
+    const res = await mcpFetch(`/api/bonjur/sales/details?${qs}`, { headers: { 'x-mcp-session': 'internal' } });
     if (!res.ok) throw new Error(`query_bonjur_sales_details failed: ${await res.text()}`);
     const json = await res.json();
     if (!json.success) throw new Error(json.error || 'Unknown error');

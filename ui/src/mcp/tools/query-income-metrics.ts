@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const QueryIncomeMetricsInput = z.object({
   brand: z.enum(['gelatomiiix', 'bonjur', 'tamkoko']).optional().default('gelatomiiix')
@@ -24,9 +25,8 @@ export const queryIncomeMetricsTool = {
   inputSchema: QueryIncomeMetricsInput,
   async execute(params: z.infer<typeof QueryIncomeMetricsInput>) {
     const { brand = 'gelatomiiix', period = 'all', span = 'month', store = 'all' } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand, period, span, store });
-    const res = await fetch(`${baseUrl}/api/financial/income-metrics?${qs}`, {
+    const res = await mcpFetch(`/api/financial/income-metrics?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
     if (!res.ok) throw new Error(`query_income_metrics failed: ${await res.text()}`);

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { mcpFetch } from '@/lib/mcp-fetch';
 
 const PreviewMatchInput = z.object({
   brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).optional().default('yufeng')
@@ -21,10 +22,9 @@ export const previewMatchTool = {
   inputSchema: PreviewMatchInput,
   async execute(params: z.infer<typeof PreviewMatchInput>) {
     const { brand = 'yufeng', match_value, limit = 20 } = params;
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const qs = new URLSearchParams({ brand, match_value, limit: String(limit) });
 
-    const res = await fetch(`${baseUrl}/api/match/preview?${qs}`, {
+    const res = await mcpFetch(`/api/match/preview?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
 
