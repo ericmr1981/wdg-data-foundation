@@ -112,7 +112,7 @@ bash scripts/init_local_env.sh  # See docs/LOCAL_STARTUP.md
 - `docs/ACCEPTANCE_RUNBOOK.md` — end-to-end acceptance criteria
 - `docs/XINTIANDI_MODULE.md` — Xintiandi module details
 - `docs/productdata_schema.svg` — data model diagram
-- `~/.claude/skills/wdg-bank-workflow/SKILL.md` — MCP/Agent workflow spec
+- `docs/skills/wdg-bank-workflow-SKILL.md` — MCP/Agent workflow spec (45 tools, 9 modules, write policy)
 
 ## Project Governance
 

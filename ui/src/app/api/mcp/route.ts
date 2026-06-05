@@ -24,7 +24,7 @@ export async function GET() {
     result: {
       name:        'wdg-bank-agent',
       version:    '1.0.0',
-      description: 'MCP server for WDG bank transaction upload and approval workflow',
+      description: 'MCP server for WDG data platform — 7 modules: bank-classification, store-report, financial-statements, income/sales (gelatomiiix/bonjur), pipeline, tamkoko inventory, admin metadata.',
       methods: [
         'initialize',
         'ping',

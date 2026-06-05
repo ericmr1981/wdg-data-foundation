@@ -17,6 +17,40 @@ import { queryGelatomiiixIncomeTool } from './tools/query-gelatomiiix-income';
 import { uploadBonjurIncomeDetailTool } from './tools/upload-bonjur-income-detail';
 import { uploadBonjurProductSalesTool } from './tools/upload-bonjur-product-sales';
 import { uploadBonjurSalesSelfServiceTool } from './tools/upload-bonjur-sales-self-service';
+import { queryStoreReportSnapshotTool } from './tools/query-store-report-snapshot';
+import { queryStoreReportTrendTool } from './tools/query-store-report-trend';
+import { queryFinancialStatementTool } from './tools/query-financial-statement';
+import { queryBonjurSalesSummaryTool } from './tools/query-bonjur-sales-summary';
+import { getPipelineKpiTool } from './tools/get-pipeline-kpi';
+import { previewMatchTool } from './tools/preview-match';
+import { uploadTamkokoInventoryTool } from './tools/upload-tamkoko-inventory';
+import { queryFinancialOverviewTool } from './tools/query-financial-overview';
+import { queryFinancialKpiTrendTool } from './tools/query-financial-kpi-trend';
+import { queryCounterpartyTool } from './tools/query-counterparty';
+import { queryIncomeMetricsTool } from './tools/query-income-metrics';
+import { queryPaymentMetricsTool } from './tools/query-payment-metrics';
+import { queryQimaiRevenueTool } from './tools/query-qimai-revenue';
+import {
+  queryGelatomiiixSalesOverviewTool,
+  queryGelatomiiixSalesTrendTool,
+  queryGelatomiiixSalesChannelsTool,
+  queryGelatomiiixSalesProductsTool,
+  queryGelatomiiixSalesDetailsTool,
+  queryGelatomiiixSalesDistributionTool,
+  queryGelatomiiixSalesHourlyTool,
+} from './tools/query-gelatomiiix-sales';
+import {
+  queryBonjurSalesProductsTool,
+  queryBonjurSalesDetailsTool,
+} from './tools/query-bonjur-sales';
+import { getCoverageByFileTool } from './tools/get-coverage-by-file';
+import { getUnclassifiedByFileTool } from './tools/get-unclassified-by-file';
+import { getProposalTool } from './tools/get-proposal';
+import { getRulesHistoryTool } from './tools/get-rules-history';
+import { listRuleFilesTool } from './tools/list-rule-files';
+import { listRuleGroupsTool } from './tools/list-rule-groups';
+import { listCategoriesTool } from './tools/list-categories';
+import { rerunMatchByFileTool } from './tools/rerun-match-by-file';
 
 type ToolModule = {
   name: string;
@@ -42,6 +76,36 @@ const TOOLS: Record<string, ToolModule> = {
   query_bonjur_qimai_sales: queryBonjurQimaiSalesTool,
   get_brand_stores:       getBrandStoresTool,
   query_gelatomiiix_income: queryGelatomiiixIncomeTool,
+  query_store_report_snapshot: queryStoreReportSnapshotTool,
+  query_store_report_trend:    queryStoreReportTrendTool,
+  query_financial_statement:   queryFinancialStatementTool,
+  query_bonjur_sales_summary:  queryBonjurSalesSummaryTool,
+  get_pipeline_kpi:            getPipelineKpiTool,
+  preview_match:               previewMatchTool,
+  upload_tamkoko_inventory:    uploadTamkokoInventoryTool,
+  query_financial_overview:    queryFinancialOverviewTool,
+  query_financial_kpi_trend:   queryFinancialKpiTrendTool,
+  query_counterparty:          queryCounterpartyTool,
+  query_income_metrics:        queryIncomeMetricsTool,
+  query_payment_metrics:       queryPaymentMetricsTool,
+  query_qimai_revenue:         queryQimaiRevenueTool,
+  query_gelatomiiix_sales_overview:    queryGelatomiiixSalesOverviewTool,
+  query_gelatomiiix_sales_trend:       queryGelatomiiixSalesTrendTool,
+  query_gelatomiiix_sales_channels:    queryGelatomiiixSalesChannelsTool,
+  query_gelatomiiix_sales_products:    queryGelatomiiixSalesProductsTool,
+  query_gelatomiiix_sales_details:     queryGelatomiiixSalesDetailsTool,
+  query_gelatomiiix_sales_distribution: queryGelatomiiixSalesDistributionTool,
+  query_gelatomiiix_sales_hourly:      queryGelatomiiixSalesHourlyTool,
+  query_bonjur_sales_products:         queryBonjurSalesProductsTool,
+  query_bonjur_sales_details:          queryBonjurSalesDetailsTool,
+  get_coverage_by_file:                getCoverageByFileTool,
+  get_unclassified_by_file:            getUnclassifiedByFileTool,
+  get_proposal:                        getProposalTool,
+  get_rules_history:                   getRulesHistoryTool,
+  list_rule_files:                     listRuleFilesTool,
+  list_rule_groups:                    listRuleGroupsTool,
+  list_categories:                     listCategoriesTool,
+  rerun_match_by_file:                 rerunMatchByFileTool,
 };
 
 /** Try short-name match, then long-name match */

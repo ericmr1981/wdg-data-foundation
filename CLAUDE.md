@@ -8,11 +8,15 @@ Multi-brand restaurant chain data platform. Ingest bank transactions and daily s
 
 ## Brands
 
-| Brand | DB Schema Prefix | Source Data |
-|-------|-----------------|-------------|
-| Gelatomiiix (gelatomiiix) | `brand_gelatomiiix_ods` / `brand_yufeng_*` | Bank transactions, cash register, income detail, product sales |
-| Bonjur (bonjur) | `bonjur_ods` / `bonjur_dm` | Daily sales |
-| Xintiandi (xintiandi) | `xintiandi_*` | Delivery manifests (配送明细) |
+Three brands live in `ops.brands`. Schema prefix follows the `brand_{code}_*` convention except `bonjur` and `yufeng` (legacy).
+
+| Brand (code) | Display | Schema prefix | Stores | Source data |
+|---|---|---|---|---|
+| `gelatomiiix` | 蜜可诗 | `brand_gelatomiiix` (alias: `gelatomiiix`, `brand_yufeng`) | sh_sc (供应链), sh_xtd (上海新天地店) | Bank transactions, income detail, product sales, cash register |
+| `bonjur` | Bonjour / 旺鼎阁 | `bonjur` | sh_wdg (总公司), wz_ra (瑞安), wz_wxc (温州万象城) | Daily sales (Qimai) |
+| `tamkoko` | 泰柯茶园 | `brand_tamkoko` | hz_fuyang (富阳), wz_bjwxc (滨江万象城) | POS income, inventory month-end (planned) |
+
+> **Note:** `xintiandi` is a **template schema** (`sql/xintiandi/`, `LIKE xintiandi.delivery_detail`) used by `/api/admin/brands` to provision delivery modules for new brands. It is **not** a real brand or store; not in `ops.brands`, not in `ops.stores`. Its DDL has never been executed in production DB.
 
 ## Development Commands
 
@@ -58,16 +62,24 @@ bash scripts/init_local_env.sh  # Full local env init (see docs/LOCAL_STARTUP.md
 │   ├── 40_*            # Views & snapshots — apply classification, coverage reports, financial statements
 │   ├── 50_*            # Analysis — match preview, regression checks, rule settling
 │   ├── 60_*            # Fixes — post-hoc corrections
-│   └── bonjur_sales_daily_* / xintiandi/  # Brand-specific SQL
+│   ├── bonjur_sales_daily_*        # Bonjur daily-sales DDL (legacy split)
+│   └── xintiandi/                  # ⚠️ Template schema (not deployed); cloned by /api/admin/brands
 ├── ui/                 # Next.js 14 + React 18 + TypeScript + TailwindCSS
 │   ├── src/app/api/    # REST API routes
-│   │   ├── financial/  # profit, cashflow, balance-sheet, counterparty, payment-metrics, overview
-│   │   ├── gelatomiiix/ # income, sales (brand-specific endpoints)
-│   │   ├── pipeline/   # kpi, rerun-match-by-file
-│   │   ├── upload/     # File upload → import trigger
-│   │   ├── match/      # Manual match & rule management
-│   │   ├── rules/      # CRUD for classification rules
-│   │   └── ...         # admin, auth, brands, categories, coverage, db, stores, xintiandi
+│   │   ├── financial/  # profit, cashflow, balance-sheet, counterparty, payment-metrics, overview, kpi-trend, income-metrics, qimai-revenue
+│   │   ├── gelatomiiix/ # income (qimai-detail / bank-entry-stats / upload-qimai), sales (overview/trend/channels/products/details/distribution/hourly)
+│   │   ├── bonjur/      # income (bank-entry-stats / upload-qimai), sales (overview/trend/channels/products/details/qimai-pos/upload-*)
+│   │   ├── tamkoko/     # upload (inventory .xlsx → DB)
+│   │   ├── xintiandi/   # ⚠️ delivery template (dashboard / batch / upload) — depends on xintiandi schema, currently NOT deployed
+│   │   ├── pipeline/    # kpi, rerun-match-by-file
+│   │   ├── upload/      # Bank file upload → import trigger
+│   │   ├── match/       # txn detail, unclassified, candidates, preview, override
+│   │   ├── rules/       # CRUD + settle / settle-batch / reorder / rollback / import / export / history / files
+│   │   ├── rule-groups/ # Group reorder
+│   │   ├── approval/    # proposals (POST/GET) + [id] + batch-action
+│   │   ├── coverage/    # by-file / unclassified-by-file
+│   │   └── admin/       # brands, stores, users, rules-copy, category-dictionary, brand-category-dictionary
+│   │   └── ...          # auth, brands, categories, db/introspect, stores, mcp, income (cross-brand bank-entry-stats)
 │   ├── src/app/u/      # Unified pages: income, payment, sales, financial
 │   └── src/lib/        # Shared: db.ts (pg pool), query-types.ts, brand-server.ts, auth-server.ts
 ├── rules/              # JSON classification rule files (yufeng_bank_rules.json)
@@ -90,10 +102,12 @@ raw  →  {brand}_ods  →  {brand}_cfg  →  {brand}_dm  →  40_* views
 - **raw** — ingested source files with source_file_id tracking (idempotent uploads)
 - **ods** — cleaned/typed source tables, store dimensions
 - **cfg** — rule maps, classification functions, category dictionaries
-- **dm** — financial data marts (profit/cashflow/balance-sheet per brand)
-- **ops** — cross-brand operations logging, run tracking, pipeline_step
+- **dm** — financial data marts (profit/cashflow/balance-sheet per brand) + `v_store_monthly_kpi` view (per brand)
+- **ops** — cross-brand operations logging, run tracking, pipeline_step, brand/store/allowed_schemas registry
 
-The classification pipeline: imported rows → `fn_classify()` (rule-based) → snapshot to classified table → materialized views → coverage reports.
+**Allowed schemas** are registered in `ops.allowed_schemas` and gate API access. New brands are added via `/api/admin/brands` POST, which provisions `{brand}_ods/_cfg/_dm/_ops` and optionally `{brand}_delivery` cloned from the `xintiandi` template.
+
+**The classification pipeline**: imported rows → `fn_classify()` (rule-based) → snapshot to classified table → materialized views → coverage reports.
 
 ## ETL Pipeline Flow
 
@@ -143,12 +157,33 @@ bank_txn → fn_classify() → bank_txn_classified_snapshot (BASE TABLE)
 
 分类只跑一次，所有页面口径统一。详见 [docs/qmaireport/README.md](docs/qmaireport/README.md) 审计摘要。
 
+## MCP Tools (Agent 接口)
+
+45 个 MCP 工具经 `POST /api/mcp` 暴露，封装 `/api/...` 端点供 Agent 调用。详见 [docs/mcp-tools.md](docs/mcp-tools.md)。
+
+**Agent 写权限原则**：Agent **只能** `submit_proposal`（写审批队列）/ `rerun_match_by_file`（刷新 snapshot）/ `upload_*`（写 raw ODS）。所有规则 CRUD、审批决策、cfg 变更由**人工在 UI 完成**（提案→审→settle）。MCP 工具按"Agent 提议 → 人工审 → 落定"两阶段模式暴露。
+
+| 模块 | 工具数 | 主要工具 |
+|---|---|---|
+| 银行流水 | 11 | upload_bank_txn_file · submit_proposal · rerun_match_by_file · get_unclassified_by_file · get_coverage_by_file |
+| 审批 | 3 | submit_proposal · get_proposal · query_approval_status |
+| 门店月报 | 2 | query_store_report_snapshot / _trend |
+| 财务 | 7 | query_financial_statement (3-in-1) · query_financial_overview · _kpi_trend · query_counterparty · query_income_metrics · _payment_metrics · _qimai_revenue |
+| 收入 | 4 | upload_gelatomiiix_income_detail · upload_bonjur_income_detail · query_gelatomiiix_income · get_qimai_entry_rate |
+| 销售 | 11 | gelatomiiix 7 件 + bonjur 4 件 |
+| Tamkoko 库存 | 1 | upload_tamkoko_inventory |
+| 元数据 | 4 | get_brand_stores · list_categories · list_rule_groups · list_rule_files |
+| 审计 | 1 | get_rules_history |
+
+**已撤 / 永久跳过**：`xintiandi.*` 工具（schema 未部署）、`export_rules`（xlsx 包未装）、所有 `create/update/delete/settle/approve/reject/import/rollback/reorder` 类写工具。
+
 ## Documentation Index
 
 | 文档 | 位置 | 内容 |
 |---|---|---|
 | 架构说明 | [docs/architecture.md](docs/architecture.md) | 系统架构总览 |
 | 本地启动 | [docs/LOCAL_STARTUP.md](docs/LOCAL_STARTUP.md) | 开发环境搭建 |
+| **MCP 工具参考** | [docs/mcp-tools.md](docs/mcp-tools.md) | 45 个 Agent 工具完整清单 + 写权限原则 |
 | **页面文档 (qmaireport)** | [docs/qmaireport/README.md](docs/qmaireport/README.md) | 索引 + 全站银行数据审计 |
 | ├ 收入分析 | [docs/qmaireport/income-page-structure.md](docs/qmaireport/income-page-structure.md) | /u/income 结构 |
 | │ | [docs/qmaireport/income-data-sources.md](docs/qmaireport/income-data-sources.md) | /u/income 数据来源 |

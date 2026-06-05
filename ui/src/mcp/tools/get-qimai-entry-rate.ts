@@ -11,6 +11,8 @@ export const getQimaiEntryRateTool = {
   name: 'get_qimai_entry_rate',
   description: `Analyze Qimai-to-bank entry rate for Gelatomiiix. Compares Qimai income detail (net_amt) against bank transaction entries.
 
+**Note**: Gelatomiiix-only. The underlying API reads from gelatomiiix_ods.income_detail (hard-coded).
+
 **Parameters**:
 - period (required): YYYY-MM format
 - span (optional): month (default), quarter, or year
