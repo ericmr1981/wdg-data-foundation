@@ -72,7 +72,15 @@ export async function POST(req: NextRequest) {
   // ---------- 5. SSE stream ----------
   const cookieHeader = req.headers.get('cookie');
   const baseUrl = getBaseUrl(req);
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  // Support third-party Anthropic-compatible proxies (e.g. internal gateways,
+  // OpenRouter-Anthropic, Anthropic 3rd-party resellers). Both baseURL and
+  // model are env-configurable; defaults are the official Anthropic API.
+  const anthropicBaseURL = process.env.ANTHROPIC_BASE_URL || undefined;
+  const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
+  const client = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+    ...(anthropicBaseURL ? { baseURL: anthropicBaseURL } : {}),
+  });
 
   // Convert stored messages → Anthropic format
   const apiMessages: Anthropic.MessageParam[] = sess.messages.map(m => ({
@@ -100,7 +108,7 @@ export async function POST(req: NextRequest) {
           }
 
           const response = await client.messages.create({
-            model: 'claude-opus-4-8',
+            model: anthropicModel,
             system,
             tools: tools as Anthropic.Tool[],
             messages: runningMessages,
