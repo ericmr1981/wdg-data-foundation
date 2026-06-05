@@ -31,15 +31,21 @@ function numFmtFor(key: ExcelMetricKey): string {
   return FMT_AMT;
 }
 
+// hr_amt / rent_amt 在 v_store_monthly_kpi 里存的是净额 (in_amt - out_amt)，
+// 支出方向天然为负。但对业务用户，"花了多少" 是正数概念。这里对纯支出类取 abs，
+// 让显示与营业成本/营业支出（view 已用 ABS()）保持一致。
+const ABS_VALUE_KEYS: ReadonlySet<ExcelMetricKey> = new Set<ExcelMetricKey>(['hr_amt', 'rent_amt']);
+
 function roundForKey(key: ExcelMetricKey, v: number | null | undefined): number | null {
   if (v == null) return null;
+  const raw = ABS_VALUE_KEYS.has(key) ? Math.abs(Number(v)) : Number(v);
   if (key === 'hr_ratio_pct' || key === 'rent_ratio_pct' || key === 'gross_profit_rate_pct' || key === 'net_profit_rate_pct') {
-    return Math.round(Number(v) * 10) / 10;
+    return Math.round(raw * 10) / 10;
   }
   if (key === 'cashflow_runway_months') {
-    return Math.round(Number(v) * 10) / 10;
+    return Math.round(raw * 10) / 10;
   }
-  return Math.round(Number(v) * 100) / 100;
+  return Math.round(raw * 100) / 100;
 }
 
 export interface ExportInput {
