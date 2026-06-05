@@ -39,3 +39,25 @@ test('buildSystemPrompt includes the "use tools, do not make up numbers" rule', 
   assert.match(out, /use tools/i);
   assert.match(out, /don't make up numbers/i);
 });
+
+test('buildSystemPrompt encodes the bank classification direction rule', () => {
+  const out = buildSystemPrompt({}, baseTools);
+  assert.match(out, /in_amt > 0/);
+  assert.match(out, /REV_BIZ/);
+  assert.match(out, /EXP_/);
+});
+
+test('buildSystemPrompt warns against direct DB access and forbidden tools', () => {
+  const out = buildSystemPrompt({}, baseTools);
+  assert.match(out, /never.*direct.*db/i);
+  assert.match(out, /xintiandi/);
+  assert.match(out, /export_rules/);
+});
+
+test('buildSystemPrompt mentions brand codes for tool parameter guidance', () => {
+  const out = buildSystemPrompt({}, baseTools);
+  // Verify the 3 brands are referenced so Claude knows the right brand_code
+  assert.match(out, /gelatomiiix/);
+  assert.match(out, /bonjur/);
+  assert.match(out, /tamkoko/);
+});

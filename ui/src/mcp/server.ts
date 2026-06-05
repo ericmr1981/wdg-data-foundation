@@ -151,6 +151,7 @@ async function handleToolsCall(
   id: string | number | null,
   params: Record<string, unknown>,
   baseUrl: string,
+  cookieHeader: string | null,
 ): Promise<JsonRpcResponse> {
   const toolName = params.name as string | undefined;
   const toolArgs = params.arguments as Record<string, unknown> | undefined;
@@ -172,8 +173,12 @@ async function handleToolsCall(
     }
 
     // Set the AsyncLocalStorage context so mcpFetch() inside tool.execute()
-    // knows the origin of the calling Next.js process (e.g. http://localhost:4100).
-    const rawResult = await runWithMcpContext({ baseUrl }, () => tool.execute(parsed.data));
+    // knows the origin of the calling Next.js process (e.g. http://localhost:4100)
+    // and forwards the user's auth cookie.
+    const rawResult = await runWithMcpContext(
+      { baseUrl, cookieHeader },
+      () => tool.execute(parsed.data),
+    );
 
     // Convert plain object result → MCP CallToolResult content array
     const result: CallToolResult = {
@@ -195,16 +200,21 @@ async function handleToolsCall(
 /**
  * Handle an incoming JSON-RPC 2.0 request.
  *
- * @param body       The parsed JSON-RPC request body.
- * @param baseUrl    Optional. The origin URL of the calling Next.js process
- *                   (e.g. "http://localhost:4100"). Used to set the
- *                   AsyncLocalStorage context that mcpFetch() reads, so
- *                   tools' internal fetch() calls hit the right host/port.
- *                   Falls back to NEXT_PUBLIC_APP_URL or localhost:3000.
+ * @param body         The parsed JSON-RPC request body.
+ * @param baseUrl      Optional. The origin URL of the calling Next.js process
+ *                     (e.g. "http://localhost:4100"). Used to set the
+ *                     AsyncLocalStorage context that mcpFetch() reads, so
+ *                     tools' internal fetch() calls hit the right host/port.
+ *                     Falls back to NEXT_PUBLIC_APP_URL or localhost:3000.
+ * @param cookieHeader Optional. Raw Cookie header from the originating
+ *                     request. Forwarded into the AsyncLocalStorage context
+ *                     so tools' internal fetch() calls authenticate as the
+ *                     same user. Pass null if the caller is unauthenticated.
  */
 export async function handleJsonRpcRequest(
   body: unknown,
   baseUrl?: string,
+  cookieHeader?: string | null,
 ): Promise<JsonRpcResponse> {
   const parsed = JsonRpcRequestSchema.safeParse(body);
   if (!parsed.success) {
@@ -215,6 +225,7 @@ export async function handleJsonRpcRequest(
   const resolvedBaseUrl = baseUrl
     || process.env.NEXT_PUBLIC_APP_URL
     || 'http://localhost:3000';
+  const resolvedCookie = cookieHeader ?? null;
 
   // Standard JSON-RPC discovery
   if (method === 'tools/list') {
@@ -222,7 +233,7 @@ export async function handleJsonRpcRequest(
   }
 
   if (method === 'tools/call') {
-    return handleToolsCall(id, params, resolvedBaseUrl);
+    return handleToolsCall(id, params, resolvedBaseUrl, resolvedCookie);
   }
 
   if (method === 'initialize') {
