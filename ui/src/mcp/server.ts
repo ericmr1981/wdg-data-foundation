@@ -147,7 +147,11 @@ function listToolsResult() {
 /**
  * Dispatch a JSON-RPC "tools/call" request to the correct tool handler.
  */
-async function handleToolsCall(id: string | number | null, params: Record<string, unknown>): Promise<JsonRpcResponse> {
+async function handleToolsCall(
+  id: string | number | null,
+  params: Record<string, unknown>,
+  baseUrl: string,
+): Promise<JsonRpcResponse> {
   const toolName = params.name as string | undefined;
   const toolArgs = params.arguments as Record<string, unknown> | undefined;
 
@@ -167,11 +171,8 @@ async function handleToolsCall(id: string | number | null, params: Record<string
       return jsonRpcError(id, -32602, `Invalid params for ${toolName}: ${parsed.error.message}`);
     }
 
-    // Derive base URL from env (or localhost:3000 fallback). The chat SSE route
-    // forwards its own URL, but for direct /api/mcp calls (e.g. from curl or
-    // mcp-cli) we fall back to env. The tools' internal fetch() calls read this
-    // via AsyncLocalStorage (see mcp-request-context.ts).
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    // Set the AsyncLocalStorage context so mcpFetch() inside tool.execute()
+    // knows the origin of the calling Next.js process (e.g. http://localhost:4100).
     const rawResult = await runWithMcpContext({ baseUrl }, () => tool.execute(parsed.data));
 
     // Convert plain object result → MCP CallToolResult content array
@@ -193,14 +194,27 @@ async function handleToolsCall(id: string | number | null, params: Record<string
 
 /**
  * Handle an incoming JSON-RPC 2.0 request.
+ *
+ * @param body       The parsed JSON-RPC request body.
+ * @param baseUrl    Optional. The origin URL of the calling Next.js process
+ *                   (e.g. "http://localhost:4100"). Used to set the
+ *                   AsyncLocalStorage context that mcpFetch() reads, so
+ *                   tools' internal fetch() calls hit the right host/port.
+ *                   Falls back to NEXT_PUBLIC_APP_URL or localhost:3000.
  */
-export async function handleJsonRpcRequest(body: unknown): Promise<JsonRpcResponse> {
+export async function handleJsonRpcRequest(
+  body: unknown,
+  baseUrl?: string,
+): Promise<JsonRpcResponse> {
   const parsed = JsonRpcRequestSchema.safeParse(body);
   if (!parsed.success) {
     return jsonRpcError(null, -32600, `Invalid Request: ${parsed.error.message}`);
   }
 
   const { id, method, params } = parsed.data;
+  const resolvedBaseUrl = baseUrl
+    || process.env.NEXT_PUBLIC_APP_URL
+    || 'http://localhost:3000';
 
   // Standard JSON-RPC discovery
   if (method === 'tools/list') {
@@ -208,7 +222,7 @@ export async function handleJsonRpcRequest(body: unknown): Promise<JsonRpcRespon
   }
 
   if (method === 'tools/call') {
-    return handleToolsCall(id, params);
+    return handleToolsCall(id, params, resolvedBaseUrl);
   }
 
   if (method === 'initialize') {
