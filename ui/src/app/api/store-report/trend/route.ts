@@ -3,7 +3,15 @@ import pool from '@/lib/db';
 import { normalizeBrand, getDmSchemaSafe } from '@/lib/brand-server';
 import { getSessionUser } from '@/lib/auth-server';
 import { getErrorMessage } from '@/lib/query-types';
-import type { ApiResult, TrendResponse, KpiMetricKey } from '@/lib/store-report-types';
+import type { ApiResult, TrendResponse } from '@/lib/store-report-types';
+
+// Trend 用更宽的指标集 (含 cost_amt / hr_amt / rent_amt / loan_balance，KpiMetricKey 不含这些)
+type TrendSeriesKey =
+  | 'revenue_amt' | 'cost_amt' | 'expense_amt' | 'hr_amt' | 'rent_amt'
+  | 'gross_profit_amt' | 'gross_profit_rate_pct'
+  | 'net_profit_amt' | 'net_profit_rate_pct'
+  | 'operating_cf_amt' | 'cash_balance' | 'loan_balance' | 'cashflow_runway_months'
+  | 'hr_ratio_pct' | 'rent_ratio_pct';
 
 const PG_ERR_NO_VIEW = '42P01';
 
@@ -41,10 +49,11 @@ export async function GET(request: Request) {
     try {
       const r = await pool.query(
         `SELECT month,
-                revenue_amt, expense_amt, gross_profit_amt, net_profit_amt,
-                operating_cf_amt, cash_balance, cashflow_runway_months,
-                hr_ratio_pct, rent_ratio_pct,
-                gross_profit_rate_pct, net_profit_rate_pct
+                revenue_amt, cost_amt, expense_amt, hr_amt, rent_amt,
+                gross_profit_amt, gross_profit_rate_pct,
+                net_profit_amt, net_profit_rate_pct,
+                operating_cf_amt, cash_balance, loan_balance, cashflow_runway_months,
+                hr_ratio_pct, rent_ratio_pct
          FROM ${schema}.v_store_monthly_kpi
          WHERE store_code = $1
          ORDER BY month DESC
@@ -61,13 +70,14 @@ export async function GET(request: Request) {
       throw e;
     }
 
-    const seriesKeys: KpiMetricKey[] = [
-      'revenue_amt', 'expense_amt', 'gross_profit_amt', 'net_profit_amt',
-      'operating_cf_amt', 'cash_balance', 'cashflow_runway_months',
+    const seriesKeys: TrendSeriesKey[] = [
+      'revenue_amt', 'cost_amt', 'expense_amt', 'hr_amt', 'rent_amt',
+      'gross_profit_amt', 'gross_profit_rate_pct',
+      'net_profit_amt', 'net_profit_rate_pct',
+      'operating_cf_amt', 'cash_balance', 'loan_balance', 'cashflow_runway_months',
       'hr_ratio_pct', 'rent_ratio_pct',
-      'gross_profit_rate_pct', 'net_profit_rate_pct',
     ];
-    const series = {} as Record<KpiMetricKey, (number | null)[]>;
+    const series = {} as Record<TrendSeriesKey, (number | null)[]>;
     for (const k of seriesKeys) series[k] = [];
     const monthList: string[] = [];
 
