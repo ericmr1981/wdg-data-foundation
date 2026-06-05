@@ -73,10 +73,11 @@ export async function GET(request: Request) {
       snapshot = { current: toKpi(cur.rows[0]), previous: prev.rows[0] ? toKpi(prev.rows[0]) : null };
 
       const tr = await pool.query(
-        `SELECT month, revenue_amt, expense_amt, gross_profit_amt, net_profit_amt,
-                operating_cf_amt, cash_balance, cashflow_runway_months,
-                hr_ratio_pct, rent_ratio_pct,
-                gross_profit_rate_pct, net_profit_rate_pct
+        `SELECT month, revenue_amt, cost_amt, expense_amt, hr_amt, rent_amt,
+                gross_profit_amt, gross_profit_rate_pct,
+                net_profit_amt, net_profit_rate_pct,
+                operating_cf_amt, cash_balance, loan_balance, cashflow_runway_months,
+                hr_ratio_pct, rent_ratio_pct
          FROM ${schema}.v_store_monthly_kpi
          WHERE store_code = $1
          ORDER BY month DESC LIMIT 12`,
@@ -84,10 +85,11 @@ export async function GET(request: Request) {
       );
       const sorted = tr.rows.reverse();
       const keys: KpiMetricKey[] = [
-        'revenue_amt', 'expense_amt', 'gross_profit_amt', 'net_profit_amt',
-        'operating_cf_amt', 'cash_balance', 'cashflow_runway_months',
+        'revenue_amt', 'cost_amt', 'expense_amt', 'hr_amt', 'rent_amt',
+        'gross_profit_amt', 'gross_profit_rate_pct',
+        'net_profit_amt', 'net_profit_rate_pct',
+        'operating_cf_amt', 'cash_balance', 'loan_balance', 'cashflow_runway_months',
         'hr_ratio_pct', 'rent_ratio_pct',
-        'gross_profit_rate_pct', 'net_profit_rate_pct',
       ];
       const series = {} as Record<KpiMetricKey, (number | null)[]>;
       for (const k of keys) series[k] = [];

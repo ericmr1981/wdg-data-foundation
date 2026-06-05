@@ -3,12 +3,12 @@ import type { SnapshotResponse, StoreKpi, TrendResponse } from './store-report-t
 import { ExcelMetricKey, EXCEL_METRIC_LABELS, KpiMetricKey, KPI_LABELS } from './store-report-types';
 
 const ALL_METRICS: ExcelMetricKey[] = [
-  'revenue_amt', 'cost_amt', 'expense_amt', 'hr_amt', 'rent_amt',
+  'revenue_amt', 'cost_amt', 'expense_amt',
   'gross_profit_amt', 'gross_profit_rate_pct',
   'net_profit_amt', 'net_profit_rate_pct',
-  'operating_cf_amt',
-  'cash_balance', 'loan_balance', 'cashflow_runway_months',
-  'hr_ratio_pct', 'rent_ratio_pct',
+  'operating_cf_amt', 'cash_balance', 'loan_balance', 'cashflow_runway_months',
+  'hr_amt', 'hr_ratio_pct',        // 人力 + 人力占比率 (贴近)
+  'rent_amt', 'rent_ratio_pct',   // 租金 + 租金占比率 (贴近)
 ];
 
 const SERIES_KEYS: KpiMetricKey[] = [
@@ -68,7 +68,13 @@ function applyFormats(ws: XLSX.WorkSheet, formats: CellFormats): void {
   for (const [ref, numFmt] of formats) {
     if (ws[ref]) {
       if (!ws[ref].s) ws[ref].s = {};
-      ws[ref].s.numFmt = numFmt;
+      // xlsx-js-style 写时只支持 cell.s.numFmtId (内置 index)，
+      // 用字符串会丢失 cell。
+      let numFmtId = 0;
+      if (numFmt === '¥#,##0.00;(¥#,##0.00)') numFmtId = 165;
+      else if (numFmt === '0.0"%"') numFmtId = 166;
+      else if (numFmt === '0.0') numFmtId = 167;
+      ws[ref].s = { numFmtId, ...ws[ref].s };
     }
   }
 }
