@@ -85,3 +85,32 @@ export async function callMcp(
   }
   return parseMcpResult(body);
 }
+
+/**
+ * callMcp with automatic retry on 5xx / network errors.
+ * 4xx errors are NOT retried (they're caller errors, retrying won't help).
+ *
+ * @param onRetry Called BEFORE sleeping to wait for next attempt.
+ *                `attempt` is the 1-indexed attempt number that just failed.
+ */
+export async function callMcpWithRetry(
+  request: JsonRpcRequest,
+  cookieHeader: string | null,
+  baseUrl: string,
+  onRetry: (attempt: number, maxAttempts: number, err: McpCallError) => void,
+  maxAttempts: number = 2,
+): Promise<McpResult> {
+  let lastErr: McpCallError | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const r = await callMcp(request, cookieHeader, baseUrl);
+    if (!(r instanceof McpCallError)) return r;
+    lastErr = r;
+    const shouldRetry = r.code >= 500 || r.code < 0; // 5xx or network (negative code)
+    if (!shouldRetry) return r;
+    if (attempt < maxAttempts) {
+      onRetry(attempt, maxAttempts, r);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  return lastErr!;
+}
