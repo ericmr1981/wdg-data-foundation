@@ -61,7 +61,7 @@ export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
   ];
   const ws1 = XLSX.utils.aoa_to_sheet(infoRows);
   applyNumFmts(ws1, infoRows);
-  styleHeaderRow(ws1, infoRows[0].length);
+  // Sheet 1 is a key-value list; no header row to style.
   ws1['!cols'] = [{ wch: 14 }, { wch: 22 }];
   XLSX.utils.book_append_sheet(wb, ws1, '门店信息');
 
