@@ -223,3 +223,68 @@ export async function handleJsonRpcRequest(body: unknown): Promise<JsonRpcRespon
 
   return jsonRpcError(id, -32601, `Method not found: ${method}`);
 }
+
+// ui/src/mcp/server.ts (追加)
+/**
+ * Public schema snapshot for the chat adapter. Re-uses the live tool
+ * registry so changes to TOOLS propagate without code edits.
+ * Returns Anthropic-compatible tool definitions (name + description +
+ * input_schema in JSON Schema form).
+ */
+import {
+  ZodObject,
+  ZodString,
+  ZodNumber,
+  ZodBoolean,
+  ZodArray,
+  ZodEnum,
+  ZodOptional,
+  ZodNullable,
+  ZodType,
+} from 'zod';
+
+export function listToolSchemas(): Array<{
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}> {
+  return Object.values(TOOLS).map(t => ({
+    name: t.name,
+    description: t.description,
+    // Zod → JSON Schema.  We re-use the zod instance; for the chat
+    // adapter a best-effort description is enough (the MCP dispatcher
+    // re-validates server-side).
+    input_schema: zodToJsonSchemaSafe(t.inputSchema),
+  }));
+}
+
+function zodToJsonSchemaSafe(schema: ZodType<unknown>): Record<string, unknown> {
+  // Minimal subset: object → {type:'object', properties, required}
+  // Zod v3 exposes .shape on ZodObject.  Fall back to {} otherwise.
+  if (schema instanceof ZodObject) {
+    const shape = schema.shape as Record<string, ZodType<unknown>>;
+    const properties: Record<string, unknown> = {};
+    const required: string[] = [];
+    for (const [key, value] of Object.entries(shape)) {
+      properties[key] = describeZod(value);
+      if (!value.isOptional()) required.push(key);
+    }
+    const out: Record<string, unknown> = { type: 'object', properties };
+    if (required.length) out.required = required;
+    return out;
+  }
+  return {};
+}
+
+function describeZod(z: ZodType<unknown>): Record<string, unknown> {
+  const desc = (z.description ? { description: z.description } : {});
+  if (z instanceof ZodString)  return { ...desc, type: 'string' };
+  if (z instanceof ZodNumber)  return { ...desc, type: 'number' };
+  if (z instanceof ZodBoolean) return { ...desc, type: 'boolean' };
+  if (z instanceof ZodArray)   return { ...desc, type: 'array', items: describeZod(z.element) };
+  if (z instanceof ZodEnum)    return { ...desc, type: 'string', enum: z.options };
+  if (z instanceof ZodObject)  return zodToJsonSchemaSafe(z);
+  if (z instanceof ZodOptional) return describeZod(z.unwrap());
+  if (z instanceof ZodNullable) return { ...describeZod(z.unwrap()), nullable: true };
+  return desc;
+}
