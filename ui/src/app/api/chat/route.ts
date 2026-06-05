@@ -11,6 +11,7 @@ import { filterToolsByRole, isWriteAllowedForRole, ALLOWED_WRITE_TOOLS } from '@
 import { buildSystemPrompt } from '@/lib/chat/prompt';
 import { callMcp, McpCallError } from '@/lib/chat/mcp-bridge';
 import { encodeSseEvent } from '@/lib/chat/stream';
+import { checkRateLimit } from '@/lib/chat/rate-limit';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;  // seconds; 1 message turn
@@ -26,6 +27,15 @@ export async function POST(req: NextRequest) {
   const user = await getSessionUser();
   if (!user) {
     return new Response('unauthorized', { status: 401 });
+  }
+
+  // ---------- 1.5 rate limit ----------
+  const rl = checkRateLimit(user.user_id);
+  if (!rl.ok) {
+    return new Response('rate limited', {
+      status: 429,
+      headers: { 'Retry-After': String(rl.retryAfterSec) },
+    });
   }
 
   // ---------- 2. parse body (text or multipart) ----------
