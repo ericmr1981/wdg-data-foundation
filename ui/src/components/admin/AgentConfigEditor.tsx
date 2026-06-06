@@ -3,9 +3,21 @@ import { useState } from 'react';
 import type { AgentConfigParams } from '@/lib/chat/agent-config-store';
 
 interface Props {
-  initial: { agentMd: string; params: AgentConfigParams };
+  initial: {
+    agentMd: string;
+    params: AgentConfigParams;
+    baseURL: string | null;
+    apiKeyMasked: string | null;
+    model: string;
+  };
   defaultParams: AgentConfigParams;
-  onSave: (data: { agentMd: string; params: AgentConfigParams }) => Promise<void>;
+  onSave: (data: {
+    agentMd: string;
+    params: AgentConfigParams;
+    baseURL: string | null;
+    apiKey: string;
+    model: string;
+  }) => Promise<void>;
   onReset: () => Promise<void>;
 }
 
@@ -23,11 +35,18 @@ const PARAM_META: Array<{ key: keyof AgentConfigParams; label: string; min: numb
 export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: Props) {
   const [agentMd, setAgentMd] = useState(initial.agentMd);
   const [params, setParams] = useState<AgentConfigParams>(initial.params);
+  const [baseURL, setBaseURL] = useState(initial.baseURL ?? '');
+  const [apiKey, setApiKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [model, setModel] = useState(initial.model);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const dirty = agentMd !== initial.agentMd ||
-    (Object.keys(params) as Array<keyof AgentConfigParams>).some(k => params[k] !== initial.params[k]);
+  const dirty = agentMd !== initial.agentMd
+    || (Object.keys(params) as Array<keyof AgentConfigParams>).some(k => params[k] !== initial.params[k])
+    || baseURL !== (initial.baseURL ?? '')
+    || apiKey !== ''
+    || model !== initial.model;
 
   function updateParam<K extends keyof AgentConfigParams>(k: K, v: number | null) {
     setParams(p => ({ ...p, [k]: v }));
@@ -37,8 +56,15 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
     setSaving(true);
     setMessage(null);
     try {
-      await onSave({ agentMd, params });
-      setMessage('✅ 已保存。下个请求即生效。');
+      await onSave({
+        agentMd,
+        params,
+        baseURL: baseURL.trim() || null,
+        apiKey,
+        model: model.trim() || 'claude-opus-4-8',
+      });
+      setMessage('✅ 已保存。下一个请求即生效。');
+      setApiKey('');  // clear after save
     } catch (e) {
       setMessage('❌ 保存失败：' + (e as Error).message);
     } finally {
@@ -100,6 +126,67 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
               <p className="mt-1 text-[10px] text-gray-400">{m.help} (默认: {String(defaultParams[m.key])})</p>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700">API 配置</h3>
+        <p className="mt-1 text-xs text-gray-500">
+          Anthropic API 连接信息。Base URL / API Key 留空 = 保留当前值。改 Model 后下一个请求生效。
+        </p>
+        <div className="mt-3 space-y-3">
+          <div>
+            <label className="block text-xs text-gray-600">
+              Base URL <span className="text-gray-400">(留空 = 用 .env 的 ANTHROPIC_BASE_URL)</span>
+            </label>
+            <input
+              type="text"
+              value={baseURL}
+              onChange={e => setBaseURL(e.target.value)}
+              placeholder="https://your-anthropic-compatible-proxy.example.com"
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm font-mono"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600">
+              API Key{' '}
+              {initial.apiKeyMasked && (
+                <span className="text-gray-400">(当前: {initial.apiKeyMasked})</span>
+              )}
+            </label>
+            <div className="mt-1 flex gap-2">
+              <input
+                type={showKey ? 'text' : 'password'}
+                value={apiKey}
+                onChange={e => setApiKey(e.target.value)}
+                placeholder="sk-ant-...  (留空 = 保留当前值)"
+                className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm font-mono"
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey(s => !s)}
+                className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-600 hover:bg-gray-50"
+                title={showKey ? '隐藏' : '显示明文'}
+                aria-label="toggle api key visibility"
+              >
+                {showKey ? '🙈' : '👁'}
+              </button>
+            </div>
+            <p className="mt-1 text-[10px] text-gray-400">
+              提交后 AES-256-GCM 加密存到 DB。再次留空提交 = 保留当前值；想清除需填空白并保存（v1 简化：留空=保留；要清空请手动编辑 DB 或用"重置默认"）。
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-600">Model</label>
+            <input
+              type="text"
+              value={model}
+              onChange={e => setModel(e.target.value)}
+              placeholder="claude-opus-4-8"
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm font-mono"
+            />
+          </div>
         </div>
       </div>
 
