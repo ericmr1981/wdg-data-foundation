@@ -65,10 +65,17 @@ async function saveCredToDb(
   apiKey: string | null,
   model: string,
   userId: string,
-) {
+): Promise<{ persistedToDb: boolean }> {
   const encKey = process.env.AGENT_CRED_ENCRYPTION_KEY;
+  // If encryption key is unset, skip DB persistence — credentials still go
+  // into the in-memory store, so the chat will use them this session.
+  // Process restart → lose them (in-memory only). Admin gets a console warning
+  // and the POST response should reflect that.
   if (!encKey) {
-    throw new Error('AGENT_CRED_ENCRYPTION_KEY env not set; cannot encrypt credentials');
+    console.warn(
+      '[admin/agent-config] AGENT_CRED_ENCRYPTION_KEY unset — credentials will be in-memory only (lost on process restart). Set the env var to persist across restarts.',
+    );
+    return { persistedToDb: false };
   }
   const encryptedKey = apiKey ? encrypt(apiKey, encKey) : null;
   await pool.query(
@@ -81,6 +88,7 @@ async function saveCredToDb(
        updated_by = EXCLUDED.updated_by`,
     [baseURL, encryptedKey, model, userId],
   );
+  return { persistedToDb: true };
 }
 
 export async function GET() {
