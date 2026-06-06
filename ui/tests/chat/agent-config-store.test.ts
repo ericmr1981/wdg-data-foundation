@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 // @ts-ignore -- allow .ts extension import (TS5097) for node --experimental-strip-types
-import { getAgentConfig, setAgentMd, setParam, setParams, resetAgentConfig, DEFAULT_PARAMS } from '../../src/lib/chat/agent-config-store.ts';
+import { getAgentConfig, setAgentMd, setParam, setParams, setCredentialConfig, resetAgentConfig, DEFAULT_PARAMS } from '../../src/lib/chat/agent-config-store.ts';
 
 test('initial state has default params and loaded agent.md', () => {
   resetAgentConfig();
@@ -43,4 +43,30 @@ test('resetAgentConfig returns to defaults', () => {
   const c = getAgentConfig();
   assert.equal(c.params.maxTokens, 4096);
   assert.match(c.agentMd, /项目级 Agent 指令/);
+});
+
+test('initial state: baseURL/apiKey null, model default', () => {
+  resetAgentConfig();
+  const c = getAgentConfig();
+  assert.equal(c.baseURL, null);
+  assert.equal(c.apiKey, null);
+  assert.equal(c.model, 'claude-opus-4-8');
+});
+
+test('setCredentialConfig updates baseURL/apiKey/model', () => {
+  resetAgentConfig();
+  setCredentialConfig('https://proxy.example.com', 'sk-test-1234', 'claude-sonnet-4-6');
+  const c = getAgentConfig();
+  assert.equal(c.baseURL, 'https://proxy.example.com');
+  assert.equal(c.apiKey, 'sk-test-1234');
+  assert.equal(c.model, 'claude-sonnet-4-6');
+});
+
+test('setCredentialConfig with null baseURL/key is allowed', () => {
+  setCredentialConfig('https://x', 'k', 'm');
+  setCredentialConfig(null, null, 'claude-opus-4-8');
+  const c = getAgentConfig();
+  assert.equal(c.baseURL, null);
+  assert.equal(c.apiKey, null);
+  assert.equal(c.model, 'claude-opus-4-8');
 });

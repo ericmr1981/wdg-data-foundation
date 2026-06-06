@@ -23,6 +23,9 @@ export interface AgentConfigParams {
 export interface AgentConfig {
   agentMd: string;
   params: AgentConfigParams;
+  baseURL: string | null;
+  apiKey: string | null;
+  model: string;
 }
 
 export const DEFAULT_PARAMS: AgentConfigParams = {
@@ -60,6 +63,9 @@ function loadDefaultAgentMd(): string {
 let current: AgentConfig = {
   agentMd: loadDefaultAgentMd(),
   params: { ...DEFAULT_PARAMS },
+  baseURL: null,
+  apiKey: null,
+  model: 'claude-opus-4-8',
 };
 
 export function getAgentConfig(): AgentConfig {
@@ -81,10 +87,25 @@ export function setParams(params: Partial<AgentConfigParams>): void {
   current = { ...current, params: { ...current.params, ...params } };
 }
 
+export function setCredentialConfig(
+  baseURL: string | null,
+  apiKey: string | null,
+  model: string,
+): void {
+  current = { ...current, baseURL, apiKey, model };
+}
+
+export function getBaseURL(): string | null { return current.baseURL; }
+export function getApiKey(): string | null { return current.apiKey; }
+export function getModel(): string { return current.model; }
+
 export function resetAgentConfig(): void {
   current = {
     agentMd: loadDefaultAgentMd(),
     params: { ...DEFAULT_PARAMS },
+    baseURL: null,
+    apiKey: null,
+    model: 'claude-opus-4-8',
   };
 }
 
