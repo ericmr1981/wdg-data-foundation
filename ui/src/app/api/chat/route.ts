@@ -13,11 +13,10 @@ import { callMcpWithRetry, McpCallError } from '@/lib/chat/mcp-bridge';
 import { encodeSseEvent } from '@/lib/chat/stream';
 import { checkRateLimit } from '@/lib/chat/rate-limit';
 import { createTokenTracker } from '@/lib/chat/token-tracker';
+import { getAgentConfig, applyConfigToGlobals } from '@/lib/chat/agent-config-store';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;  // seconds; 1 message turn
-
-const MAX_TOOL_CHAIN_DEPTH = 10;
 
 function getBaseUrl(req: NextRequest): string {
   return process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
@@ -38,6 +37,12 @@ export async function POST(req: NextRequest) {
       headers: { 'Retry-After': String(rl.retryAfterSec) },
     });
   }
+
+  // ---------- 1.6 apply runtime config to module-level globals ----------
+  // (token limits + rate limit max). Call per-request so /api/admin/agent-config
+  // updates take effect on the next request.
+  applyConfigToGlobals();
+  const cfg = getAgentConfig();
 
   // ---------- 2. parse body (text or multipart) ----------
   const contentType = req.headers.get('content-type') ?? '';
@@ -110,7 +115,7 @@ export async function POST(req: NextRequest) {
         let stopReason: string | null = null;
 
         while (stopReason !== 'end_turn') {
-          if (toolDepth >= MAX_TOOL_CHAIN_DEPTH) {
+          if (toolDepth >= cfg.params.maxToolChainDepth) {
             send({ type: 'error', message: 'tool chain too deep' });
             break;
           }
@@ -119,7 +124,10 @@ export async function POST(req: NextRequest) {
           const system = buildSystemPrompt(
             sess.context,
             tools,
-            lastTokenLevel === 'soft' || lastTokenLevel === 'hard' ? { compact: true } : undefined,
+            {
+              customInstructions: cfg.agentMd,
+              compact: lastTokenLevel === 'soft' || lastTokenLevel === 'hard',
+            },
           );
 
           const response = await client.messages.create({
@@ -127,7 +135,9 @@ export async function POST(req: NextRequest) {
             system,
             tools: tools as Anthropic.Tool[],
             messages: runningMessages,
-            max_tokens: 4096,
+            max_tokens: cfg.params.maxTokens,
+            temperature: cfg.params.temperature,
+            ...(cfg.params.topP != null ? { top_p: cfg.params.topP } : {}),
           });
 
           // Record token usage for this round (defensive: usage may be missing)
@@ -200,7 +210,7 @@ export async function POST(req: NextRequest) {
               (attempt, max, err) => {
                 send({ type: 'tool_retry', id: tb.id, name: tb.name, attempt, maxAttempts: max, lastError: err.message });
               },
-              2,
+              cfg.params.mcpRetryMaxAttempts,
             );
             const durMs = Date.now() - t0;
             if (result instanceof McpCallError) {

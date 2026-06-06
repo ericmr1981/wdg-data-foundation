@@ -6,6 +6,8 @@
 import { readFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { setTokenLimits } from './token-tracker.ts';
+import { setRateLimitMax } from './rate-limit.ts';
 
 export interface AgentConfigParams {
   maxTokens: number;
@@ -84,6 +86,18 @@ export function resetAgentConfig(): void {
     agentMd: loadDefaultAgentMd(),
     params: { ...DEFAULT_PARAMS },
   };
+}
+
+/**
+ * Push the store's token-limit + rate-limit params into the module-level
+ * globals used by token-tracker / rate-limit. Call once at the top of each
+ * request handler so /api/admin/agent-config updates take effect on the next
+ * request.
+ */
+export function applyConfigToGlobals(): void {
+  const p = current.params;
+  setTokenLimits(p.tokenSoftLimit, p.tokenHardLimit);
+  setRateLimitMax(p.rateLimitMaxPerMinute);
 }
 
 export const AGENT_MD_FILE_PATH = AGENT_MD_PATH;
