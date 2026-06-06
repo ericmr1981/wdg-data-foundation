@@ -25,6 +25,12 @@ export interface BuildOptions {
    * bank classification direction, forbidden shortcuts) are sufficient.
    */
   compact?: boolean;
+  /**
+   * Optional per-deployment custom instructions (from agent.md in the
+   * agent-config-store). When non-empty, appended to the prompt under
+   * a labeled "Custom Instructions" section. Survives compaction.
+   */
+  customInstructions?: string;
 }
 
 const GENERAL_RULES_FULL = `General rules:
@@ -79,8 +85,20 @@ You have access to ${tools.length} MCP tools:
 ${toolList}`;
 }
 
-function buildFullPrompt(ctx: PageCtx, tools: ToolSchemaLite[]): string {
-  return `${buildHeader(ctx, tools)}
+function buildCustomInstructionsSection(customInstructions?: string): string {
+  const trimmed = customInstructions?.trim();
+  if (!trimmed) return '';
+  return `\n\nCustom Instructions (from agent.md):\n${trimmed}\n`;
+}
+
+function buildFullPrompt(
+  ctx: PageCtx,
+  tools: ToolSchemaLite[],
+  customInstructions?: string,
+): string {
+  const header = buildHeader(ctx, tools);
+  const custom = buildCustomInstructionsSection(customInstructions);
+  return `${header}${custom}
 
 ${GENERAL_RULES_FULL}
 
@@ -91,8 +109,14 @@ ${BANK_RULE}
 ${FORBIDDEN}`;
 }
 
-function buildCompactPrompt(ctx: PageCtx, tools: ToolSchemaLite[]): string {
-  return `${buildHeader(ctx, tools)}
+function buildCompactPrompt(
+  ctx: PageCtx,
+  tools: ToolSchemaLite[],
+  customInstructions?: string,
+): string {
+  const header = buildHeader(ctx, tools);
+  const custom = buildCustomInstructionsSection(customInstructions);
+  return `${header}${custom}
 
 ${GENERAL_RULES_COMPACT}
 
@@ -106,5 +130,7 @@ export function buildSystemPrompt(
   tools: ToolSchemaLite[],
   options: BuildOptions = {},
 ): string {
-  return options.compact ? buildCompactPrompt(ctx, tools) : buildFullPrompt(ctx, tools);
+  return options.compact
+    ? buildCompactPrompt(ctx, tools, options.customInstructions)
+    : buildFullPrompt(ctx, tools, options.customInstructions);
 }

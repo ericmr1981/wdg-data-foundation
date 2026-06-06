@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 // @ts-ignore
-import { createTokenTracker, SOFT_LIMIT, HARD_LIMIT } from '../../src/lib/chat/token-tracker.ts';
+import { createTokenTracker, getTokenLimits } from '../../src/lib/chat/token-tracker.ts';
 
 test('initial level is normal with 0 tokens', () => {
   const t = createTokenTracker();
@@ -16,7 +16,7 @@ test('cumulative tokens stay under soft limit', () => {
   t.record(30_000, 20_000);
   const { level } = t.record(20_000, 5_000);
   assert.equal(level, 'normal'); // 75K total
-  assert.equal(SOFT_LIMIT, 80_000);
+  assert.equal(getTokenLimits().soft, 80_000);
 });
 
 test('soft limit triggers when cumulative >= 80K', () => {
@@ -31,7 +31,7 @@ test('hard limit triggers when cumulative >= 200K', () => {
   t.record(100_000, 50_000);
   const { level } = t.record(50_000, 5_000); // 205K total
   assert.equal(level, 'hard');
-  assert.equal(HARD_LIMIT, 200_000);
+  assert.equal(getTokenLimits().hard, 200_000);
 });
 
 test('getUsage returns accumulated totals', () => {

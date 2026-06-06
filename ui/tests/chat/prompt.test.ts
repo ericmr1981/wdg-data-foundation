@@ -100,3 +100,19 @@ test('buildSystemPrompt compact mode keeps the bank classification direction rul
   assert.match(out, /use tools/i);
   assert.match(out, /don't make up numbers/i);
 });
+
+test('buildSystemPrompt includes customInstructions from agent.md', () => {
+  const out = buildSystemPrompt({}, baseTools, { customInstructions: '# My custom rules' });
+  assert.match(out, /Custom Instructions \(from agent\.md\)/);
+  assert.match(out, /# My custom rules/);
+});
+
+test('buildSystemPrompt compact mode keeps customInstructions', () => {
+  const out = buildSystemPrompt({}, baseTools, { compact: true, customInstructions: '# Always' });
+  assert.match(out, /# Always/);
+});
+
+test('buildSystemPrompt without customInstructions omits the section', () => {
+  const out = buildSystemPrompt({}, baseTools);
+  assert.doesNotMatch(out, /Custom Instructions/);
+});
