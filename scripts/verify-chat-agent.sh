@@ -60,7 +60,7 @@ fi
 section 2 "DDL pytest"
 if [ -n "${DATABASE_URL:-}" ]; then
   if command -v pytest >/dev/null 2>&1; then
-    if pytest tests/test_chat_ddl.py -v 2>&1 | tail -15; then
+    if pytest tests/test_chat_*_ddl.py -v 2>&1 | tail -15; then
       DDL_RESULT="passed"
       record_pass "DDL pytest: 6 passed"
     else
