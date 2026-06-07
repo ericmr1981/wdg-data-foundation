@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
         const turnId = `t${Date.now().toString(36)}`;
         let sentenceBuffer = '';
         let sentenceIndex = 0;
-        const SENTENCE_FLUSH_THRESHOLD = 800;  // bytes; if buffer grows past this without a terminator, force-flush
+        const SENTENCE_FLUSH_THRESHOLD = 800;  // chars; if buffer grows past this without a terminator, force-flush
         const flushSentences = (final: boolean) => {
           if (!sentenceBuffer) return;
           // If buffer is huge with no terminator, force-flush so client sees progress
