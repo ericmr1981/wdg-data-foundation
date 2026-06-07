@@ -40,6 +40,7 @@ const TABLE_LABELS: Record<string, string> = {
 const EXTRA_SOURCES: Record<string, string[]> = {
   gelatomiiix: ['income_detail', 'product_sales_detail'],
   bonjur: ['income_detail', 'product_sales_detail'],
+  tamkoko: ['income_detail'],
 };
 
 export const dynamic = 'force-dynamic';
@@ -137,7 +138,9 @@ export default async function HomePage() {
     const tables = EXTRA_SOURCES[brand.brand_code] || [];
     for (const table of tables) {
       try {
-        const schema = `${brand.brand_code}_ods`;
+        // 与 qimai-revenue API (route.ts) 保持一致: gelatomiiix 的 income_detail / product_sales_detail
+        // 仍在 legacy `gelatomiiix_ods`;其他非 legacy 品牌 (含 tamkoko) 走 schema_prefix。
+        const schema = brand.brand_code === 'gelatomiiix' ? 'gelatomiiix_ods' : `${brand.schema_prefix}_ods`;
         const tn = sanitizeSchema(table);
         const res = await pool.query(`
           SELECT count(*)::int as rows,
@@ -166,7 +169,14 @@ export default async function HomePage() {
   const grouped = brands.map(brand => ({
     ...brand,
     stores: stores.filter(s => s.brand_code === brand.brand_code),
-    sources: allSources.filter(s => s.schema.startsWith(brand.brand_code)),
+    // 与 allSources 拼装逻辑保持一致: gelatomiiix 的 income/product_sales 仍在 legacy `gelatomiiix_ods`,
+    // 其他品牌走 `${brand.schema_prefix}_ods`。
+    sources: allSources.filter(s => {
+      const expectedSchema = brand.brand_code === 'gelatomiiix'
+        ? 'gelatomiiix_ods'
+        : `${brand.schema_prefix}_ods`;
+      return s.schema === expectedSchema;
+    }),
   }));
 
   return (
