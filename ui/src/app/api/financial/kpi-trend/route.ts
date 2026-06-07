@@ -95,25 +95,9 @@ export async function GET(request: Request) {
     const cfMap = new Map<string, number>();
     for (const r of cfTrend.rows) cfMap.set(r.month, Number(r.operating_cashflow));
 
-    // For tamkoko: pull cogs_amt per month from v_cogs_monthly (sum across stores when store='all').
+    // Unified formula: tamkoko cogs comes from v_cogs_monthly via the view's monthly[].gross_margin_rate.
+    // No special cogsMap needed here.
     let cogsMap: Map<string, number> = new Map();
-    if (brand === 'tamkoko') {
-      try {
-        const cogsTrend = await pool.query(
-          `SELECT
-             c.period,
-             SUM(c.cogs_amt) as total_cogs
-           FROM ${dmSchema}.v_cogs_monthly c
-           WHERE c.cogs_amt IS NOT NULL
-             ${store !== 'all' ? 'AND c.store_code = $1' : ''}
-           GROUP BY 1`,
-          store !== 'all' ? [store] : []
-        );
-        for (const r of cogsTrend.rows) cogsMap.set(r.period, Number(r.total_cogs));
-      } catch {
-        // view not ready
-      }
-    }
 
     const allMonths = Array.from(new Set([...profitMap.keys(), ...cfMap.keys()])).sort();
     const monthly = allMonths.slice(0, 12).map(m => {
