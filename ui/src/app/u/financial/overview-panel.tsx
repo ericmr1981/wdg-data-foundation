@@ -132,7 +132,7 @@ export default function OverviewPanel({ brand, period, span, store }: OverviewPa
         trend={<TrendArrow value={data.vsPrevPeriod.grossMarginRate} />}
       />
       <MetricCard
-        label="净利率"
+        label="净利率（不含分红）"
         value={formatPercent(data.netProfitRate)}
         trend={<TrendArrow value={data.vsPrevPeriod.netProfitRate} />}
       />
