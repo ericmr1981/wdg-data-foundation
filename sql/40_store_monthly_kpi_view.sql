@@ -12,7 +12,10 @@ WITH profit_agg AS (
     month, store_code,
     SUM(CASE WHEN section = 'revenue' THEN amount ELSE 0 END) AS revenue_amt,
     SUM(CASE WHEN lvl1_code = 'MATERIAL' THEN ABS(amount) ELSE 0 END) AS cost_amt,
-    SUM(CASE WHEN lvl1_code IN ('HR','MATERIAL','MKT','RENT_UTIL','SHIP','ADMIN') THEN ABS(amount) ELSE 0 END) AS expense_amt,
+    -- Net profit excludes EXP_OTHER/BONUS (分红/bonus payouts). Other EXP_OTHER items (TAX, REPAY, REFUND) ARE deducted.
+    SUM(CASE WHEN (lvl1_code IN ('HR','MATERIAL','MKT','RENT_UTIL','SHIP','ADMIN')
+                  OR (lvl1_code='EXP_OTHER' AND lvl2_code <> 'BONUS'))
+              THEN ABS(amount) ELSE 0 END) AS expense_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'HR'        THEN amount ELSE 0 END) AS hr_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'RENT_UTIL' THEN amount ELSE 0 END) AS rent_amt
   FROM bonjur_dm.v_profit_statement GROUP BY month, store_code
@@ -50,7 +53,10 @@ WITH profit_agg AS (
     month, store_code,
     SUM(CASE WHEN section = 'revenue' THEN amount ELSE 0 END) AS revenue_amt,
     SUM(CASE WHEN lvl1_code = 'MATERIAL' THEN ABS(amount) ELSE 0 END) AS cost_amt,
-    SUM(CASE WHEN lvl1_code IN ('HR','MATERIAL','MKT','RENT_UTIL','SHIP','ADMIN') THEN ABS(amount) ELSE 0 END) AS expense_amt,
+    -- Net profit excludes EXP_OTHER/BONUS (分红/bonus payouts). Other EXP_OTHER items (TAX, REPAY, REFUND) ARE deducted.
+    SUM(CASE WHEN (lvl1_code IN ('HR','MATERIAL','MKT','RENT_UTIL','SHIP','ADMIN')
+                  OR (lvl1_code='EXP_OTHER' AND lvl2_code <> 'BONUS'))
+              THEN ABS(amount) ELSE 0 END) AS expense_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'HR'        THEN amount ELSE 0 END) AS hr_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'RENT_UTIL' THEN amount ELSE 0 END) AS rent_amt
   FROM brand_gelatomiiix_dm.v_profit_statement GROUP BY month, store_code
@@ -96,8 +102,14 @@ WITH profit_agg AS (
     month, store_code,
     SUM(CASE WHEN section = 'revenue' THEN amount ELSE 0 END) AS revenue_amt,
     SUM(CASE WHEN lvl1_code = 'MATERIAL' THEN ABS(amount) ELSE 0 END) AS cost_amt,
-    SUM(CASE WHEN lvl1_code IN ('HR','MATERIAL','MKT','RENT_UTIL','SHIP','ADMIN') THEN ABS(amount) ELSE 0 END) AS expense_amt,
-    SUM(CASE WHEN lvl1_code IN ('HR','MKT','RENT_UTIL','SHIP','ADMIN') THEN ABS(amount) ELSE 0 END) AS non_cogs_expense_amt,
+    -- expense_amt: all operating expenses including EXP_OTHER (excl. BONUS). Kept for store-report card display parity with bonjur/gelatomiiix.
+    SUM(CASE WHEN (lvl1_code IN ('HR','MATERIAL','MKT','RENT_UTIL','SHIP','ADMIN')
+                  OR (lvl1_code='EXP_OTHER' AND lvl2_code <> 'BONUS'))
+              THEN ABS(amount) ELSE 0 END) AS expense_amt,
+    -- non_cogs_expense_amt: HR/MKT/RENT/SHIP/ADMIN + EXP_OTHER (excl. BONUS). Used in net_profit_amt formula (revenue - cogs - non_cogs).
+    SUM(CASE WHEN (lvl1_code IN ('HR','MKT','RENT_UTIL','SHIP','ADMIN')
+                  OR (lvl1_code='EXP_OTHER' AND lvl2_code <> 'BONUS'))
+              THEN ABS(amount) ELSE 0 END) AS non_cogs_expense_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'HR'        THEN amount ELSE 0 END) AS hr_amt,
     SUM(CASE WHEN section = 'expense' AND lvl1_code = 'RENT_UTIL' THEN amount ELSE 0 END) AS rent_amt
   FROM brand_tamkoko_dm.v_profit_statement GROUP BY month, store_code
