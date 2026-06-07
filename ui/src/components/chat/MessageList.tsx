@@ -58,6 +58,31 @@ function FadeInBlock({ children, delayMs = 0 }: { children: React.ReactNode; del
   );
 }
 
+function ThinkingBlock({ content }: { content: string }) {
+  // Collapsed by default — thinking text is verbose; users usually just
+  // want the final answer. Same expand-on-click pattern as ToolCallBlock.
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="my-1 overflow-hidden rounded border border-dashed border-gray-200 bg-white text-xs">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left italic text-gray-500 hover:bg-gray-50"
+        aria-expanded={open}
+      >
+        <span>💭</span>
+        <span>{open ? '思考中…' : `已思考 (${content.length} 字)`}</span>
+        <span className="ml-auto">{open ? '▼' : '▶'}</span>
+      </button>
+      {open && (
+        <div className="border-t border-dashed border-gray-200 px-3 py-2 italic text-gray-600 whitespace-pre-wrap">
+          {content}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const STAGGER_MS = 140;        // delay between consecutive blocks in a batch
 const BATCH_GAP_MS = 1000;     // blocks emitted > 1s apart are considered separate batches (no stagger)
 
@@ -115,11 +140,7 @@ export function MessageList({ messages }: { messages: ChatMessage[] }) {
             return <ToolCallBlock key={i} call={m.call} />;
           }
           if (m.type === 'thinking') {
-            return (
-              <div key={i} className="mx-2 rounded border border-dashed border-gray-200 bg-white px-3 py-1 text-xs italic text-gray-500">
-                💭 {m.content}
-              </div>
-            );
+            return <ThinkingBlock key={i} content={m.content} />;
           }
           if (m.type === 'token_notice') {
             return (
