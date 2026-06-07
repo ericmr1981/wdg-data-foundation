@@ -8,7 +8,6 @@ import { JsonBlock } from './JsonBlock';
 function ToolCallBlock({ call }: { call: ToolCallLite }) {
   const [open, setOpen] = useState(false);
   const status = call.isError ? '❌' : '✅';
-  // Parse result for syntax highlighting (it's typically a JSON string)
   let parsedResult: unknown = call.result;
   try {
     if (typeof call.result === 'string' && call.result.trim().startsWith('{')) {
@@ -43,10 +42,14 @@ function ToolCallBlock({ call }: { call: ToolCallLite }) {
   );
 }
 
+function FadeInBlock({ children }: { children: React.ReactNode }) {
+  // CSS @keyframes defined in tailwind.config.js (Task 8).
+  return <div className="animate-fadeIn will-change-transform">{children}</div>;
+}
+
 export function MessageList({ messages }: { messages: ChatMessage[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom whenever messages change (new content or streaming)
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -68,12 +71,14 @@ export function MessageList({ messages }: { messages: ChatMessage[] }) {
         }
         if (m.type === 'assistant_text') {
           return (
-            <div key={i} className="flex items-start justify-start gap-2">
-              <UserAvatar role="assistant" />
-              <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-white px-3 py-2 text-sm text-gray-900 shadow-sm">
-                <MarkdownMessage content={m.content} />
+            <FadeInBlock key={i}>
+              <div className="flex items-start justify-start gap-2">
+                <UserAvatar role="assistant" />
+                <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-white px-3 py-2 text-sm text-gray-900 shadow-sm">
+                  <MarkdownMessage content={m.content} />
+                </div>
               </div>
-            </div>
+            </FadeInBlock>
           );
         }
         if (m.type === 'tool_call') {
