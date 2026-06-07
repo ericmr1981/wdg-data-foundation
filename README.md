@@ -66,6 +66,23 @@ Agent-accessible via `POST /api/mcp` (JSON-RPC 2.0). Tools:
 
 MCP connection: `http://localhost:4100/api/mcp`
 
+## Agent Chat (Admin + User UI)
+
+Floating chat widget mounted on every `/u/*` page. Powered by the same Anthropic API as the MCP server, but exposed as a streaming SSE pipeline for real-time responses.
+
+- **Right-side drawer** (default closed): resizable 320–640px, pushes the main content (no overlay). Open state + width persisted to `localStorage`. `Esc` closes, `Cmd/Ctrl+K` toggles.
+- **Per-sentence streaming** with fade-in animation: the server splits assistant text into sentence-level chunks and emits them as SSE `text_block` events; the client renders each chunk as a separate bubble that fades in (CSS `animate-fadeIn`, ~140ms stagger).
+- **Extended thinking** (admin toggle at `/u/admin/agent-config`): off / low (1K tokens) / medium (8K) / high (16K). Thinking text is emitted as `thinking_delta` events and rendered as a collapsed `💭` block that the user can click to expand.
+- **MCP tool calls**: rendered as collapsible blocks showing the tool name, input, and result. Errors and retries are surfaced inline.
+- **Token accounting**: Anthropic bills thinking tokens in `output_tokens`; soft/hard limits trigger prompt compaction or session abort respectively.
+
+Key files:
+- Drawer UI: `ui/src/components/chat/ChatDrawer.tsx`, `ui/src/components/chat/ChatWidget.tsx`
+- Streaming route: `ui/src/app/api/chat/route.ts`
+- Stream processor: `ui/src/lib/chat/stream-processor.ts`
+- Thinking config: `ui/src/lib/chat/agent-config-store.ts` (`ThinkingLevel`, `thinkingConfigFor`)
+- Sentence splitter: `ui/src/lib/chat/sentence-splitter.ts`
+
 ## Key Conventions
 
 ### Python
