@@ -60,3 +60,29 @@ test('fence with 4+ backticks never closes within input but EOF flushes it', () 
 test('three paragraphs split into three blocks', () => {
   assert.deepEqual(splitSentences('a\n\nb\n\nc'), ['a', 'b', 'c']);
 });
+
+test('decimal point in a number is not a terminator', () => {
+  // "16.66 万元" — the "." between digits is a decimal point, not a period.
+  // It should NOT split.
+  const r = splitSentences('营收约 16.66 万元');
+  assert.deepEqual(r, ['营收约 16.66 万元']);
+});
+
+test('thousands separator in a number is not a terminator', () => {
+  // "165,814.57 元" — both the "," and the "." are inside a number.
+  const r = splitSentences('营收 165,814.57 元');
+  assert.deepEqual(r, ['营收 165,814.57 元']);
+});
+
+test('financial reply with numbers and percentages splits only on real sentence ends', () => {
+  // The exact shape from a real agent response that previously split into
+  // 8 fragments: each ".", "," and "数字" should now stay together, and
+  // only the real sentence-ending "。" should split.
+  const r = splitSentences(
+    '营收:约 16.66 万元 (165,814.57 元)。环比上月 (13.3 万元) 增长 +24.4%。',
+  );
+  assert.deepEqual(r, [
+    '营收:约 16.66 万元 (165,814.57 元)。',
+    '环比上月 (13.3 万元) 增长 +24.4%。',
+  ]);
+});
