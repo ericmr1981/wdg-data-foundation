@@ -11,7 +11,7 @@ const QueryFinancialKpiTrendInput = z.object({
 
 export const queryFinancialKpiTrendTool = {
   name: 'query_financial_kpi_trend',
-  description: `Get historical KPI trend (revenue / cost / net_profit / operating_cf) for financial dashboard chart.
+  description: `Get historical KPI trend for financial dashboard chart.
 
 **Parameters**:
 - brand (required): gelatomiiix | bonjur | tamkoko
@@ -19,7 +19,24 @@ export const queryFinancialKpiTrendTool = {
 - span (optional): month (default) | quarter | year
 - store (optional): store code or "all" (default)
 
-**Response**: time series of { month, revenue_amt, cost_amt, gross_profit_amt, net_profit_amt, operating_cf_amt, ... }`,
+**Response**: {
+  data: {
+    monthly: [
+      {
+        month (string, YYYY-MM),
+        revenue (number, currency),
+        gross_margin_rate (number, DECIMAL: 0.42 means 42%),
+        net_profit_rate (number, DECIMAL: 0.35 means 35%; can be null if no data),
+        operating_cashflow (number, currency, can be negative),
+        expenses (number, currency, always positive)
+      }
+    ],
+    current_month: { revenue, expenses: [...] },
+    prev_month: { revenue, expenses: [...] }
+  }
+}
+
+**Note**: rate fields are DECIMAL fractions, not percentages. Multiply by 100 when displaying.`,
   inputSchema: QueryFinancialKpiTrendInput,
   async execute(params: z.infer<typeof QueryFinancialKpiTrendInput>) {
     const { brand, period, span = 'month', store = 'all' } = params;

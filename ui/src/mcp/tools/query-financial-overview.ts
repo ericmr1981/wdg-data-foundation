@@ -12,7 +12,7 @@ const QueryFinancialOverviewInput = z.object({
 
 export const queryFinancialOverviewTool = {
   name: 'query_financial_overview',
-  description: `Get financial overview dashboard (revenue / cost / gross_profit / net_profit / operating_cf / cash_balance / loan_balance).
+  description: `Get financial overview dashboard metrics for a brand.
 
 **Parameters**:
 - brand (optional): gelatomiiix | bonjur | tamkoko, default gelatomiiix
@@ -20,7 +20,20 @@ export const queryFinancialOverviewTool = {
 - span (optional): month (default) | quarter | year
 - store (optional): store code or "all" (default)
 
-**Response**: { revenue_amt, cost_amt, gross_profit_amt, net_profit_amt, operating_cf_amt, cash_balance, loan_balance, ... }`,
+**Response fields (use these names exactly)**:
+- revenue (number, currency)
+- expenses (number, currency, always positive — ABS sum of operating categories)
+- grossMarginRate (number, DECIMAL: 0.42 means 42%. Can be negative if unprofitable.)
+- netProfitRate (number, DECIMAL: 0.35 means 35%. Can be negative if unprofitable.)
+- operatingCashflow (number, currency, can be negative)
+- cashBalance, beginningBalance (currency)
+- cashRunway (months, null if not applicable)
+- storeCount, revenuePerStore, ignoreCount
+- vsPrevPeriod: { revenue, grossMarginRate, netProfitRate, operatingCashflow } — period-over-period change as DECIMAL (e.g. 0.05 = +5pp). All four can be negative.
+
+**For "毛利率 / 净利率" questions**: read grossMarginRate / netProfitRate directly. Do NOT compute from revenue/expenses.
+
+**Cash-basis note**: this platform uses cash-basis accounting. The underlying v_profit_statement stores expenses as negative, but this overview endpoint already ABS-sums them into the positive "expenses" field.`,
   inputSchema: QueryFinancialOverviewInput,
   async execute(params: z.infer<typeof QueryFinancialOverviewInput>) {
     const { brand = 'gelatomiiix', period, span = 'month', store = 'all' } = params;

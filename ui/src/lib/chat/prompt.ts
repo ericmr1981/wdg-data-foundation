@@ -63,6 +63,12 @@ const FORBIDDEN = `Forbidden shortcuts:
 - Never call export_rules, create_rule, update_rule, settle, approve, or other write tools that are not in your available list.
 - Never ask the user for DB credentials or suggest direct DB access. All data goes through these MCP tools.`;
 
+const FINANCIAL_RATE_RULE = `Financial query conventions:
+- This platform uses CASH-BASIS accounting (收付实现制). The underlying v_profit_statement stores revenue as positive and expenses as negative. Most API responses ABS-sum expenses into a positive "expenses" field; the /api/financial/profit endpoint also returns signed line-item amounts.
+- Rate fields come in two unit conventions. Fields named "grossMarginRate" / "netProfitRate" (camelCase, returned by query_financial_overview) and "gross_margin_rate" / "net_profit_rate" (snake_case, inside query_financial_kpi_trend.monthly[]) are DECIMAL fractions: 0.42 means 42%, multiply by 100 to display. Fields named "gross_profit_rate_pct" / "net_profit_rate_pct" (returned by query_store_report_snapshot / _trend) are ALREADY percentages: 42.0 means 42%, display as-is. Read the field name and the tool description to determine the convention.
+- For "毛利率 / 净利率" questions: use query_financial_overview and read grossMarginRate / netProfitRate directly. Do NOT compute from raw revenue/cost/expense numbers.
+- vsPrevPeriod fields (returned by query_financial_overview) report period-over-period CHANGE as a decimal (e.g. 0.05 means +5pp). Negative values are valid (margin dropped). Do not confuse vsPrevPeriod with the current period.`;
+
 function buildHeader(ctx: PageCtx, tools: ToolSchemaLite[]): string {
   const brand = ctx.brand ?? '<none>';
   const store = ctx.store ?? '<none>';
@@ -106,6 +112,8 @@ ${TOOL_USAGE_CONVENTIONS}
 
 ${BANK_RULE}
 
+${FINANCIAL_RATE_RULE}
+
 ${FORBIDDEN}`;
 }
 
@@ -121,6 +129,8 @@ function buildCompactPrompt(
 ${GENERAL_RULES_COMPACT}
 
 ${BANK_RULE}
+
+${FINANCIAL_RATE_RULE}
 
 ${FORBIDDEN}`;
 }
