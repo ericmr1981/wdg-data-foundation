@@ -29,7 +29,9 @@ export const queryFinancialStatementTool = {
 - span (optional): month (default) | quarter | year
 - store (optional): store code or "all" (default)
 
-**Response**: statement rows for the requested period(s) + summary metrics.`,
+**Response**: { data: { lines: [{ section, label, amount, indent, is_subtotal, is_highlight }] } }
+
+**Note**: this tool returns line items, not margin/rate fields. amount is signed (revenue positive, expenses negative — cash-basis). For 毛利率/净利率 questions, use query_financial_overview instead.`,
   inputSchema: QueryFinancialStatementInput,
   async execute(params: z.infer<typeof QueryFinancialStatementInput>) {
     const { statement, brand = 'gelatomiiix', period, span = 'month', store = 'all' } = params;
