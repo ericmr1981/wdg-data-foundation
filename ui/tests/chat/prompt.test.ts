@@ -145,3 +145,13 @@ test('buildSystemPrompt distinguishes decimal *Rate fields from percent *_pct fi
   assert.match(out, /grossMarginRate|netProfitRate/);
   assert.match(out, /gross_profit_rate_pct|net_profit_rate_pct/);
 });
+
+test('buildSystemPrompt FINANCIAL_RATE_RULE excludes BONUS from net profit', () => {
+  const out = buildSystemPrompt({}, baseTools);
+  // The rule should explicitly mention BONUS / 分红 and that it is excluded from net profit.
+  assert.match(out, /BONUS|分红/);
+  assert.match(out, /net profit|净利润/i);
+  // It should also clarify that OTHER EXP_OTHER items (TAX, REPAY, REFUND) ARE deducted.
+  assert.match(out, /EXP_OTHER/);
+  assert.match(out, /TAX|REPAY|REFUND/);
+});
