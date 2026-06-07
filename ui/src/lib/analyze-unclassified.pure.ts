@@ -10,6 +10,7 @@
 
 export interface UnclassifiedTxnForAnalysis {
   bank_txn_id: number;
+  source_file_id: number;
   txn_time: string;
   summary: string | null;
   memo: string | null;
