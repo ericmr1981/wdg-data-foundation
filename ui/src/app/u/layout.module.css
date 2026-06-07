@@ -1,0 +1,12 @@
+/* ui/src/app/u/layout.module.css */
+.main {
+  margin-right: var(--chat-drawer-w, 0px);
+  transition: margin-right 220ms ease;
+  min-height: 100vh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .main {
+    transition: none;
+  }
+}
