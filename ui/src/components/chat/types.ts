@@ -30,6 +30,7 @@ export type ChatMessage =
 export type SseIncoming =
   | { type: 'session';       sessionId: string }
   | { type: 'text_delta';    text: string }
+  | { type: 'text_block';    text: string; index: number; turnId: string }
   | { type: 'thinking_delta'; text: string }
   | { type: 'tool_start';    id: string; name: string }
   | { type: 'tool_end';      id: string; name: string; summary?: string; isError?: boolean; durationMs?: number }

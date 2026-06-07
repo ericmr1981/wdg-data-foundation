@@ -13,8 +13,10 @@ import { callMcpWithRetry, McpCallError } from '@/lib/chat/mcp-bridge';
 import { encodeSseEvent } from '@/lib/chat/stream';
 import { checkRateLimit } from '@/lib/chat/rate-limit';
 import { createTokenTracker } from '@/lib/chat/token-tracker';
-import { getAgentConfig, applyConfigToGlobals } from '@/lib/chat/agent-config-store';
+import { getAgentConfig, applyConfigToGlobals, thinkingConfigFor, THINKING_BUDGET } from '@/lib/chat/agent-config-store';
 import { decrypt } from '@/lib/chat/secret-crypto';
+import { splitSentences } from '@/lib/chat/sentence-splitter';
+import { processStream } from '@/lib/chat/stream-processor';
 import pool from '@/lib/db';
 
 export const runtime = 'nodejs';
@@ -154,7 +156,51 @@ export async function POST(req: NextRequest) {
             },
           );
 
-          const response = await client.messages.create({
+          const thinkingCfg = thinkingConfigFor(cfg.params.thinkingLevel);
+
+          // Per-turn state for sentence-level streaming
+          const turnId = `t${Date.now().toString(36)}`;
+          let sentenceBuffer = '';
+          let sentenceIndex = 0;
+          const SENTENCE_FLUSH_THRESHOLD = 800;  // chars; force-flush if buffer grows past this without a terminator
+          const flushSentences = (final: boolean) => {
+            if (!sentenceBuffer) return;
+            if (!final && sentenceBuffer.length < SENTENCE_FLUSH_THRESHOLD) {
+              const blocks = splitSentences(sentenceBuffer);
+              if (blocks.length === 0) return;
+              const last = blocks[blocks.length - 1];
+              const hasTerminator = /[。！？.!?]\s*$/.test(last);
+              if (!hasTerminator) {
+                const completed = blocks.slice(0, -1);
+                for (const text of completed) {
+                  send({ type: 'text_block', text, index: sentenceIndex++, turnId });
+                }
+                sentenceBuffer = last;
+                return;
+              }
+              for (const text of blocks) {
+                send({ type: 'text_block', text, index: sentenceIndex++, turnId });
+              }
+              sentenceBuffer = '';
+              return;
+            }
+            const blocks = splitSentences(sentenceBuffer);
+            for (const text of blocks) {
+              send({ type: 'text_block', text, index: sentenceIndex++, turnId });
+            }
+            sentenceBuffer = '';
+          };
+
+          // Bridge: processStream yields text via onTextDelta callback;
+          // we accumulate into the sentence buffer and try to flush.
+          const onTextDelta = (t: string) => {
+            sentenceBuffer += t;
+            flushSentences(false);
+          };
+
+          // Create a stream and iterate events. The stream accumulates
+          // per-block state and forwards each delta to the SSE sender.
+          const stream = client.messages.stream({
             model: anthropicModel,
             system,
             tools: tools as Anthropic.Tool[],
@@ -162,11 +208,14 @@ export async function POST(req: NextRequest) {
             max_tokens: cfg.params.maxTokens,
             temperature: cfg.params.temperature,
             ...(cfg.params.topP != null ? { top_p: cfg.params.topP } : {}),
+            ...(thinkingCfg ? { thinking: thinkingCfg } : {}),
           });
 
-          // Record token usage for this round (defensive: usage may be missing)
-          const usage = response.usage ?? { input_tokens: 0, output_tokens: 0 };
-          const t = tokens.record(usage.input_tokens, usage.output_tokens);
+          const turn = await processStream(stream, send, onTextDelta);
+          stopReason = turn.stopReason;
+
+          // Record token usage. Anthropic bills thinking tokens in output_tokens.
+          const t = tokens.record(turn.usage.input, turn.usage.output);
           if (t.level === 'soft' && lastTokenLevel === 'normal') {
             send({
               type: 'token_warning',
@@ -181,39 +230,30 @@ export async function POST(req: NextRequest) {
           }
           lastTokenLevel = t.level;
 
-          // Stream text + collect tool_use blocks
-          const assistantTextParts: string[] = [];
-          const toolUseBlocks: Array<{ id: string; name: string; input: unknown }> = [];
-
-          for (const block of response.content) {
-            if (block.type === 'text') {
-              assistantTextParts.push(block.text);
-              send({ type: 'text_delta', text: block.text });
-            } else if (block.type === 'tool_use') {
-              toolUseBlocks.push({ id: block.id, name: block.name, input: block.input });
-              send({ type: 'tool_start', id: block.id, name: block.name });
-            }
-          }
-
-          stopReason = response.stop_reason ?? null;
-
           // Persist assistant turn
-          const assistantContent = assistantTextParts.join('\n');
-          if (assistantContent || toolUseBlocks.length) {
+          const assistantContent = turn.assistantTextParts.join('\n');
+          if (assistantContent || turn.toolUseBlocks.length) {
             appendMessage(sess.id, {
               role: 'assistant',
               content: assistantContent,
-              toolCalls: toolUseBlocks.map(tb => ({ id: tb.id, name: tb.name, input: tb.input })),
+              toolCalls: turn.toolUseBlocks.map(tb => ({ id: tb.id, name: tb.name, input: tb.input })),
               ts: Date.now(),
             });
           }
 
           // No tool calls → done
-          if (toolUseBlocks.length === 0 || stopReason === 'end_turn') break;
+          if (turn.toolUseBlocks.length === 0 || stopReason === 'end_turn') {
+            flushSentences(true);
+            break;
+          }
 
-          // Execute each tool_use
+          // Flush any completed sentences before the tool call (so the user
+          // sees prose complete before tool_call block appears)
+          flushSentences(false);
+
+          // Execute each tool_use (unchanged from the non-streaming path)
           const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }> = [];
-          for (const tb of toolUseBlocks) {
+          for (const tb of turn.toolUseBlocks) {
             // Server-side write whitelist guard
             if (ALLOWED_WRITE_TOOLS.has(tb.name) && !isWriteAllowedForRole(user.role, tb.name)) {
               const errText = 'WRITE_NOT_ALLOWED';
@@ -247,10 +287,14 @@ export async function POST(req: NextRequest) {
           }
           toolDepth++;
 
-          // Feed results back to Claude
+          // Build the next turn's messages array. We must include the
+          // full assistant content (text + tool_use blocks) plus the tool
+          // results. The full message object is available via
+          // `stream.finalMessage()`.
+          const finalMsg = await stream.finalMessage();
           runningMessages = [
             ...runningMessages,
-            { role: 'assistant' as const, content: response.content as Anthropic.ContentBlockParam[] },
+            { role: 'assistant' as const, content: finalMsg.content as Anthropic.ContentBlockParam[] },
             { role: 'user' as const, content: toolResults },
           ];
         }
@@ -260,7 +304,13 @@ export async function POST(req: NextRequest) {
         const msg = err instanceof Error ? err.message : String(err);
         // Log server-side; send generic to client for 401/403
         console.error('[chat] error:', msg);
-        if (msg.includes('401') || msg.includes('authentication')) {
+        if (msg.includes('budget_tokens') || msg.includes('thinking.budget_tokens')) {
+          const need = cfg.params.thinkingLevel === 'off' ? 0 : THINKING_BUDGET[cfg.params.thinkingLevel] + 1;
+          send({
+            type: 'error',
+            message: `thinking 配置与 max_tokens 冲突: ${msg}。请将 max_tokens 调到 ≥ ${need},或在调试参数中降级 thinkingLevel。`,
+          });
+        } else if (msg.includes('401') || msg.includes('authentication')) {
           send({ type: 'error', message: 'AI service not configured (ANTHROPIC_API_KEY missing or invalid)' });
         } else {
           send({ type: 'error', message: msg });

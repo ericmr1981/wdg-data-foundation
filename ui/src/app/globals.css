@@ -19,3 +19,10 @@ body.pdf-mode header {
 body.pdf-mode .no-pdf {
   display: none !important;
 }
+
+/* Reduced-motion override for chat fadeIn animation */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeIn {
+    animation: none !important;
+  }
+}

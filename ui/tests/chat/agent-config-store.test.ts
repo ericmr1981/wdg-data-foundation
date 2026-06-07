@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 // @ts-ignore -- allow .ts extension import (TS5097) for node --experimental-strip-types
-import { getAgentConfig, setAgentMd, setParam, setParams, setCredentialConfig, resetAgentConfig, DEFAULT_PARAMS } from '../../src/lib/chat/agent-config-store.ts';
+import { getAgentConfig, setAgentMd, setParam, setParams, setCredentialConfig, resetAgentConfig, DEFAULT_PARAMS, THINKING_BUDGET, thinkingConfigFor } from '../../src/lib/chat/agent-config-store.ts';
 
 test('initial state has default params and loaded agent.md', () => {
   resetAgentConfig();
@@ -69,4 +69,28 @@ test('setCredentialConfig with null baseURL/key is allowed', () => {
   assert.equal(c.baseURL, null);
   assert.equal(c.apiKey, null);
   assert.equal(c.model, 'claude-opus-4-8');
+});
+
+test('default thinkingLevel is "off"', () => {
+  resetAgentConfig();
+  assert.equal(getAgentConfig().params.thinkingLevel, 'off');
+});
+
+test('setParam(thinkingLevel, "high") persists', () => {
+  resetAgentConfig();
+  setParam('thinkingLevel', 'high');
+  assert.equal(getAgentConfig().params.thinkingLevel, 'high');
+  // Other fields unchanged
+  assert.equal(getAgentConfig().params.maxTokens, 4096);
+});
+
+test('thinkingConfigFor maps levels correctly', () => {
+  assert.equal(thinkingConfigFor('off'), null);
+  assert.deepEqual(thinkingConfigFor('low'),    { type: 'enabled', budget_tokens: THINKING_BUDGET.low });
+  assert.deepEqual(thinkingConfigFor('medium'), { type: 'enabled', budget_tokens: THINKING_BUDGET.medium });
+  assert.deepEqual(thinkingConfigFor('high'),   { type: 'enabled', budget_tokens: THINKING_BUDGET.high });
+  // Spot-check the actual budget numbers
+  assert.equal(THINKING_BUDGET.low, 1024);
+  assert.equal(THINKING_BUDGET.medium, 8192);
+  assert.equal(THINKING_BUDGET.high, 16384);
 });

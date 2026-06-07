@@ -3,12 +3,15 @@ import Link from 'next/link';
 import { PageContextProvider } from '@/components/chat/PageContext';
 import { ChatWidget } from '@/components/chat/ChatWidget';
 import { getSessionUser } from '@/lib/auth-server';
+import styles from './layout.module.css';
 
 export default async function ULayout({ children }: { children: ReactNode }) {
   const user = await getSessionUser();
   return (
     <PageContextProvider>
-      {children}
+      <div className={styles.main}>
+        {children}
+      </div>
       {user?.role === 'admin' && (
         <Link
           href="/u/admin/agent-config"

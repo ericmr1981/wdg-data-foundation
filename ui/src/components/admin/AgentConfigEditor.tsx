@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import type { AgentConfigParams } from '@/lib/chat/agent-config-store';
+import type { AgentConfigParams, ThinkingLevel } from '@/lib/chat/agent-config-store';
 
 interface Props {
   initial: {
@@ -32,6 +32,13 @@ const PARAM_META: Array<{ key: keyof AgentConfigParams; label: string; min: numb
   { key: 'mcpRetryMaxAttempts',  label: 'MCP 重试次数 (5xx)',       min: 1,   max: 5,     step: 1,    help: '最大重试次数 (含首次)' },
 ];
 
+const THINKING_OPTIONS: Array<{ value: ThinkingLevel; label: string; help: string }> = [
+  { value: 'off',    label: '关闭',      help: '不启用 thinking,响应最快' },
+  { value: 'low',    label: '低 (1K)',   help: '轻量思考,简单查询' },
+  { value: 'medium', label: '中 (8K)',   help: '标准思考,适合数据查询' },
+  { value: 'high',   label: '高 (16K)',  help: '深度思考,复杂分析。需 max_tokens ≥ 16385 (Anthropic 要求 budget_tokens < max_tokens)' },
+];
+
 export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: Props) {
   const [agentMd, setAgentMd] = useState(initial.agentMd);
   const [params, setParams] = useState<AgentConfigParams>(initial.params);
@@ -48,7 +55,7 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
     || apiKey !== ''
     || model !== initial.model;
 
-  function updateParam<K extends keyof AgentConfigParams>(k: K, v: number | null) {
+  function updateParam<K extends keyof AgentConfigParams>(k: K, v: number | string | null) {
     setParams(p => ({ ...p, [k]: v }));
   }
 
@@ -126,6 +133,31 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
               <p className="mt-1 text-[10px] text-gray-400">{m.help} (默认: {String(defaultParams[m.key])})</p>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700">Thinking 等级</h3>
+        <p className="mt-1 text-xs text-gray-500">
+          启用 Anthropic 扩展思考 (extended thinking)。模型在回答前会先花 budget_tokens 推理,
+          文字以折叠块形式出现在 chat 里。
+        </p>
+        <div className="mt-2 max-w-md">
+          <label htmlFor="thinking-level" className="block text-xs text-gray-600">等级</label>
+          <select
+            id="thinking-level"
+            value={params.thinkingLevel}
+            onChange={e => updateParam('thinkingLevel', e.target.value as ThinkingLevel)}
+            className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm"
+          >
+            {THINKING_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <p className="mt-1 text-[10px] text-gray-400">
+            {THINKING_OPTIONS.find(o => o.value === params.thinkingLevel)?.help}
+            {' '}(默认: {String(defaultParams.thinkingLevel)})
+          </p>
         </div>
       </div>
 

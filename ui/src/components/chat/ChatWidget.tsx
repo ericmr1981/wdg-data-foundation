@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
+import { ChatDrawer } from './ChatDrawer';
 import { parseSseStream } from '@/lib/chat/stream';
+import { useDrawerState } from '@/lib/chat/use-drawer-state';
 import type { ChatMessage, SseIncoming, ToolCallLite } from './types';
 
 export function ChatWidget() {
-  const [open, setOpen] = useState(false);
+  const { open, setOpen, toggle } = useDrawerState();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
   const aborterRef = useRef<AbortController | null>(null);
@@ -19,12 +21,12 @@ export function ChatWidget() {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setOpen(o => !o);
+        toggle();
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [toggle]);
 
   // Load history on mount
   useEffect(() => {
@@ -100,10 +102,32 @@ export function ChatWidget() {
         buf += decoder.decode(value, { stream: true });
         parseSseStream(buf, (raw) => {
           const evt = raw as SseIncoming;
-          if (evt.type === 'text_delta' && typeof evt.text === 'string') {
+          if (evt.type === 'text_block' && typeof evt.text === 'string') {
+            // Per-sentence chunk from server's splitSentences. Each block is a
+            // complete sentence; push as a new assistant_text message so
+            // MessageList's FadeInBlock animates it. text_delta events for
+            // the same text also arrive (server emits both for compat) but
+            // are deliberately NOT rendered — see the text_delta branch.
+            setMessages(m => [...m, { type: 'assistant_text', content: evt.text, ts: Date.now() }]);
+            // Reset the legacy buffer state so a future text_delta doesn't
+            // leave a half-populated buffer around.
+            assistantBufferRef.current = '';
+            lastAssistantTs = Date.now();
+            assistantStarted = false;
+          } else if (evt.type === 'text_delta' && typeof evt.text === 'string') {
+            // The new server emits BOTH text_delta and text_block for every
+            // text block (text_delta is kept for backward compat). Push a
+            // message ONLY from text_block (the per-sentence chunked event);
+            // here, just accumulate into the buffer for any legacy / fallback
+            // code paths that read it. Never call flushAssistantText() in
+            // this handler — that would render the raw block text a second
+            // time on top of the text_block bubble.
             assistantBufferRef.current += evt.text;
             lastAssistantTs = Date.now();
-            flushAssistantText();
+            // Note: do NOT call flushAssistantText() here. The old code path's
+            // "single big bubble" behavior is no longer used; if text_block
+            // never arrives the user simply doesn't see streaming bubbles
+            // for this turn, and history will be restored on next page load.
           } else if (evt.type === 'thinking_delta' && typeof evt.text === 'string') {
             // Append to the last 'thinking' block, or create one
             setMessages(m => {
@@ -162,25 +186,19 @@ export function ChatWidget() {
     setMessages([]);
   }, []);
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        title="AI 助手 (Cmd/Ctrl+K)"
-        className="fixed bottom-8 right-8 z-50 h-12 w-12 rounded-full bg-blue-600 text-2xl text-white shadow-lg hover:bg-blue-700"
-      >💬</button>
-    );
-  }
-
   return (
-    <div className="fixed bottom-8 right-8 z-50 flex h-[600px] w-[420px] flex-col rounded-lg border border-gray-300 bg-white shadow-2xl">
-      <div className="flex items-center justify-between rounded-t-lg bg-blue-600 px-3 py-2 text-white">
-        <span className="text-sm font-semibold">AI 助手</span>
-        <button type="button" onClick={() => setOpen(false)} className="text-white hover:text-gray-200">✕</button>
-      </div>
+    <ChatDrawer
+      title="AI 助手"
+      headerRight={
+        <button
+          type="button"
+          onClick={reset}
+          className="rounded border border-white/40 px-2 py-0.5 text-xs text-white hover:bg-white/10"
+        >🔄 重启</button>
+      }
+    >
       <MessageList messages={messages} />
       <ChatInput onSend={send} onReset={reset} disabled={streaming} />
-    </div>
+    </ChatDrawer>
   );
 }
