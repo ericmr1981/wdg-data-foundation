@@ -177,6 +177,22 @@ bank_txn → fn_classify() → bank_txn_classified_snapshot (BASE TABLE)
 
 **已撤 / 永久跳过**：`xintiandi.*` 工具（schema 未部署）、`export_rules`（xlsx 包未装）、所有 `create/update/delete/settle/approve/reject/import/rollback/reorder` 类写工具。
 
+## Reminders & Reports (站内通知与月报)
+
+4 类系统主动通知,统一写在 `ops.notification` 表,通过顶部 `<NotificationBell>` 显示。
+
+| 类型 | 检测时机 | 检测源 |
+|---|---|---|
+| `data_stale` | 每日 09:00 | 企迈 `MAX(biz_date) < T-1` 或 银行流水 `MAX(txn_date) < 月初 5 日` |
+| `unmatched_txn` | 每日 09:30 | `{brand}_dm.v_unclassified_top` COUNT > 0 |
+| `dup_rule` | 每日 09:30 | `{brand}_cfg.bank_rule_map` 同 pattern_hash > 1 条 |
+| `monthly_report` | 每月 6 日 06:00 | 聚合 `dm.v_store_monthly_kpi` → 写 xlsx → `/var/wdg/reports/{brand}/` |
+
+**调度**:`scripts/wdg_scheduler_daemon.py` (APScheduler BlockingScheduler) 由 systemd `wdg-scheduler.service` 拉起,`/reload` HTTP 端点热加载。
+**配置**:UI `/admin/config/notifications` 可改 cron + 品牌过滤,改完自动重载。
+**入口**:`scripts/run_notification_sweep.py --task {name} --brands {csv}` 手动跑;详见 `docs/superpowers/specs/2026-06-07-notifications-design.md`。
+**部署**:VPS `systemctl enable --now wdg-scheduler`,详见 `docs/LOCAL_STARTUP.md` 末段。
+
 ## Documentation Index
 
 | 文档 | 位置 | 内容 |
