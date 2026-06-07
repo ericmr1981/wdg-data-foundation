@@ -31,7 +31,8 @@ function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: 
   const admin = raw.filter(r => r.lvl1_code === 'ADMIN');
   const build = raw.filter(r => r.lvl1_code === 'BUILD');
   const taxSurcharge = raw.filter(r => r.lvl1_code === 'TAX_SURCHARGE');
-  const expOther = raw.filter(r => r.lvl1_code === 'EXP_OTHER');
+  // Net profit excludes EXP_OTHER/BONUS (分红/bonus payouts). Other EXP_OTHER items (TAX, REPAY, REFUND) still deducted.
+  const expOther = raw.filter(r => r.lvl1_code === 'EXP_OTHER' && r.lvl2_code !== 'BONUS');
   const otherExpense = [...hr, ...rentUtil, ...mkt, ...admin, ...build, ...expOther];
 
   const sumAmount = (items: typeof raw) => items.reduce((s, r) => s + Number(r.amount), 0);
@@ -116,7 +117,7 @@ function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: 
   lines.push({ section: 'operating_profit', label: secOP, amount: operatingProfit, indent: 0, is_subtotal: false, is_highlight: true });
 
   // — 净利润 —
-  const netProfitLabel = operatingProfit >= 0 ? '净利润' : '净亏损';
+  const netProfitLabel = operatingProfit >= 0 ? '净利润（不含分红）' : '净亏损（不含分红）';
   const secNP = `${roman(nextNum())}、${netProfitLabel}`;
   lines.push({ section: 'net_profit', label: secNP, amount: operatingProfit, indent: 0, is_subtotal: false, is_highlight: true });
 

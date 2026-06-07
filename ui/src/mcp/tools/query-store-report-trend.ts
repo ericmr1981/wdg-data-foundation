@@ -17,7 +17,9 @@ export const queryStoreReportTrendTool = {
 - store (required): store code
 - months (optional): 1-24, default 12
 
-**Response**: { month: string, values: { revenue_amt, cost_amt, hr_amt, rent_amt, gross_profit_amt, net_profit_amt, ... } }[]`,
+**Response**: { month: string, values: { revenue_amt, cost_amt, hr_amt, rent_amt, gross_profit_amt, net_profit_amt, ... } }[]
+
+**Note**: net_profit_amt / net_profit_rate_pct exclude EXP_OTHER/BONUS (分红/bonus payouts). Other EXP_OTHER items (TAX, REPAY, REFUND) ARE deducted. Months without cogs data return NULL.`,
   inputSchema: QueryStoreReportTrendInput,
   async execute(params: z.infer<typeof QueryStoreReportTrendInput>) {
     const { brand, store, months = 12 } = params;

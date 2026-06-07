@@ -16,7 +16,9 @@ export const queryStoreReportSnapshotTool = {
 - store (required): store code
 - month (required): YYYY-MM
 
-**Response**: revenue / cost / expense / hr / rent / gross_profit / net_profit / operating_cf / cash_balance / loan_balance + rate metrics (gross_profit_rate_pct, net_profit_rate_pct, hr_ratio_pct, rent_ratio_pct, cashflow_runway_months).`,
+**Response**: revenue / cost / expense / hr / rent / gross_profit / net_profit / operating_cf / cash_balance / loan_balance + rate metrics (gross_profit_rate_pct, net_profit_rate_pct, hr_ratio_pct, rent_ratio_pct, cashflow_runway_months).
+
+**Note**: net_profit_amt / net_profit_rate_pct exclude EXP_OTHER/BONUS (分红/bonus payouts). Other EXP_OTHER items (TAX, REPAY, REFUND) ARE deducted. For unprofitable months, view returns NULL.`,
   inputSchema: QueryStoreReportSnapshotInput,
   async execute(params: z.infer<typeof QueryStoreReportSnapshotInput>) {
     const { brand, store, month } = params;

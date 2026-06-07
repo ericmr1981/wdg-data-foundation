@@ -33,7 +33,10 @@ export const queryFinancialOverviewTool = {
 
 **For "毛利率 / 净利率" questions**: read grossMarginRate / netProfitRate directly. Do NOT compute from revenue/expenses.
 
-**Cash-basis note**: this platform uses cash-basis accounting. The underlying v_profit_statement stores expenses as negative, but this overview endpoint already ABS-sums them into the positive "expenses" field.`,
+**Cash-basis note**: this platform uses cash-basis accounting. The underlying v_profit_statement stores expenses as negative, but this overview endpoint already ABS-sums them into the positive "expenses" field.
+
+**Net profit rate (netProfitRate)**: 净利润率口径 = 收入 - 成本 - 期间费用 - (EXP_OTHER - BONUS)。
+EXP_OTHER/BONUS (分红/奖金) **不计入**净利润。EXP_OTHER/TAX, REPAY, REFUND 等其他杂项支出**计入**净利润。`,
   inputSchema: QueryFinancialOverviewInput,
   async execute(params: z.infer<typeof QueryFinancialOverviewInput>) {
     const { brand = 'gelatomiiix', period, span = 'month', store = 'all' } = params;

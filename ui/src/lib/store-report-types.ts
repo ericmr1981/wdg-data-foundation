@@ -45,7 +45,7 @@ export const KPI_LABELS: Record<KpiMetricKey, string> = {
   revenue_amt: '营业收入',
   expense_amt: '营业支出',
   gross_profit_amt: '毛利',
-  net_profit_amt: '净利润',
+  net_profit_amt: '净利润（不含分红）',
   operating_cf_amt: '经营现金流',
   cash_balance: '银行余额',
   cashflow_runway_months: '现金流月数',
