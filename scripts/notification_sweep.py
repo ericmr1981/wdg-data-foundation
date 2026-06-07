@@ -33,6 +33,39 @@ log = logging.getLogger(__name__)
 # 月报 xlsx 输出目录(可由 WDG_REPORT_DIR 环境变量覆盖,便于测试用 tmp_path)
 REPORT_DIR = os.environ.get('WDG_REPORT_DIR', '/var/wdg/reports')
 
+# === batch analyze API (v2) ===
+
+NEXT_BASE_URL = os.getenv('WDG_NEXT_BASE_URL', 'http://localhost:4100')
+SERVICE_TOKEN = os.getenv('WDG_SERVICE_TOKEN', '')
+
+
+def call_analyze_api(brand: str, txn_ids: list[int]) -> dict | None:
+    """
+    POST /api/admin/analyze-unclassified with X-Service-Token.
+    Returns parsed JSON or None on any error (caller continues gracefully).
+    """
+    if not SERVICE_TOKEN:
+        log.warning('WDG_SERVICE_TOKEN not set; skipping analyze for %s', brand)
+        return None
+    import json as _json
+    import urllib.request as _urllib_request
+    import urllib.error as _urllib_error
+    try:
+        req = _urllib_request.Request(
+            f"{NEXT_BASE_URL}/api/admin/analyze-unclassified",
+            data=_json.dumps({'brand': brand, 'unclassified_txn_ids': txn_ids}).encode(),
+            headers={
+                'Content-Type': 'application/json',
+                'X-Service-Token': SERVICE_TOKEN,
+            },
+            method='POST',
+        )
+        with _urllib_request.urlopen(req, timeout=60) as resp:
+            return _json.loads(resp.read())
+    except (_urllib_error.URLError, _urllib_error.HTTPError, TimeoutError, _json.JSONDecodeError, OSError) as e:
+        log.warning('analyze api failed for %s: %s', brand, e)
+        return None
+
 
 def upsert_notification(
     conn,
@@ -46,6 +79,7 @@ def upsert_notification(
     action_url: str | None = None,
     action_label: str | None = None,
     related_id: int | None = None,
+    related_uuid: str | None = None,    # NEW (v2)
 ) -> int:
     """
     插入一条通知(若 dedup_key 已存在 active 行,只更新 swept_at)。
@@ -55,13 +89,15 @@ def upsert_notification(
         cur.execute(
             """
             INSERT INTO ops.notification
-                (type, brand_code, severity, title, body, action_url, action_label, related_id, dedup_key, swept_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+                (type, brand_code, severity, title, body,
+                 action_url, action_label, related_id, related_uuid, dedup_key, swept_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
             ON CONFLICT (dedup_key) WHERE status = 'active'
             DO UPDATE SET swept_at = now()
             RETURNING (xmax = 0) AS inserted
             """,
-            (type_, brand_code, severity, title, body, action_url, action_label, related_id, dedup_key),
+            (type_, brand_code, severity, title, body,
+             action_url, action_label, related_id, related_uuid, dedup_key),
         )
         row = cur.fetchone()
         conn.commit()
@@ -156,40 +192,85 @@ def sweep_data_stale(conn, brands: list[str] | None = None) -> int:
     return new_count
 
 
-# === 2. unmatched_txn ===
+# === 2. unmatched_txn (v2 — agent analyze) ===
 
 def sweep_unmatched_txn(conn, brands: list[str] | None = None) -> int:
     target_brands = brands or all_brand_codes()
-    today = date.today().isoformat()
+    today_iso = date.today().isoformat()
     new_count = 0
 
     for brand in target_brands:
         cfg = BRAND_SOURCE_MAP[brand]
-        unclassified = cfg.get('unclassified_table')
-        if not unclassified:
+        unclassified_view = cfg.get('unclassified_table')
+        if not unclassified_view:
             continue
+
+        # 1. count via view
         with conn.cursor() as cur:
             try:
-                cur.execute(f'SELECT COUNT(*) FROM {unclassified}')
+                cur.execute(f'SELECT COUNT(*) FROM {unclassified_view}')
                 count = cur.fetchone()[0]
             except psycopg2.Error as e:
-                log.warning('sweep_unmatched_txn: %s failed: %s', unclassified, e)
+                log.warning('sweep_unmatched_txn: %s count failed: %s', unclassified_view, e)
                 count = 0
 
-        if count > 0:
+        if count == 0:
+            resolve_notification_by_dedup_prefix(conn, f'unmatched_txn:{brand}:')
+            continue
+
+        # 2. fetch up to 50 unclassified txn ids from bank_txn (the view lacks bank_txn_id)
+        bank_table = cfg.get('bank_table')
+        classified_schema = cfg.get('classified_schema', cfg.get('bank_ods_schema'))
+        classified_snapshot = cfg.get('classified_snapshot', 'bank_txn_classified_snapshot')
+        txn_ids: list[int] = []
+        if bank_table and classified_schema:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f'''
+                        SELECT t.id FROM {bank_table} t
+                        LEFT JOIN {classified_schema}.{classified_snapshot} c ON c.bank_txn_id = t.id
+                        WHERE c.bank_txn_id IS NULL
+                        ORDER BY t.txn_time DESC
+                        LIMIT 50
+                        '''
+                    )
+                    txn_ids = [r[0] for r in cur.fetchall()]
+            except psycopg2.Error as e:
+                log.warning('sweep_unmatched_txn: failed to load ids for %s: %s', brand, e)
+
+        # 3. call analyze API
+        api_result = call_analyze_api(brand, txn_ids) if txn_ids else None
+
+        # 4. write notification
+        if api_result and api_result.get('batch_id') and api_result.get('proposals_created', 0) > 0:
+            batch_id = api_result['batch_id']
+            proposals = api_result['proposals_created']
             new_count += upsert_notification(
                 conn,
                 type_='unmatched_txn',
-                dedup_key=f'unmatched_txn:{brand}:{today}',
-                title=f'{brand} 有 {count} 条未配条目',
-                body=f'{unclassified} 当前 {count} 条未分类,需分析匹配',
+                dedup_key=f'unmatched_txn:{brand}:{today_iso}:{batch_id}',
+                title=f'{brand} 有 {count} 条未配条目,已生成建议待审批',
+                body=f'批次 {batch_id[:8]}, 共 {proposals} 条建议',
+                brand_code=brand,
+                severity='warn',
+                action_url=f'/u/approvals?source=unmatched&brand={brand}&batch={batch_id}&filter=pending',
+                action_label='去审批',
+                related_uuid=batch_id,
+            )
+        else:
+            # No unclassified ids, OR API failed, OR 0 proposals — still notify
+            new_count += upsert_notification(
+                conn,
+                type_='unmatched_txn',
+                dedup_key=f'unmatched_txn:{brand}:{today_iso}:no-analysis',
+                title=f'{brand} 有 {count} 条未配条目待分析',
+                body='自动分析暂未完成, 请人工处理或检查 service token 配置',
                 brand_code=brand,
                 severity='warn',
                 action_url=f'/match?brand={brand}&status=unclassified',
-                action_label='分析匹配',
+                action_label='去查看',
             )
-        else:
-            resolve_notification_by_dedup_prefix(conn, f'unmatched_txn:{brand}:')
 
     return new_count
 

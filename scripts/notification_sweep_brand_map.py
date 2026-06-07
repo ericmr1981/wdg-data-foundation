@@ -14,6 +14,8 @@ BRAND_SOURCE_MAP: dict[str, dict[str, str | None]] = {
         'bank_date_col': 'txn_time',
         'unclassified_table': 'brand_tamkoko_dm.v_unclassified_top',
         'bank_rule_map': 'brand_tamkoko_cfg.bank_rule_map',
+        'classified_schema': 'brand_tamkoko_dm',                       # NEW (v2)
+        'classified_snapshot': 'bank_txn_classified_snapshot',          # NEW (v2)
     },
     'gelatomiiix': {
         'sales_table': 'gelatomiiix_ods.income_detail',  # legacy ods, NOT brand_*
@@ -22,6 +24,8 @@ BRAND_SOURCE_MAP: dict[str, dict[str, str | None]] = {
         'bank_date_col': 'txn_time',
         'unclassified_table': 'brand_gelatomiiix_dm.v_unclassified_top',
         'bank_rule_map': 'brand_gelatomiiix_cfg.bank_rule_map',
+        'classified_schema': 'brand_gelatomiiix_dm',                     # NEW (v2)
+        'classified_snapshot': 'bank_txn_classified_snapshot',            # NEW (v2)
     },
     'bonjur': {
         'sales_table': 'bonjur_ods.income_detail',
@@ -30,6 +34,8 @@ BRAND_SOURCE_MAP: dict[str, dict[str, str | None]] = {
         'bank_date_col': 'txn_time',
         'unclassified_table': 'bonjur_dm.v_unclassified_top',
         'bank_rule_map': 'bonjur_cfg.bank_rule_map',
+        'classified_schema': 'bonjur_dm',                               # NEW (v2)
+        'classified_snapshot': 'bank_txn_classified_snapshot',            # NEW (v2)
     },
 }
 
