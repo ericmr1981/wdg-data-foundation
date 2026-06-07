@@ -119,3 +119,43 @@ SELECT * FROM yufeng_dm.profit_monthly  ORDER BY month DESC;
 - 端到端验收跑法：`docs/ACCEPTANCE_RUNBOOK.md`
 - 本地测试 checklist：`docs/LOCAL_TEST_CHECKLIST.md`
 - 一次真实跑通记录：`docs/REAL_RUN_2026-03-22.md`
+
+## WDG Notification Scheduler (VPS deployment)
+
+After deploying the app, install the APScheduler daemon that runs the 4 notification sweep tasks.
+
+### One-time setup
+
+```bash
+# 1. Apply the DDL (already done in step "Database migrations")
+psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f /opt/wdg/sql/00_notifications_ddl.sql
+
+# 2. Seed the default schedule
+cd /opt/wdg
+source .venv/bin/activate
+python scripts/seed_notification_schedule.py
+
+# 3. Create the report output directory
+sudo mkdir -p /var/wdg/reports/{tamkoko,gelatomiiix,bonjur}
+sudo chown -R www-data:www-data /var/wdg/reports
+
+# 4. Install the systemd unit
+sudo cp deploy/systemd/wdg-scheduler.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now wdg-scheduler
+
+# 5. Verify it's running
+sudo systemctl status wdg-scheduler
+curl http://127.0.0.1:4711/health   # should return "ok"
+```
+
+### Day-to-day operations
+
+- **View logs:** `sudo journalctl -u wdg-scheduler -f`
+- **Trigger a sweep now:** `curl -X POST http://127.0.0.1:4711/reload` (or just edit the schedule in the UI)
+- **Pause all sweeps:** `sudo systemctl stop wdg-scheduler`
+- **Edit schedule:** in UI `/admin/config/notifications`, change cron expressions and Save — daemon reloads automatically within 5s.
+
+### Health check
+
+The daemon writes a row to `ops.notification_schedule_run` on every job. If the UI's "Recent 10 runs" panel shows the latest run > 2× the cron interval ago, the daemon may be hung.
