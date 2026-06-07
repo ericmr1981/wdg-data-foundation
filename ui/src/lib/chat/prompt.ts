@@ -67,7 +67,8 @@ const FINANCIAL_RATE_RULE = `Financial query conventions:
 - This platform uses CASH-BASIS accounting (收付实现制). The underlying v_profit_statement stores revenue as positive and expenses as negative. Most API responses ABS-sum expenses into a positive "expenses" field; the /api/financial/profit endpoint also returns signed line-item amounts.
 - Rate fields come in two unit conventions. Fields named "grossMarginRate" / "netProfitRate" (camelCase, returned by query_financial_overview) and "gross_margin_rate" / "net_profit_rate" (snake_case, inside query_financial_kpi_trend.monthly[]) are DECIMAL fractions: 0.42 means 42%, multiply by 100 to display. Fields named "gross_profit_rate_pct" / "net_profit_rate_pct" (returned by query_store_report_snapshot / _trend) are ALREADY percentages: 42.0 means 42%, display as-is. Read the field name and the tool description to determine the convention.
 - For "毛利率 / 净利率" questions: use query_financial_overview and read grossMarginRate / netProfitRate directly. Do NOT compute from raw revenue/cost/expense numbers.
-- vsPrevPeriod fields (returned by query_financial_overview) report period-over-period CHANGE as a decimal (e.g. 0.05 means +5pp). Negative values are valid (margin dropped). Do not confuse vsPrevPeriod with the current period.`;
+- vsPrevPeriod fields (returned by query_financial_overview) report period-over-period CHANGE as a decimal (e.g. 0.05 means +5pp). Negative values are valid (margin dropped). Do not confuse vsPrevPeriod with the current period.
+- Net profit excludes EXP_OTHER/BONUS (分红/奖金 payouts). Other EXP_OTHER items (TAX, REPAY, REFUND) ARE deducted. When the user asks about 分红 / 股东分红 / "bonus payouts", exclude those amounts; otherwise follow the field's natural convention.`;
 
 function buildHeader(ctx: PageCtx, tools: ToolSchemaLite[]): string {
   const brand = ctx.brand ?? '<none>';
