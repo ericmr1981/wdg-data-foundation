@@ -109,7 +109,9 @@ CREATE INDEX IF NOT EXISTS idx_notification_related_uuid
 
 ### 3.2 服务端实现要点
 
-**调用**:`Anthropic.messages.create({model: 'claude-sonnet-4-5', max_tokens: 8000, system: ..., messages: [{role: 'user', content: ...}]})`
+**调用**:`Anthropic.messages.create({model, max_tokens: 8000, system, messages: [{role: 'user', content: ...}]})`
+
+**Model 选取**:`getAgentConfig().model`(从 `lib/chat/agent-config-store` 读),fallback `'claude-opus-4-8'`。**不**硬编码,与 chat agent 保持一致(用户在 admin agent config 里改模型,batch 也跟着改)。
 
 **重要降级**:**不**走 MCP `submit_proposal` tool(它的 zod schema 适合交互式 chat tool_use loop,不适合 batch 场景)。直接 `messages.create` + 让模型返回结构化 JSON。
 
@@ -162,7 +164,7 @@ export interface ServiceAuth {
   id: number;
 }
 
-export async function requireServiceToken(req: Request, name: string): Promise<ServiceAuth | null> {
+export async function requireServiceToken(req: NextRequest, name: string): Promise<ServiceAuth | null> {
   const raw = req.headers.get('x-service-token');
   if (!raw) return null;
   const hash = createHash('sha256').update(raw).digest('hex');
@@ -235,7 +237,7 @@ def sweep_unmatched_txn(conn, brands=None) -> int:
         if not unclassified:
             continue
 
-        # 1. 查数量 + 取最多 50 个 id
+        # 1. 查数量 (从视图) + 取最多 50 个 id (从 bank_txn 表, 关联 unclassified 视图逻辑)
         with conn.cursor() as cur:
             cur.execute(f'SELECT COUNT(*) FROM {unclassified}')
             count = cur.fetchone()[0]
@@ -243,11 +245,23 @@ def sweep_unmatched_txn(conn, brands=None) -> int:
             resolve_notification_by_dedup_prefix(conn, f'unmatched_txn:{brand}:')
             continue
 
+        # 注: v_unclassified_top 视图不含 bank_txn_id. 改用 bank_txn 表
+        # 配合 'classified_snapshot 缺失' 判定 unclassified 状态 (具体 SQL 依 brand 而异, 需在
+        # 实现时核对 cfg.bank_ods_schema.bank_txn / classified_snapshot 关联方式).
+        # 简化的兜底: 直接从 bank_txn 取最近 50 条无 snapshot 的行
+        bank_table = cfg.get('bank_table')  # e.g. 'brand_tamkoko_ods.bank_txn'
+        classified_snapshot = cfg.get('classified_snapshot_table', 'bank_txn_classified_snapshot')
+        classified_schema = cfg.get('classified_schema', cfg.get('bank_ods_schema'))
         with conn.cursor() as cur:
             cur.execute(
-                f'SELECT bank_txn_id FROM {unclassified} ORDER BY txn_time DESC LIMIT 50'
+                f'''
+                SELECT t.id FROM {bank_table} t
+                LEFT JOIN {classified_schema}.{classified_snapshot} c ON c.bank_txn_id = t.id
+                WHERE c.id IS NULL
+                ORDER BY t.txn_time DESC
+                LIMIT 50
+                '''
             )
-            # 注: 不同 brand 的视图列名可能不同, 需要根据 cfg 调整
             txn_ids = [r[0] for r in cur.fetchall()]
 
         # 2. 调分析 API
@@ -382,7 +396,7 @@ const filtered = useMemo(() => {
 )}
 ```
 
-`countInBatch` 从 API 拿到 batch 对应的 proposals 后算。
+`countInBatch` 从 `proposals.filter(p => p.batch_id === batchId).length` 算(从 API 返回的 proposals 数组)。
 
 ---
 
