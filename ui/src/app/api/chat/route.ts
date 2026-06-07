@@ -15,6 +15,7 @@ import { checkRateLimit } from '@/lib/chat/rate-limit';
 import { createTokenTracker } from '@/lib/chat/token-tracker';
 import { getAgentConfig, applyConfigToGlobals } from '@/lib/chat/agent-config-store';
 import { decrypt } from '@/lib/chat/secret-crypto';
+import { splitSentences } from '@/lib/chat/sentence-splitter';
 import pool from '@/lib/db';
 
 export const runtime = 'nodejs';
@@ -135,6 +136,44 @@ export async function POST(req: NextRequest) {
       try {
         send({ type: 'session', sessionId: sess.id });
 
+        // Per-turn state for sentence-level streaming
+        const turnId = `t${Date.now().toString(36)}`;
+        let sentenceBuffer = '';
+        let sentenceIndex = 0;
+        const SENTENCE_FLUSH_THRESHOLD = 800;  // bytes; if buffer grows past this without a terminator, force-flush
+        const flushSentences = (final: boolean) => {
+          if (!sentenceBuffer) return;
+          // If buffer is huge with no terminator, force-flush so client sees progress
+          if (!final && sentenceBuffer.length < SENTENCE_FLUSH_THRESHOLD) {
+            // Try to cut complete sentences out, keep the rest
+            const blocks = splitSentences(sentenceBuffer);
+            if (blocks.length === 0) return;
+            const last = blocks[blocks.length - 1];
+            const hasTerminator = /[。！？.!?]\s*$/.test(last);
+            if (!hasTerminator) {
+              const completed = blocks.slice(0, -1);
+              for (const text of completed) {
+                send({ type: 'text_block', text, index: sentenceIndex++, turnId });
+              }
+              sentenceBuffer = last;
+              return;
+            }
+            // Last block has terminator — emit all
+            for (const text of blocks) {
+              send({ type: 'text_block', text, index: sentenceIndex++, turnId });
+            }
+            sentenceBuffer = '';
+            return;
+          }
+          // Either final flush OR buffer exceeded threshold: emit everything split,
+          // keep remainder (only if not final)
+          const blocks = splitSentences(sentenceBuffer);
+          for (const text of blocks) {
+            send({ type: 'text_block', text, index: sentenceIndex++, turnId });
+          }
+          sentenceBuffer = '';
+        };
+
         let runningMessages = apiMessages;
         let stopReason: string | null = null;
 
@@ -188,8 +227,13 @@ export async function POST(req: NextRequest) {
           for (const block of response.content) {
             if (block.type === 'text') {
               assistantTextParts.push(block.text);
-              send({ type: 'text_delta', text: block.text });
+              send({ type: 'text_delta', text: block.text });  // fallback for old clients
+              sentenceBuffer += block.text;
+              flushSentences(false);
             } else if (block.type === 'tool_use') {
+              // Flush any completed sentences before the tool call (so the
+              // user sees prose complete before tool_call block appears)
+              flushSentences(false);
               toolUseBlocks.push({ id: block.id, name: block.name, input: block.input });
               send({ type: 'tool_start', id: block.id, name: block.name });
             }
@@ -255,6 +299,7 @@ export async function POST(req: NextRequest) {
           ];
         }
 
+        flushSentences(true);
         send({ type: 'done' });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
