@@ -42,10 +42,24 @@ function ToolCallBlock({ call }: { call: ToolCallLite }) {
   );
 }
 
-function FadeInBlock({ children }: { children: React.ReactNode }) {
-  // CSS @keyframes defined in tailwind.config.js (Task 8).
-  return <div className="animate-fadeIn will-change-transform">{children}</div>;
+function FadeInBlock({ children, delayMs = 0 }: { children: React.ReactNode; delayMs?: number }) {
+  // CSS @keyframes defined in tailwind.config.js (Task 8). `animation-delay`
+  // staggers consecutive blocks so a batch of N text_blocks emitted ~simultaneously
+  // by the server fade in one-by-one (each ~70ms after the previous) instead
+  // of all at once. delayMs=0 (default) is used for the first block of a
+  // batch and for blocks loaded from history (which are not staggered).
+  return (
+    <div
+      className="animate-fadeIn will-change-transform"
+      style={delayMs > 0 ? { animationDelay: `${delayMs}ms` } : undefined}
+    >
+      {children}
+    </div>
+  );
 }
+
+const STAGGER_MS = 140;        // delay between consecutive blocks in a batch
+const BATCH_GAP_MS = 1000;     // blocks emitted > 1s apart are considered separate batches (no stagger)
 
 export function MessageList({ messages }: { messages: ChatMessage[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -58,55 +72,72 @@ export function MessageList({ messages }: { messages: ChatMessage[] }) {
 
   return (
     <div ref={containerRef} className="flex-1 space-y-3 overflow-y-auto bg-gray-50 p-3">
-      {messages.map((m, i) => {
-        if (m.type === 'user') {
-          return (
-            <div key={i} className="flex items-start justify-end gap-2">
-              <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-blue-500 px-3 py-2 text-sm text-white shadow-sm">
-                {m.content}
-              </div>
-              <UserAvatar role="user" />
-            </div>
-          );
-        }
-        if (m.type === 'assistant_text') {
-          return (
-            <FadeInBlock key={i}>
-              <div className="flex items-start justify-start gap-2">
-                <UserAvatar role="assistant" />
-                <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-white px-3 py-2 text-sm text-gray-900 shadow-sm">
-                  <MarkdownMessage content={m.content} />
+      {(() => {
+        // Walk messages once to compute per-block animation delay.
+        // Consecutive assistant_text blocks whose ts are within BATCH_GAP_MS
+        // of each other get a staggered delay so the fade-in feels sequential.
+        // Blocks from history (or a fresh turn's first block) get delay=0.
+        let prevAssistantTs = -Infinity;
+        let batchIdx = 0;
+        return messages.map((m, i) => {
+          if (m.type === 'assistant_text') {
+            const gap = m.ts - prevAssistantTs;
+            const inBatch = gap >= 0 && gap < BATCH_GAP_MS;
+            const delayMs = inBatch ? batchIdx * STAGGER_MS : 0;
+            if (inBatch) batchIdx++; else batchIdx = 1;  // this block is now the first of a new batch
+            prevAssistantTs = m.ts;
+            return (
+              <FadeInBlock key={i} delayMs={delayMs}>
+                <div className="flex items-start justify-start gap-2">
+                  <UserAvatar role="assistant" />
+                  <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-white px-3 py-2 text-sm text-gray-900 shadow-sm">
+                    <MarkdownMessage content={m.content} />
+                  </div>
                 </div>
+              </FadeInBlock>
+            );
+          }
+          // Non-assistant_text: reset batch state (a user message, tool call,
+          // or notice breaks the visual stream).
+          prevAssistantTs = -Infinity;
+          batchIdx = 0;
+          if (m.type === 'user') {
+            return (
+              <div key={i} className="flex items-start justify-end gap-2">
+                <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-blue-500 px-3 py-2 text-sm text-white shadow-sm">
+                  {m.content}
+                </div>
+                <UserAvatar role="user" />
               </div>
-            </FadeInBlock>
-          );
-        }
-        if (m.type === 'tool_call') {
-          return <ToolCallBlock key={i} call={m.call} />;
-        }
-        if (m.type === 'thinking') {
-          return (
-            <div key={i} className="mx-2 rounded border border-dashed border-gray-200 bg-white px-3 py-1 text-xs italic text-gray-500">
-              💭 {m.content}
-            </div>
-          );
-        }
-        if (m.type === 'token_notice') {
-          return (
-            <div key={i} className="rounded border border-yellow-200 bg-yellow-50 px-3 py-1 text-center text-xs text-yellow-800">
-              ⚠️ Token 用量已达 {m.used} / 软限 {m.softLimit}（{m.level}）— 后续 prompt 已压缩
-            </div>
-          );
-        }
-        if (m.type === 'error') {
-          return (
-            <div key={i} className="rounded border border-red-200 bg-red-50 px-3 py-2 text-center text-sm text-red-800">
-              ⚠️ {m.message}
-            </div>
-          );
-        }
-        return null;
-      })}
+            );
+          }
+          if (m.type === 'tool_call') {
+            return <ToolCallBlock key={i} call={m.call} />;
+          }
+          if (m.type === 'thinking') {
+            return (
+              <div key={i} className="mx-2 rounded border border-dashed border-gray-200 bg-white px-3 py-1 text-xs italic text-gray-500">
+                💭 {m.content}
+              </div>
+            );
+          }
+          if (m.type === 'token_notice') {
+            return (
+              <div key={i} className="rounded border border-yellow-200 bg-yellow-50 px-3 py-1 text-center text-xs text-yellow-800">
+                ⚠️ Token 用量已达 {m.used} / 软限 {m.softLimit}（{m.level}）— 后续 prompt 已压缩
+              </div>
+            );
+          }
+          if (m.type === 'error') {
+            return (
+              <div key={i} className="rounded border border-red-200 bg-red-50 px-3 py-2 text-center text-sm text-red-800">
+                ⚠️ {m.message}
+              </div>
+            );
+          }
+          return null;
+        });
+      })()}
     </div>
   );
 }
