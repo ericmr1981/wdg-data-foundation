@@ -41,3 +41,22 @@ test('mix of Chinese and English in one input', () => {
   const r = splitSentences('你好 world. 再见！');
   assert.deepEqual(r, ['你好 world.', '再见！']);
 });
+
+test('inline backticks (not at line start) are not a fence', () => {
+  // The opening triple is mid-line, so it stays as plain text. The closing
+  // triple happens to be at line start, which opens a (never-closed) fence
+  // that EOF flushes as a single `` ``` `` block. Pinning current behavior.
+  const r = splitSentences('here is ```js\nfoo\n```');
+  assert.deepEqual(r, ['```']);
+});
+
+test('fence with 4+ backticks never closes within input but EOF flushes it', () => {
+  // First 3 backticks open a fence at line start. The 4th backtick is plain
+  // text inside the fence. With no closing triple, EOF flushes the fence
+  // block as-is.
+  assert.deepEqual(splitSentences('````'), ['````']);
+});
+
+test('three paragraphs split into three blocks', () => {
+  assert.deepEqual(splitSentences('a\n\nb\n\nc'), ['a', 'b', 'c']);
+});

@@ -1,15 +1,15 @@
 // Split a streaming assistant text buffer into sentence/paragraph blocks.
 // Rules (priority order):
-//   1. Code fences ```...``` (single-level) are preserved as a single block.
+//   1. Triple-backtick fences (single-level) at line start are preserved as a
+//      single block; leading prose on the same line stays attached.
 //   2. Paragraph break \n\n splits blocks.
-//   3. Sentence terminators (。！？.!? plus optional trailing whitespace) split
-//      blocks; the terminator stays with the preceding segment.
+//   3. Sentence terminators (。！？.!? — any of them) flush the buffer; the
+//      terminator stays with the preceding segment.
 //   4. Whitespace-only fragments are dropped.
-//   5. Any segment longer than 800 chars with no terminator is returned as-is
-//      (prevents a giant bubble from a long code block).
+// Inline backticks (not at line start) are not treated as a fence — they
+// remain in the buffer as plain text.
 
-const TERMINATORS = /([。！？\.!?])/g;
-const MAX_BLOCK_CHARS = 800;
+const TERMINATOR_CHARS = new Set(['。', '！', '？', '.', '!', '?']);
 
 export function splitSentences(input: string): string[] {
   if (!input) return [];
@@ -30,8 +30,8 @@ export function splitSentences(input: string): string[] {
     if (ch === '`' && input[i + 1] === '`' && input[i + 2] === '`') {
       const atLineStart = i === 0 || input[i - 1] === '\n';
       if (atLineStart && !inFence) {
-        // Start of a fence: prepend whatever was in buf (e.g. "code:\n") so
-        // the fence block keeps its leading prose attached.
+        // Stash the buffer so leading prose on this line (e.g. "code:\n")
+        // stays attached to the closed fence block at EOF.
         fenceStartBuf = buf;
         buf = '';
         inFence = true;
@@ -49,9 +49,8 @@ export function splitSentences(input: string): string[] {
         buf += '```';
         i += 2;
         inFence = false;
-        // Re-attach leading prose to the closed fence block; do not flush
-        // yet — let any following text on the same line stay in the block
-        // until a paragraph break or terminator arrives.
+        // Re-attach leading prose; do not flush yet so following text on the
+        // same logical line stays in the block until a terminator/paragraph.
         buf = fenceStartBuf + buf;
         fenceStartBuf = '';
         continue;
@@ -71,8 +70,7 @@ export function splitSentences(input: string): string[] {
 
     buf += ch;
 
-    // Sentence-terminator split: any of 。！？.!? flushes the buffer.
-    if (/[。！？\.!?]/.test(ch)) {
+    if (TERMINATOR_CHARS.has(ch)) {
       flush();
     }
   }
