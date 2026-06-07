@@ -101,3 +101,29 @@ COMMENT ON TABLE ops.notification_read IS '每用户已读位';
 COMMENT ON TABLE ops.report_file IS '月报表 xlsx 文件元数据';
 COMMENT ON TABLE ops.notification_schedule IS '调度配置 (cron + 品牌过滤),可运行时改';
 COMMENT ON TABLE ops.notification_schedule_run IS '调度执行历史,与 ops.pipeline_step_run 思路一致';
+
+-- ============================================================
+-- v2 additions (2026-06-07):
+--   ops.service_token: for non-cookie machine-to-machine auth (e.g. sweep daemon → Next.js batch API)
+--   ops.notification.related_uuid: stores UUID refs (e.g. ops.approval_proposals.batch_id);
+--     the existing related_id BIGINT remains for numeric refs
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS ops.service_token (
+    id            SERIAL PRIMARY KEY,
+    name          VARCHAR(80) UNIQUE NOT NULL,
+    token_hash    VARCHAR(64) NOT NULL,
+    enabled       BOOLEAN NOT NULL DEFAULT true,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_used_at  TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_token_name
+    ON ops.service_token (name) WHERE enabled = true;
+
+ALTER TABLE ops.notification ADD COLUMN IF NOT EXISTS related_uuid VARCHAR(64);
+CREATE INDEX IF NOT EXISTS idx_notification_related_uuid
+    ON ops.notification (related_uuid) WHERE related_uuid IS NOT NULL;
+
+COMMENT ON TABLE ops.service_token IS 'Service-to-service auth tokens (SHA-256 hash stored; raw token only in env)';
+COMMENT ON COLUMN ops.notification.related_uuid IS 'Optional UUID ref (e.g. approval_proposals.batch_id)';
