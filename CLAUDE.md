@@ -193,6 +193,8 @@ bank_txn → fn_classify() → bank_txn_classified_snapshot (BASE TABLE)
 **入口**:`scripts/run_notification_sweep.py --task {name} --brands {csv}` 手动跑;详见 `docs/superpowers/specs/2026-06-07-notifications-design.md`。
 **部署**:VPS `systemctl enable --now wdg-scheduler`,详见 `docs/LOCAL_STARTUP.md` 末段。
 
+**v2 增量**: 未配条目现在会自动调 Claude 分析并写入 `ops.approval_proposal` 等待审批。提醒的 `action_url` 指向 `/u/approvals?source=unmatched&brand=...&batch=...&filter=pending`,审批页顶部显示批次横幅。`sweep_notifications.py` 通过 `X-Service-Token` 头调 `/api/admin/analyze-unclassified`,service token 存 `ops.service_token` 表(SHA-256 哈希,raw 仅在 env)。
+
 ## Documentation Index
 
 | 文档 | 位置 | 内容 |
