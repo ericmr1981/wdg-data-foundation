@@ -15,6 +15,13 @@ export function ChatWidget() {
   const aborterRef = useRef<AbortController | null>(null);
   const assistantBufferRef = useRef<string>('');
   const toolCallsRef = useRef<Map<string, ToolCallLite>>(new Map());
+  // When true, the current turn is being served by the new server's text_block
+  // path. In that mode, text_delta events are still received (the server
+  // emits both for backward compat) but they must NOT trigger message creation
+  // — otherwise each sentence would render twice (once from text_delta's
+  // buffer flush, once from the text_block push). Reset to false at the start
+  // of each new user turn.
+  const textBlockModeRef = useRef<boolean>(false);
 
   // Cmd/Ctrl+K global toggle
   useEffect(() => {
@@ -55,6 +62,7 @@ export function ChatWidget() {
     setStreaming(true);
     assistantBufferRef.current = '';
     toolCallsRef.current = new Map();
+    textBlockModeRef.current = false;
 
     const controller = new AbortController();
     aborterRef.current = controller;
@@ -106,6 +114,7 @@ export function ChatWidget() {
             // Per-sentence chunk from server's splitSentences. Each block is a
             // complete sentence; push as a new assistant_text message so
             // MessageList's FadeInBlock animates it.
+            textBlockModeRef.current = true;  // suppress any further text_delta message creation this turn
             setMessages(m => [...m, { type: 'assistant_text', content: evt.text, ts: Date.now() }]);
             // Reset the legacy buffer state so the next text_delta (if any
             // arrives in fallback mode) creates a fresh message instead of
@@ -115,9 +124,16 @@ export function ChatWidget() {
             assistantStarted = false;
           } else if (evt.type === 'text_delta' && typeof evt.text === 'string') {
             // Fallback / old-server path: accumulate in legacy buffer.
+            // BUT: when the server is also emitting text_block (new server),
+            // text_delta fires BEFORE the corresponding text_block for the
+            // same text. If we rendered the buffer here we'd duplicate every
+            // sentence. Suppress message creation in text_block mode — the
+            // text_block handler will render the final sentence.
             assistantBufferRef.current += evt.text;
             lastAssistantTs = Date.now();
-            flushAssistantText();
+            if (!textBlockModeRef.current) {
+              flushAssistantText();
+            }
           } else if (evt.type === 'thinking_delta' && typeof evt.text === 'string') {
             // Append to the last 'thinking' block, or create one
             setMessages(m => {
