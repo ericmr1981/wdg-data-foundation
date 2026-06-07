@@ -15,13 +15,6 @@ export function ChatWidget() {
   const aborterRef = useRef<AbortController | null>(null);
   const assistantBufferRef = useRef<string>('');
   const toolCallsRef = useRef<Map<string, ToolCallLite>>(new Map());
-  // When true, the current turn is being served by the new server's text_block
-  // path. In that mode, text_delta events are still received (the server
-  // emits both for backward compat) but they must NOT trigger message creation
-  // — otherwise each sentence would render twice (once from text_delta's
-  // buffer flush, once from the text_block push). Reset to false at the start
-  // of each new user turn.
-  const textBlockModeRef = useRef<boolean>(false);
 
   // Cmd/Ctrl+K global toggle
   useEffect(() => {
@@ -62,7 +55,6 @@ export function ChatWidget() {
     setStreaming(true);
     assistantBufferRef.current = '';
     toolCallsRef.current = new Map();
-    textBlockModeRef.current = false;
 
     const controller = new AbortController();
     aborterRef.current = controller;
@@ -113,27 +105,29 @@ export function ChatWidget() {
           if (evt.type === 'text_block' && typeof evt.text === 'string') {
             // Per-sentence chunk from server's splitSentences. Each block is a
             // complete sentence; push as a new assistant_text message so
-            // MessageList's FadeInBlock animates it.
-            textBlockModeRef.current = true;  // suppress any further text_delta message creation this turn
+            // MessageList's FadeInBlock animates it. text_delta events for
+            // the same text also arrive (server emits both for compat) but
+            // are deliberately NOT rendered — see the text_delta branch.
             setMessages(m => [...m, { type: 'assistant_text', content: evt.text, ts: Date.now() }]);
-            // Reset the legacy buffer state so the next text_delta (if any
-            // arrives in fallback mode) creates a fresh message instead of
-            // appending to the just-emitted text_block.
+            // Reset the legacy buffer state so a future text_delta doesn't
+            // leave a half-populated buffer around.
             assistantBufferRef.current = '';
             lastAssistantTs = Date.now();
             assistantStarted = false;
           } else if (evt.type === 'text_delta' && typeof evt.text === 'string') {
-            // Fallback / old-server path: accumulate in legacy buffer.
-            // BUT: when the server is also emitting text_block (new server),
-            // text_delta fires BEFORE the corresponding text_block for the
-            // same text. If we rendered the buffer here we'd duplicate every
-            // sentence. Suppress message creation in text_block mode — the
-            // text_block handler will render the final sentence.
+            // The new server emits BOTH text_delta and text_block for every
+            // text block (text_delta is kept for backward compat). Push a
+            // message ONLY from text_block (the per-sentence chunked event);
+            // here, just accumulate into the buffer for any legacy / fallback
+            // code paths that read it. Never call flushAssistantText() in
+            // this handler — that would render the raw block text a second
+            // time on top of the text_block bubble.
             assistantBufferRef.current += evt.text;
             lastAssistantTs = Date.now();
-            if (!textBlockModeRef.current) {
-              flushAssistantText();
-            }
+            // Note: do NOT call flushAssistantText() here. The old code path's
+            // "single big bubble" behavior is no longer used; if text_block
+            // never arrives the user simply doesn't see streaming bubbles
+            // for this turn, and history will be restored on next page load.
           } else if (evt.type === 'thinking_delta' && typeof evt.text === 'string') {
             // Append to the last 'thinking' block, or create one
             setMessages(m => {
