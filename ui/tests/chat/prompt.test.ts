@@ -116,3 +116,32 @@ test('buildSystemPrompt without customInstructions omits the section', () => {
   const out = buildSystemPrompt({}, baseTools);
   assert.doesNotMatch(out, /Custom Instructions/);
 });
+
+test('buildSystemPrompt includes the financial rate rule (cash-basis, decimal, prefer overview)', () => {
+  const out = buildSystemPrompt({}, baseTools);
+  assert.match(out, /cash-basis|cash basis|收付实现制/i);
+  assert.match(out, /grossMarginRate/);
+  assert.match(out, /netProfitRate/);
+  assert.match(out, /query_financial_overview/);
+  assert.match(out, /decimal|0\.42|0\.35/i);
+});
+
+test('buildSystemPrompt warns not to confuse vsPrevPeriod with current period', () => {
+  const out = buildSystemPrompt({}, baseTools);
+  assert.match(out, /vsPrevPeriod/);
+  assert.match(out, /do not confuse|current period/i);
+});
+
+test('buildSystemPrompt compact mode keeps the financial rate rule', () => {
+  const out = buildSystemPrompt({}, baseTools, { compact: true });
+  // Core financial rule must survive compaction.
+  assert.match(out, /query_financial_overview/);
+  assert.match(out, /grossMarginRate/);
+});
+
+test('buildSystemPrompt distinguishes decimal *Rate fields from percent *_pct fields', () => {
+  const out = buildSystemPrompt({}, baseTools);
+  // The rule should mention both conventions so the model picks correctly.
+  assert.match(out, /grossMarginRate|netProfitRate/);
+  assert.match(out, /gross_profit_rate_pct|net_profit_rate_pct/);
+});
