@@ -1,6 +1,6 @@
 // ui/src/lib/chat/use-drawer-state.ts
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 
 const KEY = 'wdg.chat.drawer.v1';
 const MIN_W = 320;
@@ -49,6 +49,15 @@ export function useDrawerState(): UseDrawerStateResult {
   const [open, setOpenState] = useState(false);
   const [width, setWidthState] = useState(DEF_W);
 
+  // Keep refs in sync with state so the callbacks below can read the latest
+  // values without depending on state in their useCallback deps — this keeps
+  // the callback identities stable across renders (callers like
+  // useEffect([toggle]) won't churn listeners on every state change).
+  const openRef = useRef(open);
+  const widthRef = useRef(width);
+  openRef.current = open;
+  widthRef.current = width;
+
   useEffect(() => {
     const p = readPersisted();
     if (p) {
@@ -59,16 +68,16 @@ export function useDrawerState(): UseDrawerStateResult {
 
   const setOpen = useCallback((v: boolean) => {
     setOpenState(v);
-    writePersisted({ open: v, width });
-  }, [width]);
+    writePersisted({ open: v, width: widthRef.current });
+  }, []);
 
   const setWidth = useCallback((v: number) => {
     const clamped = Math.max(MIN_W, Math.min(MAX_W, v));
     setWidthState(clamped);
-    writePersisted({ open, width: clamped });
-  }, [open]);
+    writePersisted({ open: openRef.current, width: clamped });
+  }, []);
 
-  const toggle = useCallback(() => setOpen(!open), [open]);
+  const toggle = useCallback(() => setOpen(!openRef.current), []);
 
   return { open, width, setOpen, setWidth, toggle };
 }
