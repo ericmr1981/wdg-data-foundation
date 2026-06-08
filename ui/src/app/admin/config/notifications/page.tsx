@@ -39,6 +39,47 @@ const TASK_DESC: Record<string, string> = {
   monthly_report: '每月 6 日生成上月月报',
 };
 
+function describeCron(expr: string): string {
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length !== 5) return '自定义';
+  const [min, hour, dom, mon, dow] = parts;
+
+  // 每 X 分钟
+  if (min.startsWith('*/') && hour === '*' && dom === '*' && mon === '*' && dow === '*') {
+    return `每 ${min.slice(2)} 分钟`;
+  }
+  // 每分钟
+  if (min === '*' && hour === '*' && dom === '*' && mon === '*' && dow === '*') {
+    return '每分钟';
+  }
+  // 每 X 小时
+  if (min === '0' && hour.startsWith('*/') && dom === '*' && mon === '*' && dow === '*') {
+    return `每 ${hour.slice(2)} 小时`;
+  }
+  // 每周 X day_of_week HH:MM
+  if (min !== '*' && hour !== '*' && dom === '*' && mon === '*' && /^\d+$/.test(dow)) {
+    const days = ['日', '一', '二', '三', '四', '五', '六'];
+    return `每周${days[Number(dow)] || dow} ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`;
+  }
+  // 每月 X 日 HH:MM
+  if (min !== '*' && hour !== '*' && /^\d+$/.test(dom) && mon === '*' && dow === '*') {
+    return `每月 ${dom} 日 ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`;
+  }
+  // 每年 X 月 X 日 HH:MM
+  if (min !== '*' && hour !== '*' && /^\d+$/.test(dom) && /^\d+$/.test(mon) && dow === '*') {
+    return `每年 ${mon} 月 ${dom} 日 ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`;
+  }
+  // 每日 HH:MM
+  if (min !== '*' && hour !== '*' && dom === '*' && mon === '*' && dow === '*') {
+    return `每日 ${hour.padStart(2, '0')}:${min.padStart(2, '0')}`;
+  }
+  // 每小时整点
+  if (min === '0' && hour === '*' && dom === '*' && mon === '*' && dow === '*') {
+    return '每小时整点';
+  }
+  return '自定义';
+}
+
 function fmtTs(s: string | null): string {
   if (!s) return '-';
   return new Date(s).toLocaleString('zh-CN', {
@@ -197,6 +238,9 @@ export default function NotificationsConfigPage() {
                         ))}
                       </select>
                     </div>
+                    <div className="text-[11px] text-zinc-500 mt-1.5 font-mono">
+                      → {describeCron(row.cron_expr) || '(空)'}
+                    </div>
                   </td>
                   <td className="py-3 px-3 align-top">
                     <div className="flex items-center gap-4 text-xs">
@@ -209,9 +253,14 @@ export default function NotificationsConfigPage() {
                               checked={checked}
                               onChange={(e) => {
                                 const cur = new Set(brandList);
-                                if (e.target.checked) cur.add(b);
-                                else cur.delete(b);
-                                const next = cur.size === BRANDS.length ? null : Array.from(cur).join(',');
+                                if (e.target.checked) {
+                                  cur.add(b);
+                                } else {
+                                  cur.delete(b);
+                                }
+                                const next = cur.size === 0 || cur.size === BRANDS.length
+                                  ? null
+                                  : Array.from(cur).sort().join(',');
                                 updateRow(row.id, { brands_filter: next });
                               }}
                               className="h-3.5 w-3.5 rounded border-zinc-300 accent-emerald-600"
