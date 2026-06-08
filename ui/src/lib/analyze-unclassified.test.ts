@@ -24,7 +24,7 @@ test('parseModelResponse throws on non-array', () => {
 
 test('buildUserPrompt embeds txn JSON', () => {
   const prompt = buildUserPrompt('tamkoko', [
-    { bank_txn_id: 1, txn_time: '2026-06-01', summary: '工资', memo: null, purpose: null, counterparty_name: '员工', in_amt: 0, out_amt: 100 },
+    { bank_txn_id: 1, source_file_id: 1, txn_time: '2026-06-01', summary: '工资', memo: null, purpose: null, counterparty_name: '员工', in_amt: 0, out_amt: 100 },
   ]);
   assert.ok(prompt.includes('tamkoko'));
   assert.ok(prompt.includes('"bank_txn_id": 1'));
