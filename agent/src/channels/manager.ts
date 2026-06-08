@@ -1,18 +1,12 @@
 // agent/src/channels/manager.ts
-// Stub — T6 (WebChannel) 之后会重写
-// ChannelManager 的最小接口,供 WebChannel 注入
+// 入口: 收 IncomingMsg, 决定走 AgentRunner 即时对话 还是 TaskScheduler 长任务
+// T15 之后会接 AgentRunner; T18 之后会接 TaskScheduler
+import type { IncomingMsg } from './types.ts'
 
-import type { ChannelId, IncomingMsg, OutgoingMsg } from './types.ts'
-
-export interface Channel {
-  readonly channelId: ChannelId
-  start(): Promise<void>
-  stop(): Promise<void>
-  send(msg: OutgoingMsg): Promise<void>
-}
-
-export interface ChannelManager {
-  register(channel: Channel): void
-  unregister(channelId: ChannelId): void
-  dispatchIncoming(msg: IncomingMsg): Promise<void>
+export class ChannelManager {
+  async onIncoming(_msg: IncomingMsg): Promise<void> {
+    // v1 早期: 走 AgentRunner / TaskScheduler 留到 T15/T18
+    // 这里暂时只 echo, 验证链路
+    console.log('[ChannelManager] received msg (T15 will hook AgentRunner)')
+  }
 }
