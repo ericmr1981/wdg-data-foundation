@@ -119,3 +119,35 @@ SELECT * FROM yufeng_dm.profit_monthly  ORDER BY month DESC;
 - 端到端验收跑法：`docs/ACCEPTANCE_RUNBOOK.md`
 - 本地测试 checklist：`docs/LOCAL_TEST_CHECKLIST.md`
 - 一次真实跑通记录：`docs/REAL_RUN_2026-03-22.md`
+
+## Agent Service (v1 新增)
+
+启动后验证:
+
+```bash
+# 健康检查
+curl http://localhost:4101/health
+# {"status":"ok"}
+
+# Metrics
+curl http://localhost:4101/metrics | head -3
+# 输出 prometheus 格式 (agent_llm_call_total 等)
+```
+
+切流到 agent:
+
+```bash
+# 改 .env
+echo "NEXT_PUBLIC_AGENT_ROLLOUT_PERCENT=100" >> .env
+docker compose restart ui
+```
+
+回滚到 v0 chat:
+
+```bash
+# 改回 0
+sed -i '' 's/NEXT_PUBLIC_AGENT_ROLLOUT_PERCENT=.*/NEXT_PUBLIC_AGENT_ROLLOUT_PERCENT=0/' .env
+docker compose restart ui
+```
+
+查看任务执行历史: 浏览器打开 http://localhost:4100/u/notifications
