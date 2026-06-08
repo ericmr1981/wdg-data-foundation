@@ -4,8 +4,7 @@
 // Regexes + error codes per docs/superpowers/specs/2026-06-08-agent-create-store-design.md §2.1.
 // The whitelist is the security valve (§5.4) — `rule_snapshot_tables` must be a bare,
 // whitelisted identifier; schema-qualified names and system tables are rejected.
-// @ts-ignore
-import pool from './db.ts';
+import pool from '@/lib/db';
 
 export const REQUIRED_BRAND_CODE_REGEX = /^[a-z][a-z0-9_]{1,31}$/;
 export const REQUIRED_STORE_CODE_REGEX = /^[a-z][a-z0-9_]{1,31}$/;
