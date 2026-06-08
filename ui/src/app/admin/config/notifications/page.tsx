@@ -23,13 +23,6 @@ interface RunRow {
   trigger_source: string | null;
 }
 
-const PRESETS: Array<{ label: string; expr: string }> = [
-  { label: '每日 09:00', expr: '0 9 * * *' },
-  { label: '每日 09:30', expr: '30 9 * * *' },
-  { label: '每月 6 日 06:00', expr: '0 6 6 * *' },
-  { label: '自定义', expr: '' },
-];
-
 const BRANDS = ['tamkoko', 'gelatomiiix', 'bonjur'] as const;
 
 const TASK_DESC: Record<string, string> = {
@@ -78,6 +71,44 @@ function describeCron(expr: string): string {
     return '每小时整点';
   }
   return '自定义';
+}
+
+function deriveFrequency(cron: string): 'daily' | 'weekly' | 'monthly' {
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return 'daily';
+  const [, , dom, mon, dow] = parts;
+  if (dow !== '*') return 'weekly';
+  if (dom !== '*' && mon === '*') return 'monthly';
+  return 'daily';
+}
+
+function deriveTime(cron: string): string {
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return '09:00';
+  const [min, hour] = parts;
+  if (min === '*' || hour === '*') return '09:00';
+  return `${hour.padStart(2, '0')}:${min.padStart(2, '0')}`;
+}
+
+function deriveDow(cron: string): string {
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return '1';
+  return parts[4];
+}
+
+function deriveDom(cron: string): string {
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length !== 5) return '1';
+  return parts[2];
+}
+
+function buildCron(freq: 'daily' | 'weekly' | 'monthly', time: string, dow: string, dom: string): string {
+  const [hh, mm] = time.split(':');
+  const minute = mm || '0';
+  const hour = hh || '9';
+  if (freq === 'weekly') return `${minute} ${hour} * * ${dow || '1'}`;
+  if (freq === 'monthly') return `${minute} ${hour} ${dom || '1'} * *`;
+  return `${minute} ${hour} * * *`;
 }
 
 function fmtTs(s: string | null): string {
@@ -216,30 +247,98 @@ export default function NotificationsConfigPage() {
                     />
                   </td>
                   <td className="py-3 px-3 align-top">
-                    <div className="flex items-center">
-                      <input
-                        type="text"
-                        className="w-44 font-mono text-sm border border-zinc-300 rounded-sm px-2 py-1 focus:outline-none focus:border-zinc-900"
-                        value={row.cron_expr}
-                        onChange={(e) => updateRow(row.id, { cron_expr: e.target.value })}
-                      />
-                      <select
-                        className="ml-2 text-xs border border-zinc-300 rounded-sm px-1 py-1 bg-white focus:outline-none focus:border-zinc-900"
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          if (v) updateRow(row.id, { cron_expr: v });
-                          e.currentTarget.value = '';
-                        }}
-                        defaultValue=""
-                      >
-                        <option value="" disabled>预设</option>
-                        {PRESETS.map((p) => (
-                          <option key={p.label} value={p.expr}>{p.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="text-[11px] text-zinc-500 mt-1.5 font-mono">
-                      → {describeCron(row.cron_expr) || '(空)'}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <select
+                          className="text-xs border border-zinc-300 rounded-sm px-1.5 py-1 bg-white focus:outline-none focus:border-zinc-900"
+                          value={deriveFrequency(row.cron_expr)}
+                          onChange={(e) =>
+                            updateRow(row.id, {
+                              cron_expr: buildCron(
+                                e.target.value as 'daily' | 'weekly' | 'monthly',
+                                deriveTime(row.cron_expr),
+                                deriveDow(row.cron_expr),
+                                deriveDom(row.cron_expr)
+                              ),
+                            })
+                          }
+                        >
+                          <option value="daily">每天</option>
+                          <option value="weekly">每周</option>
+                          <option value="monthly">每月</option>
+                        </select>
+                        <input
+                          type="time"
+                          className="text-xs border border-zinc-300 rounded-sm px-1.5 py-1 font-mono focus:outline-none focus:border-zinc-900"
+                          value={deriveTime(row.cron_expr)}
+                          onChange={(e) =>
+                            updateRow(row.id, {
+                              cron_expr: buildCron(
+                                deriveFrequency(row.cron_expr),
+                                e.target.value,
+                                deriveDow(row.cron_expr),
+                                deriveDom(row.cron_expr)
+                              ),
+                            })
+                          }
+                        />
+                        {deriveFrequency(row.cron_expr) === 'weekly' && (
+                          <div className="flex items-center gap-0.5">
+                            {['一', '二', '三', '四', '五', '六', '日'].map((label, i) => {
+                              const dow = i + 1 === 7 ? 0 : i + 1; // Sun=0
+                              const active = deriveDow(row.cron_expr) === String(dow);
+                              return (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  onClick={() =>
+                                    updateRow(row.id, {
+                                      cron_expr: buildCron(
+                                        deriveFrequency(row.cron_expr),
+                                        deriveTime(row.cron_expr),
+                                        String(dow),
+                                        deriveDom(row.cron_expr)
+                                      ),
+                                    })
+                                  }
+                                  className={`text-[10px] w-6 h-6 rounded-sm border ${
+                                    active
+                                      ? 'bg-zinc-900 text-white border-zinc-900'
+                                      : 'border-zinc-300 text-zinc-600 hover:bg-zinc-50'
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {deriveFrequency(row.cron_expr) === 'monthly' && (
+                          <div className="flex items-center gap-1 text-xs text-zinc-500">
+                            <span>日</span>
+                            <input
+                              type="number"
+                              min="1"
+                              max="31"
+                              className="w-12 text-xs border border-zinc-300 rounded-sm px-1.5 py-1 font-mono focus:outline-none focus:border-zinc-900"
+                              value={deriveDom(row.cron_expr)}
+                              onChange={(e) =>
+                                updateRow(row.id, {
+                                  cron_expr: buildCron(
+                                    deriveFrequency(row.cron_expr),
+                                    deriveTime(row.cron_expr),
+                                    deriveDow(row.cron_expr),
+                                    e.target.value
+                                  ),
+                                })
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-zinc-500 font-mono">
+                        → {describeCron(row.cron_expr) || '(空)'}
+                      </div>
                     </div>
                   </td>
                   <td className="py-3 px-3 align-top">
@@ -252,15 +351,20 @@ export default function NotificationsConfigPage() {
                               type="checkbox"
                               checked={checked}
                               onChange={(e) => {
-                                const cur = new Set(brandList);
+                                // Intent-first toggle: distinguish "was all" from "was empty"
+                                // so unchecking one of the 3 visible checked boxes yields 2,
+                                // not 3 (the previous "collapse to null" bug).
+                                const wasAll = brandList.length === 0;
+                                const cur = wasAll ? new Set<string>(BRANDS) : new Set(brandList);
                                 if (e.target.checked) {
                                   cur.add(b);
                                 } else {
                                   cur.delete(b);
                                 }
-                                const next = cur.size === 0 || cur.size === BRANDS.length
-                                  ? null
-                                  : Array.from(cur).sort().join(',');
+                                const next =
+                                  cur.size === 0 || cur.size === BRANDS.length
+                                    ? null
+                                    : Array.from(cur).sort().join(',');
                                 updateRow(row.id, { brands_filter: next });
                               }}
                               className="h-3.5 w-3.5 rounded border-zinc-300 accent-emerald-600"
