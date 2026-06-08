@@ -3,14 +3,7 @@ import pool from '@/lib/db';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { normalizeBrand, getCfgSchema } from '@/lib/brand-server';
 import { handleCreateStore, type CreateStoreInput, type Caller } from '@/lib/admin-stores';
-
-// TEMP: Task 6 will move this to @/lib/mcp-service-token with SHA-256 lookup
-// against ops.service_token. For now, inline env-compare stub so the route
-// compiles and manual smoke tests work.
-async function verifyMcpServiceToken(provided: string): Promise<boolean> {
-  const expected = process.env.WDG_SERVICE_TOKEN ?? '';
-  return provided.length > 0 && provided === expected;
-}
+import { verifyMcpServiceToken } from '@/lib/mcp-service-token';
 
 function normStoreCode(code: string) {
   const c = String(code || '').trim();
