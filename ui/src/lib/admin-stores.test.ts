@@ -1,5 +1,5 @@
 // ui/src/lib/admin-stores.test.ts
-import { test } from 'node:test';
+import { test, describe, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 // @ts-ignore
 import {
@@ -12,6 +12,8 @@ import {
   queryBrandEnabled,
   queryCfgSchemaAllowed,
   queryStoreByCode,
+  handleCreateStore,
+  ValidationError,
 } from './admin-stores.ts';
 
 test('assertBrandCode accepts valid brand code', () => {
@@ -75,4 +77,67 @@ test('queryCfgSchemaAllowed returns true for gelatomiiix cfg', async () => {
 test('queryStoreByCode returns null for nonexistent store', async () => {
   const row = await queryStoreByCode('gelatomiiix', 'nonexistent_store_xyz');
   assert.equal(row, null);
+});
+
+describe('handleCreateStore (integration, dev DB, transactional)', () => {
+  const TEST_BRAND = 'gelatomiiix';
+  const TEST_STORE_CODE = 'test_create_store_temp';
+  const TEST_STORE_NAME = '单元测试临时店';
+  const caller = { kind: 'admin_ui' as const, user: { id: 'unit-test', role: 'admin' as const } };
+
+  afterEach(async () => {
+    const pool = (await import('@/lib/db')).default;
+    await pool.query(`DELETE FROM ops.stores WHERE brand_code = $1 AND store_code = $2`, [TEST_BRAND, TEST_STORE_CODE]);
+    await pool.query(`DELETE FROM ${TEST_BRAND}_cfg.dim_store WHERE store_code = $1`, [TEST_STORE_CODE]);
+  });
+
+  test('creates store: writes ops.stores + {brand}_cfg.dim_store in one transaction', async () => {
+    const result = await handleCreateStore({
+      brand: TEST_BRAND,
+      store_code: TEST_STORE_CODE,
+      store_name: TEST_STORE_NAME,
+    }, caller);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.store.brand, TEST_BRAND);
+    assert.equal(result.store.store_code, TEST_STORE_CODE);
+    assert.equal(result.store.store_name, TEST_STORE_NAME);
+    assert.equal(result.store.enabled, true);
+    assert.equal(result.store.updated, false);
+
+    const pool = (await import('@/lib/db')).default;
+    const opsRow = await pool.query(
+      `SELECT * FROM ops.stores WHERE brand_code = $1 AND store_code = $2`,
+      [TEST_BRAND, TEST_STORE_CODE],
+    );
+    assert.equal(opsRow.rowCount, 1);
+    const cfgRow = await pool.query(
+      `SELECT * FROM ${TEST_BRAND}_cfg.dim_store WHERE store_code = $1`,
+      [TEST_STORE_CODE],
+    );
+    assert.equal(cfgRow.rowCount, 1);
+  });
+
+  test('idempotent: second call updates store_name and sets updated=true', async () => {
+    await handleCreateStore(
+      { brand: TEST_BRAND, store_code: TEST_STORE_CODE, store_name: TEST_STORE_NAME },
+      caller,
+    );
+    const result = await handleCreateStore(
+      { brand: TEST_BRAND, store_code: TEST_STORE_CODE, store_name: '新名字' },
+      caller,
+    );
+    assert.equal(result.store.updated, true);
+    assert.equal(result.store.store_name, '新名字');
+  });
+
+  test('rejects nonexistent brand with brand_not_found', async () => {
+    await assert.rejects(
+      handleCreateStore(
+        { brand: 'nonexistent_brand_xyz', store_code: 'temp', store_name: 'temp' },
+        caller,
+      ),
+      (err: any) => err instanceof ValidationError && err.code === 'brand_not_found',
+    );
+  });
 });
