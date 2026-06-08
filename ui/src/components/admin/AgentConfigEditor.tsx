@@ -48,6 +48,8 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
   const [model, setModel] = useState(initial.model);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<any>(null);
 
   const dirty = agentMd !== initial.agentMd
     || (Object.keys(params) as Array<keyof AgentConfigParams>).some(k => params[k] !== initial.params[k])
@@ -90,6 +92,20 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
       setMessage('❌ 重置失败：' + (e as Error).message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleTestConnection() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await fetch('/api/admin/test-connection', { method: 'POST' });
+      const data = await r.json();
+      setTestResult(data);
+    } catch (e) {
+      setTestResult({ success: false, error: 'fetch_failed', message: (e as Error).message });
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -237,8 +253,25 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
         >
           重置默认
         </button>
+        <button
+          onClick={handleTestConnection}
+          disabled={testing || saving}
+          className="rounded border border-blue-300 px-4 py-2 text-sm text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+        >
+          {testing ? 'Testing…' : 'Test Connection'}
+        </button>
         {message && <span className="text-sm text-gray-700">{message}</span>}
       </div>
+      {testResult && (
+        <div className={`mt-3 rounded p-3 text-sm ${testResult.success ? 'bg-green-50 text-green-900' : 'bg-red-50 text-red-900'}`}>
+          <div className="font-semibold">
+            {testResult.success ? '✅' : '❌'} {testResult.message}
+          </div>
+          <pre className="mt-1 whitespace-pre-wrap break-all text-xs">
+{JSON.stringify(testResult.details ?? testResult.error, null, 2)}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }
