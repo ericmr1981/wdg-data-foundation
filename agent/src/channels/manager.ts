@@ -1,8 +1,8 @@
 // agent/src/channels/manager.ts
-import type { IncomingMsg, OutgoingMsg } from './types.ts'
-import type { AgentRunner } from '../agent/runner.ts'
-import type { TaskScheduler } from '../tasks/scheduler.ts'
-import type { WebChannel } from './web.ts'
+import type { IncomingMsg, OutgoingMsg } from './types'
+import type { AgentRunner } from '../agent/runner'
+import type { TaskScheduler } from '../tasks/scheduler'
+import type { WebChannel } from './web'
 
 export class ChannelManager {
   constructor(

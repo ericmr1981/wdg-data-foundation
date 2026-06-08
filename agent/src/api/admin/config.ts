@@ -2,9 +2,9 @@
 import type { FastifyInstance } from 'fastify'
 import {
   getAgentConfig, setAgentMd, setParams, setCredentialConfig, resetAgentConfig, DEFAULT_PARAMS,
-} from '../../config/store.ts'
+} from '../../config/store'
 import { writeFileSync } from 'fs'
-import { AGENT_MD_FILE_PATH } from '../../config/agent-md-loader.ts'
+import { AGENT_MD_FILE_PATH } from '../../config/agent-md-loader'
 
 export function registerAdminConfigRoutes(app: FastifyInstance) {
   // 鉴权: 仅 admin

@@ -1,8 +1,8 @@
 // agent/src/mcp/bridge.ts
 // 调既有 /api/mcp 的 JSON-RPC 客户端
 
-import { McpError, mapMcpError } from '../errors.ts'
-import type { AgentConfig } from '../config/store.ts'
+import { McpError, mapMcpError } from '../errors'
+import type { AgentConfig } from '../config/store'
 
 export interface McpCallResult {
   success: boolean

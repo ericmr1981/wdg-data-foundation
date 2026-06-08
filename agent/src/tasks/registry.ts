@@ -1,5 +1,5 @@
 // agent/src/tasks/registry.ts
-import type { TaskHandler } from './types.ts'
+import type { TaskHandler } from './types'
 
 const handlers = new Map<string, TaskHandler>()
 

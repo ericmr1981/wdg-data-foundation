@@ -2,7 +2,7 @@
 // ConfigStore — Agent 进程内的配置存储 (复制自 v0 ui/src/lib/chat/agent-config-store.ts)
 // 保持 API 兼容, 单一来源, 进程内 in-memory, 鉴权由 admin API 调用方负责
 
-import { loadDefaultAgentMd } from './agent-md-loader.ts'
+import { loadDefaultAgentMd } from './agent-md-loader'
 
 // ─── 类型 ───────────────────────────
 

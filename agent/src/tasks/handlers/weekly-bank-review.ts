@@ -1,7 +1,7 @@
 // agent/src/tasks/handlers/weekly-bank-review.ts
-import { registerTaskHandler } from '../registry.ts'
-import type { TaskRow, TaskStepUpdate } from '../types.ts'
-import type { McpBridge } from '../../mcp/bridge.ts'
+import { registerTaskHandler } from '../registry'
+import type { TaskRow, TaskStepUpdate } from '../types'
+import type { McpBridge } from '../../mcp/bridge'
 
 export function registerWeeklyBankReview(mcpBridge: McpBridge): void {
   registerTaskHandler('weekly_bank_review', async function* (task: TaskRow): AsyncGenerator<TaskStepUpdate> {

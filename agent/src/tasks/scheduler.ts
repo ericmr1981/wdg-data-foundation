@@ -1,9 +1,9 @@
 // agent/src/tasks/scheduler.ts
 import type { Pool } from 'pg'
-import type { TaskDefinition, TaskRow, TaskStepUpdate } from './types.ts'
-import { getHandler } from './registry.ts'
-import type { Notifier } from '../notifications/notifier.ts'
-import type { McpBridge } from '../mcp/bridge.ts'
+import type { TaskDefinition, TaskRow, TaskStepUpdate } from './types'
+import { getHandler } from './registry'
+import type { Notifier } from '../notifications/notifier'
+import type { McpBridge } from '../mcp/bridge'
 
 const POLL_INTERVAL_MS = 1000
 

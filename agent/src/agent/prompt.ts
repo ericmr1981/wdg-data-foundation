@@ -1,7 +1,7 @@
 // agent/src/agent/prompt.ts
-import { listSkillDescriptions, getSkillFullText } from '../skills/registry.ts'
+import { listSkillDescriptions, getSkillFullText } from '../skills/registry'
 import type Anthropic from '@anthropic-ai/sdk'
-import { loadSkillTool } from '../skills/load-skill-tool.ts'
+import { loadSkillTool } from '../skills/load-skill-tool'
 
 export interface PageCtx {
   brand?: string | null

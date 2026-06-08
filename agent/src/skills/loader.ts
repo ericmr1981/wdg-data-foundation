@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import matter from 'gray-matter'
-import type { Skill, SkillFrontmatter } from './types.ts'
+import type { Skill, SkillFrontmatter } from './types'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
