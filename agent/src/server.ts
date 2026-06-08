@@ -17,6 +17,8 @@ import { ChannelManager } from './channels/manager.js'
 import { TaskScheduler } from './tasks/scheduler.js'
 import { registerWeeklyBankReview } from './tasks/handlers/weekly-bank-review.js'
 import { registerAdminConfigRoutes } from './api/admin/config.js'
+import { registerAdminTaskRoutes } from './api/admin/tasks.js'
+import { registerAdminCronRoutes } from './api/admin/cron.js'
 import { registerTestConnectionRoute } from './api/admin/test-connection.js'
 import { registerAdminSkillRoutes } from './api/admin/skills.js'
 import { getMetrics } from './metrics/server.js'
@@ -74,7 +76,7 @@ async function main() {
   )
   scheduler.start()
 
-  // Admin API
+  // Admin API (config / test / skills, 不依赖 channels)
   registerAdminConfigRoutes(app)
   registerTestConnectionRoute(app)
   registerAdminSkillRoutes(app)
@@ -88,6 +90,10 @@ async function main() {
   ;(webChannel as any).manager = manager  // inject
 
   const cronChannel = new CronChannel(manager, process.env.CRON_TIMEZONE ?? 'Asia/Shanghai')
+
+  // Admin API (tasks / cron, 依赖 scheduler + cronChannel)
+  registerAdminTaskRoutes(app, scheduler)
+  registerAdminCronRoutes(app, cronChannel)
 
   await webChannel.start()
   await cronChannel.start()

@@ -12,7 +12,7 @@ interface CronEntry {
 export class CronChannel implements Channel {
   channelId = 'cron' as const
   private tasks: cron.ScheduledTask[] = []
-  private entries: CronEntry[] = [
+  entries: CronEntry[] = [
     { schedule: process.env.CRON_WEEKLY_REVIEW ?? '0 9 * * 1', taskType: 'weekly_bank_review', metadata: { brand: null } },
   ]
 
