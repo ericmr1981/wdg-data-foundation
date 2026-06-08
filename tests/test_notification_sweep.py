@@ -140,22 +140,9 @@ def test_monthly_report_smoke(conn, tmp_path):
     assert n >= 0
 
 
-# === unmatched_txn v2 (analyze API integration) ===
+# === unmatched_txn v1 (reverted — defer analysis to agent module) ===
 
-def test_sweep_unmatched_txn_calls_analyze_api_and_writes_batch_notification(conn, monkeypatch):
-    """When analyze API returns a batch_id + proposals > 0, sweep writes a notification with related_uuid."""
-    fake_api_result = {
-        'batch_id': 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
-        'proposals_created': 5,
-        'errors': [],
-    }
-    monkeypatch.setattr('scripts.notification_sweep.call_analyze_api', lambda brand, ids: fake_api_result)
+def test_sweep_unmatched_txn_v1_smoke(conn):
+    """Reverted to v1: just detect + write notification with /match?status=unclassified action_url."""
     n = sweep_unmatched_txn(conn, brands=['gelatomiiix'])
-    assert n >= 0  # smoke test — just verify no crash
-
-
-def test_sweep_unmatched_txn_handles_api_failure_with_no_analysis_notice(conn, monkeypatch):
-    """When analyze API returns None, sweep writes a ':no-analysis' notification."""
-    monkeypatch.setattr('scripts.notification_sweep.call_analyze_api', lambda brand, ids: None)
-    n = sweep_unmatched_txn(conn, brands=['gelatomiiix'])
-    assert n >= 0  # smoke test — just verify no crash
+    assert n >= 0  # smoke test
