@@ -1,7 +1,7 @@
 // agent/src/channels/cron.ts
 import cron from 'node-cron'
-import type { Channel, IncomingMsg } from './types'
-import type { ChannelManager } from './manager'
+import type { Channel, IncomingMsg } from './types.js'
+import type { ChannelManager } from './manager.js'
 
 interface CronEntry {
   schedule: string

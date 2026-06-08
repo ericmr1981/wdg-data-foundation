@@ -1,7 +1,7 @@
 // agent/src/channels/web.ts
 import { WebSocketServer, WebSocket } from 'ws'
-import type { Channel, IncomingMsg, OutgoingMsg } from './types'
-import type { ChannelManager } from './manager'
+import type { Channel, IncomingMsg, OutgoingMsg } from './types.js'
+import type { ChannelManager } from './manager.js'
 
 interface Client {
   ws: WebSocket

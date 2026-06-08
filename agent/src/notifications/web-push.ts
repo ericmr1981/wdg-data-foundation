@@ -1,6 +1,6 @@
 // agent/src/notifications/web-push.ts
-import type { Notifier, Notification } from './notifier'
-import type { WebChannel } from '../channels/web'
+import type { Notifier, Notification } from './notifier.js'
+import type { WebChannel } from '../channels/web.js'
 
 export class WebNotifier implements Notifier {
   constructor(private webChannel: WebChannel) {}

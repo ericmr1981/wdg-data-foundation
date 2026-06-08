@@ -1,13 +1,13 @@
 // agent/src/agent/runner.ts
 import Anthropic from '@anthropic-ai/sdk'
-import { getAgentConfig, thinkingConfigFor } from '../config/store'
-import type { McpBridge } from '../mcp/bridge'
-import type { ConversationManager, IncomingMsg } from '../conversation/manager'
-import type { Notifier } from '../notifications/notifier'
-import { initRegistry as _ } from '../skills/registry'  // trigger init
-import { handleLoadSkill, LOAD_SKILL_NAME } from '../skills/load-skill-tool'
-import { buildSystemPrompt } from './prompt'
-import { LlmError, mapAnthropicError } from '../errors'
+import { getAgentConfig, thinkingConfigFor } from '../config/store.js'
+import type { McpBridge } from '../mcp/bridge.js'
+import type { ConversationManager, IncomingMsg } from '../conversation/manager.js'
+import type { Notifier } from '../notifications/notifier.js'
+import { initRegistry as _ } from '../skills/registry.js'  // trigger init
+import { handleLoadSkill, LOAD_SKILL_NAME } from '../skills/load-skill-tool.js'
+import { buildSystemPrompt } from './prompt.js'
+import { LlmError, mapAnthropicError } from '../errors.js'
 
 export interface AgentRunnerDeps {
   anthropic: Anthropic

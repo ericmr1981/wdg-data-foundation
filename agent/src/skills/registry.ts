@@ -1,6 +1,6 @@
 // agent/src/skills/registry.ts
-import type { Skill } from './types'
-import { loadAllSkills } from './loader'
+import type { Skill } from './types.js'
+import { loadAllSkills } from './loader.js'
 
 const registry = new Map<string, Skill>()
 

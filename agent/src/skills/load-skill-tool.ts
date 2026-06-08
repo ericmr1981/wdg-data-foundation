@@ -2,7 +2,7 @@
 // load_skill 作为 LLM 工具 — AgentRunner 特殊处理 (不走 MCP)
 
 import type Anthropic from '@anthropic-ai/sdk'
-import { getSkillFullText, listSkillNames } from './registry'
+import { getSkillFullText, listSkillNames } from './registry.js'
 
 export const LOAD_SKILL_NAME = 'load_skill'
 
