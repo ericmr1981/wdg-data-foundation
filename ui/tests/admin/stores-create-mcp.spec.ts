@@ -53,7 +53,7 @@ const DB_HOST = process.env.DB_HOST || 'localhost';
 const DB_PORT = parseInt(process.env.DB_PORT || '5433', 10);
 const DB_NAME = process.env.DB_NAME || 'agent_dev';
 const DB_USER = process.env.DB_USER || 'agent';
-const DB_PASSWORD = process.env.DB_PASSWORD || 'local-dev-only';
+const DB_PASSWORD = process.env.DB_PASSWORD || '';
 
 const TEST_BRAND = 'gelatomiiix';
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:4100';
@@ -125,13 +125,14 @@ function mcpCtx() {
 async function callCreateStore(
   ctx: Awaited<ReturnType<typeof mcpCtx>>,
   body: Record<string, unknown>,
-  extraHeaders: Record<string, string> = {},
-  options: { maxRedirects?: number } = {}
+  extraHeaders: Record<string, string> = {}
 ) {
+  // maxRedirects: 0 so the 307 (Next.js middleware redirect) shows up as 307,
+  // not as a 200 from the login page.
   return ctx.post('/api/admin/stores', {
     headers: { 'Content-Type': 'application/json', ...extraHeaders },
     data: body,
-    maxRedirects: options.maxRedirects ?? 0,
+    maxRedirects: 0,
   });
 }
 
