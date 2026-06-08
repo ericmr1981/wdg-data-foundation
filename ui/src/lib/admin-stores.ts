@@ -153,13 +153,14 @@ export async function handleCreateStore(
       throw new ValidationError('forbidden_mcp');
     }
 
-    const brandEnabled = await queryBrandEnabled(input.brand);
-    if (!brandEnabled) {
-      const exists = await client.query<{ 1: number }>(
-        `SELECT 1 FROM ops.brands WHERE brand_code = $1`,
-        [input.brand],
-      );
-      if ((exists.rowCount ?? 0) === 0) throw new ValidationError('brand_not_found');
+    const { rows: brandRows } = await client.query<{ enabled: boolean }>(
+      `SELECT enabled FROM ops.brands WHERE brand_code = $1`,
+      [input.brand],
+    );
+    if (brandRows.length === 0) {
+      throw new ValidationError('brand_not_found');
+    }
+    if (!brandRows[0].enabled) {
       throw new ValidationError('brand_disabled');
     }
     if (!(await queryCfgSchemaAllowed(input.brand))) {
@@ -184,6 +185,9 @@ export async function handleCreateStore(
     const updated = !storeRow.is_insert;
 
     const cfgSchema = `${input.brand}_cfg`;
+    // ${cfgSchema} is regex-validated by assertBrandCode (^[a-z][a-z0-9_]{1,31}$),
+    // so it's a safe identifier — Postgres rejects non-identifiers as schema names.
+    // Do NOT parameterize; parameterized form would break this SQL.
     await client.query(
       `INSERT INTO ${cfgSchema}.dim_store (store_code, store_name)
        VALUES ($1, $2)
