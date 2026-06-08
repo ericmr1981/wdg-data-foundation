@@ -1,12 +1,37 @@
 // agent/src/channels/manager.ts
-// 入口: 收 IncomingMsg, 决定走 AgentRunner 即时对话 还是 TaskScheduler 长任务
-// T15 之后会接 AgentRunner; T18 之后会接 TaskScheduler
-import type { IncomingMsg } from './types.ts'
+import type { IncomingMsg, OutgoingMsg } from './types.ts'
+import type { AgentRunner } from '../agent/runner.ts'
+import type { TaskScheduler } from '../tasks/scheduler.ts'
+import type { WebChannel } from './web.ts'
 
 export class ChannelManager {
-  async onIncoming(_msg: IncomingMsg): Promise<void> {
-    // v1 早期: 走 AgentRunner / TaskScheduler 留到 T15/T18
-    // 这里暂时只 echo, 验证链路
-    console.log('[ChannelManager] received msg (T15 will hook AgentRunner)')
+  constructor(
+    private webChannel: WebChannel,
+    private runner: AgentRunner,
+    private scheduler?: TaskScheduler,
+  ) {}
+
+  async onIncoming(msg: IncomingMsg): Promise<void> {
+    // 1. Cron 触发的, 走任务队列
+    if (msg.channelId === 'cron' && typeof msg.metadata?.taskType === 'string' && this.scheduler) {
+      await this.scheduler.enqueue({
+        taskType: msg.metadata.taskType as string,
+        input: msg.metadata,
+        triggeredBy: msg.userId,
+      })
+      return
+    }
+
+    // 2. 即时对话, 走 AgentRunner
+    const result = await this.runner.handle(msg)
+
+    // 3. 回推给原 channel
+    const reply: OutgoingMsg = {
+      channelId: msg.channelId,
+      conversationId: result.conversationId,
+      type: 'system_error',
+      payload: { text: result.text },
+    }
+    await this.webChannel.send(reply)
   }
 }
