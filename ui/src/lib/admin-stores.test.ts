@@ -147,6 +147,9 @@ describe('handleCreateStore with rule snapshot', () => {
   const TARGET_BRAND = 'gelatomiiix';
   const TEST_STORE = 'test_snapshot_temp';
   const DISABLED_SOURCE_STORE = 'test_source_disabled_temp';
+  // Real bonjur store in dev DB; used to assert the source_store_brand_mismatch
+  // error code (store exists, but under a different brand).
+  const CROSS_BRAND_SOURCE_STORE = 'wz_oh_wxc';
   const caller = { kind: 'admin_ui' as const, user: { id: 'unit-test', role: 'admin' as const } };
 
   afterEach(async () => {
@@ -165,7 +168,7 @@ describe('handleCreateStore with rule snapshot', () => {
       rule_snapshot_tables: ['bank_rule_map']
     }, caller);
     assert.equal(result.rule_snapshot?.applied, true);
-    const bankRuleEntry = result.rule_snapshot?.tables_skipped.find((t: any) => t.table === 'bank_rule_map');
+    const bankRuleEntry = result.rule_snapshot?.tables_skipped.find((t) => t.table === 'bank_rule_map');
     // dev DB `gelatomiiix_cfg.bank_rule_map` has no `store_code` column → reason ends in
     // "brand_level_shared_table_not_supported_in_v1". If a future schema adds the column,
     // the reason becomes "store_code_column_present_but_not_implemented_in_v1". Both are valid v1.
@@ -188,13 +191,26 @@ describe('handleCreateStore with rule snapshot', () => {
     );
   });
 
-  test('rejects cross-brand source_store', async () => {
+  test('rejects cross-brand source_store with source_store_brand_mismatch', async () => {
     await assert.rejects(
       handleCreateStore({
         brand: TARGET_BRAND,
         store_code: TEST_STORE,
         store_name: 'x',
-        rule_snapshot_source_store_code: 'wz_wxc', // bonjur 的 store
+        rule_snapshot_source_store_code: CROSS_BRAND_SOURCE_STORE, // bonjur 的 store
+        rule_snapshot_tables: ['bank_rule_map']
+      }, caller),
+      (err: any) => err.code === 'source_store_brand_mismatch'
+    );
+  });
+
+  test('rejects unknown source_store with source_store_not_found', async () => {
+    await assert.rejects(
+      handleCreateStore({
+        brand: TARGET_BRAND,
+        store_code: TEST_STORE,
+        store_name: 'x',
+        rule_snapshot_source_store_code: 'nonexistent_store_xyz',
         rule_snapshot_tables: ['bank_rule_map']
       }, caller),
       (err: any) => err.code === 'source_store_not_found'

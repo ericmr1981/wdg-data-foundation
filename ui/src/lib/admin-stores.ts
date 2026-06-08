@@ -5,6 +5,7 @@
 // The whitelist is the security valve (§5.4) — `rule_snapshot_tables` must be a bare,
 // whitelisted identifier; schema-qualified names and system tables are rejected.
 import pool from '@/lib/db';
+import type { UserRole } from '@/lib/auth-server';
 
 export const REQUIRED_BRAND_CODE_REGEX = /^[a-z][a-z0-9_]{1,31}$/;
 export const REQUIRED_STORE_CODE_REGEX = /^[a-z][a-z0-9_]{1,31}$/;
@@ -104,6 +105,24 @@ export async function queryStoreByCode(
 }
 
 /**
+ * Look up a single store by `store_code` across ALL brands. Used by the
+ * create_store source-validation path to distinguish three failure modes
+ * (spec §2.1): `source_store_not_found` (no row), `source_store_brand_mismatch`
+ * (row exists under a different brand), and `source_store_disabled`
+ * (row exists in the same brand but `enabled = false`).
+ */
+export async function queryStoreAcrossBrands(
+  storeCode: string,
+): Promise<{ brand: string; enabled: boolean } | null> {
+  const { rows } = await pool.query<{ brand: string; enabled: boolean }>(
+    `SELECT brand_code AS brand, enabled
+     FROM ops.stores WHERE store_code = $1`,
+    [storeCode],
+  );
+  return rows[0] ?? null;
+}
+
+/**
  * Returns true iff `column` exists on `${schema}.${table}` in the live DB.
  * Used to detect whether a cfg table is store-scoped (has store_code column)
  * or brand-shared (lacks it). Both schema and table are expected to be
@@ -126,8 +145,8 @@ export async function columnExists(client: any, schema: string, table: string, c
 // ---------------------------------------------------------------------------
 
 export type Caller =
-  | { kind: 'admin_ui'; user: { id: string; role: 'admin' | 'user' } }
-  | { kind: 'mcp'; user: { id: string; role: 'admin' | 'user' }; serviceTokenMatched: boolean };
+  | { kind: 'admin_ui'; user: { id: string; role: UserRole } }
+  | { kind: 'mcp'; user: { id: string; role: UserRole }; serviceTokenMatched: boolean };
 
 export interface CreateStoreInput {
   brand: string;
@@ -137,11 +156,21 @@ export interface CreateStoreInput {
   rule_snapshot_tables?: string[];
 }
 
+export interface RuleSnapshotSkipped {
+  table: string;
+  reason: string;
+}
+
+export interface RuleSnapshotCopied {
+  table: string;
+  rows_copied: number;
+}
+
 export interface RuleSnapshotResult {
   applied: boolean;
   source_store_code?: string;
-  tables_copied: unknown[];
-  tables_skipped: unknown[];
+  tables_copied: RuleSnapshotCopied[];
+  tables_skipped: RuleSnapshotSkipped[];
   skipped_reason?: string;
 }
 
@@ -225,8 +254,9 @@ export async function handleCreateStore(
             throw new ValidationError('unknown_rule_snapshot_table', `table: ${t}`);
           }
         }
-        const sourceRow = await queryStoreByCode(input.brand, input.rule_snapshot_source_store_code);
+        const sourceRow = await queryStoreAcrossBrands(input.rule_snapshot_source_store_code);
         if (!sourceRow) throw new ValidationError('source_store_not_found');
+        if (sourceRow.brand !== input.brand) throw new ValidationError('source_store_brand_mismatch');
         if (!sourceRow.enabled) throw new ValidationError('source_store_disabled');
         rule_snapshot = { applied: true, source_store_code: input.rule_snapshot_source_store_code, tables_copied: [], tables_skipped: [] };
         for (const table of tables) {
