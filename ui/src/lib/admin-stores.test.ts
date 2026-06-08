@@ -9,6 +9,9 @@ import {
   isWhitelistedRuleSnapshotTable,
   REQUIRED_BRAND_CODE_REGEX,
   REQUIRED_STORE_CODE_REGEX,
+  queryBrandEnabled,
+  queryCfgSchemaAllowed,
+  queryStoreByCode,
 } from './admin-stores.ts';
 
 test('assertBrandCode accepts valid brand code', () => {
@@ -52,4 +55,24 @@ test('isWhitelistedRuleSnapshotTable rejects system tables', () => {
   assert.equal(isWhitelistedRuleSnapshotTable('pg_class'), false);
   assert.equal(isWhitelistedRuleSnapshotTable('information_schema.tables'), false);
   assert.equal(isWhitelistedRuleSnapshotTable('ops.approval_proposal'), false);
+});
+
+test('queryBrandEnabled returns true for gelatomiiix', async () => {
+  const enabled = await queryBrandEnabled('gelatomiiix');
+  assert.equal(enabled, true);
+});
+
+test('queryBrandEnabled returns false for nonexistent brand', async () => {
+  const enabled = await queryBrandEnabled('nonexistent_brand_xyz');
+  assert.equal(enabled, false);
+});
+
+test('queryCfgSchemaAllowed returns true for gelatomiiix cfg', async () => {
+  const allowed = await queryCfgSchemaAllowed('gelatomiiix');
+  assert.equal(allowed, true);
+});
+
+test('queryStoreByCode returns null for nonexistent store', async () => {
+  const row = await queryStoreByCode('gelatomiiix', 'nonexistent_store_xyz');
+  assert.equal(row, null);
 });
