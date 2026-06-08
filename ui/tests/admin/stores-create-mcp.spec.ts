@@ -1,8 +1,9 @@
 // ui/tests/admin/stores-create-mcp.spec.ts
 //
 // E2E test for the create_store MCP path (spec §2.2 — 5 invariants, 5 negative
-// cases). Talks to the running Next.js dev server over HTTP and asserts on
-// ops.stores + {brand}_cfg.dim_store via direct pg queries.
+// cases). Talks to the running Next.js dev server over HTTP. Spec §2.2
+// invariants test the API contract (HTTP endpoints), not direct DB state —
+// see the rationale block below.
 //
 // Runs via Playwright (config at ui/playwright.config.ts, testDir = './tests').
 // `webServer` in that config auto-starts `npm run dev` (port 4100) if not
@@ -14,9 +15,34 @@
 //                           ops.service_token (enabled = true).
 //   DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD
 //                          — connection to the test DB used for direct
-//                            verification of the write side effects.
+//                            verification of the write side effects
+//                            (invariants 2/3/4 — see below).
 //
 // Skips gracefully (test.skip) if WDG_SERVICE_TOKEN is not set.
+//
+// --------------------------------------------------------------------------
+// Rationale: invariants 1 and 5 test the API contract per spec §2.2
+// --------------------------------------------------------------------------
+// Spec §2.2 (verbatim):
+//   1. `GET /api/stores?brand={brand}` 包含新 store 行
+//   ...
+//   5. MCP `get_brand_stores` 调用返回含新 store
+//
+// These tests verify the API contract, NOT the DB. We do NOT query
+// ops.stores / ops.brands directly for invariants 1 and 5.
+//
+// If a test fails because the dev DB is missing a column that an
+// API route depends on (e.g. ops.stores.sort_order), that is a
+// dev-DB schema-gap problem, not a code problem. The fix is to
+// bring the dev DB to schema parity — NOT to work around the
+// contract in the test. The previous version of this file queried
+// the DB directly as a workaround, which silently bypassed the
+// spec contract. This file now asserts the contract as written.
+//
+// Invariants 2/3/4 still use direct DB queries because the spec
+// §2.2 text for those invariants is a SQL statement (dim_store
+// row, v_store_monthly_kpi no-throw, bank_txn FK accepted), not
+// an HTTP endpoint.
 
 import { test, expect, request as playwrightRequest } from '@playwright/test';
 import { Pool } from 'pg';
@@ -129,14 +155,18 @@ test.describe('create_store via MCP path', () => {
       expect(body.store.brand).toBe(TEST_BRAND);
       expect(body.store.store_code).toBe(storeCode);
 
-      // Invariant 1: ops.stores has a row for the new store.
-      // Querying directly (instead of GET /api/stores) avoids dependence on
-      // dev-DB columns the API may or may not have (e.g. sort_order).
-      const opsRes = await pool.query(
-        `SELECT 1 FROM ops.stores WHERE brand_code = $1 AND store_code = $2`,
-        [TEST_BRAND, storeCode]
+      // Invariant 1 (spec §2.2): `GET /api/stores?brand={brand}` includes the
+      // new store row. Asserted against the API contract, not the DB.
+      const storesRes = await ctx.get(`/api/stores?brand=${TEST_BRAND}`, {
+        headers: { 'x-mcp-session': 'internal' },
+      });
+      expect(storesRes.status()).toBe(200);
+      const storesBody = await storesRes.json();
+      expect(storesBody.success).toBe(true);
+      const storeCodes: string[] = (storesBody.data ?? []).map(
+        (r: { store_code: string }) => r.store_code
       );
-      expect(opsRes.rowCount).toBe(1);
+      expect(storeCodes).toContain(storeCode);
 
       // Invariant 2: {brand}_cfg.dim_store has a row for the new store.
       const dimRes = await pool.query(
@@ -184,15 +214,37 @@ test.describe('create_store via MCP path', () => {
         }
       }
 
-      // Invariant 5: brand still exists in ops.brands (sanity check that
-      // create_store didn't disturb the brand registry).
-      // We query the DB directly because /api/brands may 500 on incomplete
-      // dev-DB schemas (e.g. missing sort_order column).
-      const brandRes = await pool.query(
-        `SELECT 1 FROM ops.brands WHERE brand_code = $1 AND enabled = true`,
-        [TEST_BRAND]
+      // Invariant 5 (spec §2.2): MCP `get_brand_stores` call returns the
+      // new store. Asserted against the JSON-RPC /api/mcp tools/call
+      // endpoint, not the DB. The tool's text field carries a JSON-string
+      // payload of { brands: [{ brand_code, brand_name, stores: [...] }] }.
+      const mcpRes = await ctx.post('/api/mcp', {
+        headers: { 'Content-Type': 'application/json' },
+        data: {
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            name: 'get_brand_stores',
+            arguments: { brand: TEST_BRAND },
+          },
+          id: 1,
+        },
+      });
+      expect(mcpRes.status()).toBe(200);
+      const mcpBody = await mcpRes.json();
+      expect(mcpBody.jsonrpc).toBe('2.0');
+      expect(mcpBody.error).toBeUndefined();
+      const text: string = mcpBody.result?.content?.[0]?.text;
+      expect(typeof text).toBe('string');
+      const mcpPayload = JSON.parse(text);
+      const gelatomiiixEntry = (mcpPayload.brands ?? []).find(
+        (b: { brand_code: string }) => b.brand_code === TEST_BRAND
       );
-      expect(brandRes.rowCount).toBe(1);
+      expect(gelatomiiixEntry).toBeDefined();
+      const mcpStoreCodes: string[] = (gelatomiiixEntry.stores ?? []).map(
+        (s: { store_code: string }) => s.store_code
+      );
+      expect(mcpStoreCodes).toContain(storeCode);
     } finally {
       await ctx.dispose();
     }
