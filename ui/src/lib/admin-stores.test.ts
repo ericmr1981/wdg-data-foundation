@@ -146,15 +146,17 @@ describe('handleCreateStore with rule snapshot', () => {
   const SOURCE_STORE = 'sh_xtd';
   const TARGET_BRAND = 'gelatomiiix';
   const TEST_STORE = 'test_snapshot_temp';
+  const DISABLED_SOURCE_STORE = 'test_source_disabled_temp';
   const caller = { kind: 'admin_ui' as const, user: { id: 'unit-test', role: 'admin' as const } };
 
   afterEach(async () => {
     const pool = (await import('@/lib/db')).default;
     await pool.query(`DELETE FROM ops.stores WHERE brand_code = $1 AND store_code = $2`, [TARGET_BRAND, TEST_STORE]);
     await pool.query(`DELETE FROM ${TARGET_BRAND}_cfg.dim_store WHERE store_code = $1`, [TEST_STORE]);
+    await pool.query(`DELETE FROM ops.stores WHERE brand_code = $1 AND store_code = $2`, [TARGET_BRAND, DISABLED_SOURCE_STORE]);
   });
 
-  test('copies bank_rule_map rows filtered by source store_code', async () => {
+  test('marks bank_rule_map as tables_skipped (no row copy in v1)', async () => {
     const result = await handleCreateStore({
       brand: TARGET_BRAND,
       store_code: TEST_STORE,
@@ -196,6 +198,25 @@ describe('handleCreateStore with rule snapshot', () => {
         rule_snapshot_tables: ['bank_rule_map']
       }, caller),
       (err: any) => err.code === 'source_store_not_found'
+    );
+  });
+
+  test('rejects disabled source store with source_store_disabled', async () => {
+    const pool = (await import('@/lib/db')).default;
+    await pool.query(
+      `INSERT INTO ops.stores (brand_code, store_code, store_name, enabled)
+       VALUES ($1, $2, $3, false)`,
+      [TARGET_BRAND, DISABLED_SOURCE_STORE, 'disabled source'],
+    );
+    await assert.rejects(
+      handleCreateStore({
+        brand: TARGET_BRAND,
+        store_code: TEST_STORE,
+        store_name: 'x',
+        rule_snapshot_source_store_code: DISABLED_SOURCE_STORE,
+        rule_snapshot_tables: ['bank_rule_map']
+      }, caller),
+      (err: any) => err instanceof ValidationError && err.code === 'source_store_disabled',
     );
   });
 });

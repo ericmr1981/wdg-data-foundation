@@ -142,6 +142,7 @@ export interface RuleSnapshotResult {
   source_store_code?: string;
   tables_copied: unknown[];
   tables_skipped: unknown[];
+  skipped_reason?: string;
 }
 
 export interface CreateStoreResult {
@@ -216,7 +217,7 @@ export async function handleCreateStore(
     if (input.rule_snapshot_source_store_code) {
       if (updated) {
         rule_snapshot = { applied: false, tables_copied: [], tables_skipped: [], source_store_code: input.rule_snapshot_source_store_code };
-        (rule_snapshot as any).skipped_reason = 'store_already_existed';
+        rule_snapshot.skipped_reason = 'store_already_existed';
       } else {
         const tables = input.rule_snapshot_tables ?? ['bank_rule_map'];
         for (const t of tables) {
