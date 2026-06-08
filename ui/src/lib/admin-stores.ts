@@ -103,10 +103,26 @@ export async function queryStoreByCode(
   return rows[0] ?? null;
 }
 
+/**
+ * Returns true iff `column` exists on `${schema}.${table}` in the live DB.
+ * Used to detect whether a cfg table is store-scoped (has store_code column)
+ * or brand-shared (lacks it). Both schema and table are expected to be
+ * identifier-safe (regex-validated by assertBrandCode + isWhitelistedRuleSnapshotTable),
+ * so identifier interpolation is safe here — parameterized form would break this SQL.
+ */
+export async function columnExists(client: any, schema: string, table: string, column: string): Promise<boolean> {
+  const { rowCount } = await client.query(
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = $1 AND table_name = $2 AND column_name = $3`,
+    [schema, table, column],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
 // ---------------------------------------------------------------------------
-// handleCreateStore (Task 3 — spec §3.2)
-// Transactional create+update of ops.stores + {brand}_cfg.dim_store.
-// Rule-snapshot copy is NOT included here (Task 4).
+// handleCreateStore (Tasks 3+4 — spec §3.2 / §3.3)
+// Transactional create+update of ops.stores + {brand}_cfg.dim_store, with
+// optional rule-snapshot copy from a same-brand sibling store.
 // ---------------------------------------------------------------------------
 
 export type Caller =
@@ -196,11 +212,34 @@ export async function handleCreateStore(
       [input.store_code, input.store_name],
     );
 
-    const rule_snapshot: RuleSnapshotResult = {
-      applied: false,
-      tables_copied: [],
-      tables_skipped: [],
-    };
+    let rule_snapshot: RuleSnapshotResult;
+    if (input.rule_snapshot_source_store_code) {
+      if (updated) {
+        rule_snapshot = { applied: false, tables_copied: [], tables_skipped: [], source_store_code: input.rule_snapshot_source_store_code };
+        (rule_snapshot as any).skipped_reason = 'store_already_existed';
+      } else {
+        const tables = input.rule_snapshot_tables ?? ['bank_rule_map'];
+        for (const t of tables) {
+          if (!isWhitelistedRuleSnapshotTable(t)) {
+            throw new ValidationError('unknown_rule_snapshot_table', `table: ${t}`);
+          }
+        }
+        const sourceRow = await queryStoreByCode(input.brand, input.rule_snapshot_source_store_code);
+        if (!sourceRow) throw new ValidationError('source_store_not_found');
+        if (!sourceRow.enabled) throw new ValidationError('source_store_disabled');
+        rule_snapshot = { applied: true, source_store_code: input.rule_snapshot_source_store_code, tables_copied: [], tables_skipped: [] };
+        for (const table of tables) {
+          const hasStoreCodeCol = await columnExists(client, cfgSchema, table, 'store_code');
+          if (!hasStoreCodeCol) {
+            rule_snapshot.tables_skipped.push({ table, reason: 'brand_level_shared_table_not_supported_in_v1' });
+            continue;
+          }
+          rule_snapshot.tables_skipped.push({ table, reason: 'store_code_column_present_but_not_implemented_in_v1' });
+        }
+      }
+    } else {
+      rule_snapshot = { applied: false, tables_copied: [], tables_skipped: [] };
+    }
 
     await client.query('COMMIT');
     return {

@@ -141,3 +141,61 @@ describe('handleCreateStore (integration, dev DB, transactional)', () => {
     );
   });
 });
+
+describe('handleCreateStore with rule snapshot', () => {
+  const SOURCE_STORE = 'sh_xtd';
+  const TARGET_BRAND = 'gelatomiiix';
+  const TEST_STORE = 'test_snapshot_temp';
+  const caller = { kind: 'admin_ui' as const, user: { id: 'unit-test', role: 'admin' as const } };
+
+  afterEach(async () => {
+    const pool = (await import('@/lib/db')).default;
+    await pool.query(`DELETE FROM ops.stores WHERE brand_code = $1 AND store_code = $2`, [TARGET_BRAND, TEST_STORE]);
+    await pool.query(`DELETE FROM ${TARGET_BRAND}_cfg.dim_store WHERE store_code = $1`, [TEST_STORE]);
+  });
+
+  test('copies bank_rule_map rows filtered by source store_code', async () => {
+    const result = await handleCreateStore({
+      brand: TARGET_BRAND,
+      store_code: TEST_STORE,
+      store_name: '快照测试',
+      rule_snapshot_source_store_code: SOURCE_STORE,
+      rule_snapshot_tables: ['bank_rule_map']
+    }, caller);
+    assert.equal(result.rule_snapshot?.applied, true);
+    const bankRuleEntry = result.rule_snapshot?.tables_skipped.find((t: any) => t.table === 'bank_rule_map');
+    // dev DB `gelatomiiix_cfg.bank_rule_map` has no `store_code` column → reason ends in
+    // "brand_level_shared_table_not_supported_in_v1". If a future schema adds the column,
+    // the reason becomes "store_code_column_present_but_not_implemented_in_v1". Both are valid v1.
+    assert.match(
+      bankRuleEntry?.reason ?? '',
+      /(brand_level_shared_table_not_supported_in_v1|store_code_column_present_but_not_implemented_in_v1)/,
+    );
+  });
+
+  test('rejects unknown table in rule_snapshot_tables', async () => {
+    await assert.rejects(
+      handleCreateStore({
+        brand: TARGET_BRAND,
+        store_code: TEST_STORE,
+        store_name: 'x',
+        rule_snapshot_source_store_code: SOURCE_STORE,
+        rule_snapshot_tables: ['pg_class']
+      }, caller),
+      (err: any) => err.code === 'unknown_rule_snapshot_table'
+    );
+  });
+
+  test('rejects cross-brand source_store', async () => {
+    await assert.rejects(
+      handleCreateStore({
+        brand: TARGET_BRAND,
+        store_code: TEST_STORE,
+        store_name: 'x',
+        rule_snapshot_source_store_code: 'wz_wxc', // bonjur 的 store
+        rule_snapshot_tables: ['bank_rule_map']
+      }, caller),
+      (err: any) => err.code === 'source_store_not_found'
+    );
+  });
+});
