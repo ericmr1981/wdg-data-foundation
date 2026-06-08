@@ -30,8 +30,8 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
       AGENT_INTERNAL_URL: http://agent:4101
-      NEXT_PUBLIC_AGENT_WS_URL: ws://agent:4101/ws
-      NEXT_PUBLIC_AGENT_ROLLOUT_PERCENT: ${NEXT_PUBLIC_AGENT_ROLLOUT_PERCENT:-0}
+      NEXT_PUBLIC_AGENT_WS_URL: ws://agent:4102/ws
+      NEXT_PUBLIC_AGENT_ROLLOUT_PERCENT: ${NEXT_PUBLIC_AGENT_ROLLOUT_PERCENT:-10}
     ports:
       - "${UI_PORT:-3002}:3000"
     restart: unless-stopped
