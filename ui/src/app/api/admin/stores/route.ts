@@ -40,18 +40,24 @@ export async function GET(request: Request) {
 
 // POST /api/admin/stores — single entry point = handleCreateStore()
 // Used by both admin UI and MCP (POST /api/mcp → /api/admin/stores).
+//
+// Response shape is a SUPERSET of both new and legacy contracts:
+//   New (spec §2.1, MCP consumers):   { ok, store, rule_snapshot, code }
+//   Legacy (admin UI page.tsx:75):    { success, data, error: <string> }
+// The admin UI only reads data.success / data.error, so a single response
+// that carries both old and new fields keeps both consumers happy.
 export async function POST(req: NextRequest) {
   try {
     const session = await getSessionUser();
     if (!session) {
       return NextResponse.json(
-        { ok: false, error: { code: 'unauthenticated', message: 'No active session' } },
+        { ok: false, success: false, code: 'unauthenticated', error: 'No active session', data: null },
         { status: 401 }
       );
     }
     if (session.role !== 'admin') {
       return NextResponse.json(
-        { ok: false, error: { code: 'forbidden', message: 'Admin role required' } },
+        { ok: false, success: false, code: 'forbidden', error: 'Admin role required', data: null },
         { status: 403 }
       );
     }
@@ -63,7 +69,7 @@ export async function POST(req: NextRequest) {
       serviceTokenMatched = await verifyMcpServiceToken(provided);
       if (!serviceTokenMatched) {
         return NextResponse.json(
-          { ok: false, error: { code: 'forbidden_mcp', message: 'Invalid or missing service token' } },
+          { ok: false, success: false, code: 'forbidden_mcp', error: 'Invalid or missing service token', data: null },
           { status: 403 }
         );
       }
@@ -75,16 +81,32 @@ export async function POST(req: NextRequest) {
       : { kind: 'admin_ui', user: { id: session.user_id, role: session.role } };
 
     const result = await handleCreateStore(body, caller);
-    return NextResponse.json(result);
+    return NextResponse.json(
+      {
+        ok: true,
+        success: true,                  // legacy admin UI compat
+        data: result.store,             // legacy admin UI compat
+        store: result.store,            // new (MCP / spec §2.1)
+        rule_snapshot: result.rule_snapshot,
+      },
+      { status: 200 }
+    );
   } catch (e: any) {
     const code = e?.code ?? 'internal_error';
     const message = e?.message ?? 'Internal error';
-    const status =
-      code === 'forbidden' || code === 'forbidden_mcp' ? 403
-      : code === 'brand_not_found' || code === 'source_store_not_found' ? 404
-      : code === 'unauthenticated' ? 401
-      : 422;
-    return NextResponse.json({ ok: false, error: { code, message } }, { status });
+    // Map spec §2.1 error codes → HTTP status. Anything not listed → 422.
+    const STATUS: Record<string, number> = {
+      unauthenticated: 401,
+      forbidden: 403,
+      forbidden_mcp: 403,
+      brand_not_found: 404,
+      internal_error: 500,
+    };
+    const status = STATUS[code] ?? 422;
+    return NextResponse.json(
+      { ok: false, success: false, code, error: message, data: null },
+      { status }
+    );
   }
 }
 
