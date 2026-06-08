@@ -37,9 +37,23 @@ export async function createTestDb() {
                      .replace(/agent\./g, '')
   await pool.query(ddl)
 
+  // 包一层:应用代码 SQL 也带 agent. 前缀,运行时也剥掉
+  // (DDL 只在 createTestDb 跑一次,这里覆盖后续所有 query)
+  const origQuery = pool.query.bind(pool)
+  ;(pool as any).query = (sql: string, params?: any[]) => {
+    const stripped = typeof sql === 'string' ? sql.replace(/agent\./g, '') : sql
+    return origQuery(stripped, params)
+  }
+
   return pool
 }
 
 export async function cleanupTestDb(pool: any) {
-  await pool.query(`TRUNCATE conversations, messages, tasks, task_steps, audit_log CASCADE`)
+  // pg-mem 不支持 multi-table TRUNCATE,拆 5 个 DELETE
+  // 顺序: 先子表 (messages / task_steps) 再父表 (conversations / tasks),最后 audit_log
+  await pool.query(`DELETE FROM messages`)
+  await pool.query(`DELETE FROM task_steps`)
+  await pool.query(`DELETE FROM tasks`)
+  await pool.query(`DELETE FROM conversations`)
+  await pool.query(`DELETE FROM audit_log`)
 }
