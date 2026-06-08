@@ -10,6 +10,11 @@ services:
       - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - dataplatform_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-dataplatform}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
   ui:
@@ -24,9 +29,42 @@ services:
       DB_NAME: ${DB_NAME:-dataplatform}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      AGENT_INTERNAL_URL: http://agent:4101
+      NEXT_PUBLIC_AGENT_WS_URL: ws://agent:4101/ws
+      NEXT_PUBLIC_AGENT_ROLLOUT_PERCENT: ${NEXT_PUBLIC_AGENT_ROLLOUT_PERCENT:-0}
     ports:
       - "${UI_PORT:-3002}:3000"
     restart: unless-stopped
+
+  agent:
+    build: ./agent
+    container_name: wdg-agent
+    environment:
+      - WS_PORT=4101
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-postgres}@postgres:5432/dataplatform
+      - MCP_ENDPOINT=http://ui:3000/api/mcp
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-opus-4-8}
+      - CRON_TIMEZONE=Asia/Shanghai
+      - CRON_WEEKLY_REVIEW=0 9 * * 1
+      - TASK_WORKER_COUNT=4
+      - LOG_LEVEL=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ui:
+        condition: service_started
+    volumes:
+      - ./agent/skills:/app/skills:ro
+      - ./agent/agent.md:/app/agent.md:ro
+    ports:
+      - "4101:4101"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4101/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   dataplatform_pg_data:
