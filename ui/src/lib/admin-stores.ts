@@ -26,19 +26,19 @@ export class ValidationError extends Error {
 }
 
 export function assertBrandCode(code: string): void {
-  if (typeof code !== 'string' || !REQUIRED_BRAND_CODE_REGEX.test(code)) {
+  if (!REQUIRED_BRAND_CODE_REGEX.test(code)) {
     throw new ValidationError('invalid_brand_code');
   }
 }
 
 export function assertStoreCode(code: string): void {
-  if (typeof code !== 'string' || !REQUIRED_STORE_CODE_REGEX.test(code)) {
+  if (!REQUIRED_STORE_CODE_REGEX.test(code)) {
     throw new ValidationError('invalid_store_code');
   }
 }
 
 export function assertStoreName(name: string): void {
-  if (typeof name !== 'string' || !REQUIRED_STORE_NAME_REGEX.test(name)) {
+  if (!REQUIRED_STORE_NAME_REGEX.test(name)) {
     throw new ValidationError('invalid_store_name');
   }
 }
@@ -49,7 +49,6 @@ export function assertStoreName(name: string): void {
  * system table not in the whitelist.
  */
 export function isWhitelistedRuleSnapshotTable(table: string): boolean {
-  if (typeof table !== 'string') return false;
   if (table.includes('.')) return false;
   return WHITELIST.has(table);
 }
