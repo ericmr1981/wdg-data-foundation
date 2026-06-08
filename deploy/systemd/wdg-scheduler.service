@@ -1,0 +1,28 @@
+# deploy/systemd/wdg-scheduler.service
+[Unit]
+Description=WDG Notification Scheduler (APScheduler + reload listener)
+Documentation=file:/opt/wdg/docs/superpowers/specs/2026-06-07-notifications-design.md
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/wdg
+EnvironmentFile=/opt/wdg/.env
+ExecStart=/opt/wdg/.venv/bin/python /opt/wdg/scripts/wdg_scheduler_daemon.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Hardening (minimal, allows DB + filesystem)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/wdg/reports /var/log/wdg
+
+[Install]
+WantedBy=multi-user.target

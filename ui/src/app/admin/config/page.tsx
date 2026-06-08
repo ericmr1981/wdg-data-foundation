@@ -37,6 +37,16 @@ export default function AdminConfigPage() {
           desc="分组名称与排序（用于规则管理过滤/组织）。"
           href="/admin/rule-groups"
         />
+        <Card
+          title="通知调度"
+          desc="配置 4 个 sweep 任务的 cron 表达式与品牌过滤,改完即生效。"
+          href="/admin/config/notifications"
+        />
+        <Card
+          title="通知列表"
+          desc="查看所有活跃通知,按类型筛选,标已读/关闭。"
+          href="/notifications"
+        />
       </div>
     </div>
   );
