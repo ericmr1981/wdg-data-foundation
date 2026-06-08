@@ -12,7 +12,8 @@
     "outDir": "dist",
     "rootDir": "src",
     "declaration": false,
-    "allowImportingTsExtensions": false
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "test"]
