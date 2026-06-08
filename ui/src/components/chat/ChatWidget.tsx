@@ -6,15 +6,121 @@ import { ChatInput } from './ChatInput';
 import { ChatDrawer } from './ChatDrawer';
 import { parseSseStream } from '@/lib/chat/stream';
 import { useDrawerState } from '@/lib/chat/use-drawer-state';
+import { shouldUseAgentService, getAgentWsUrl } from '@/lib/feature-flags';
 import type { ChatMessage, SseIncoming, ToolCallLite } from './types';
+
+/**
+ * v1 path: open a WebSocket to the Agent Service and stream SSE-shaped
+ * JSON events back into the same ChatMessage list that the v0 path uses.
+ * Each WS text frame is one SSE record (`event: <type>\ndata: <json>\n\n`),
+ * which we parse with the existing parseSseStream helper so renderer code
+ * stays unchanged. This is the only place the WS protocol is referenced.
+ */
+async function sendViaAgent(
+  text: string,
+  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
+): Promise<void> {
+  // userId is required to enter this path (feature flag returns false otherwise),
+  // but we still read it from the server to avoid drift on rollout changes.
+  const meRes = await fetch('/api/auth/me');
+  if (!meRes.ok) throw new Error('auth required');
+  const meJson = await meRes.json();
+  const userId = meJson?.data?.user_id ? String(meJson.data.user_id) : '';
+  if (!userId) throw new Error('no user id');
+
+  const base = getAgentWsUrl();
+  const url = `${base}?userId=${encodeURIComponent(userId)}`;
+  const ws = new WebSocket(url);
+  // Optional: surface connection errors as assistant error bubbles
+  ws.onerror = () => {
+    setMessages(m => [...m, { type: 'error', message: 'agent service unavailable', ts: Date.now() }]);
+  };
+  await new Promise<void>((resolve, reject) => {
+    ws.onopen = () => resolve();
+    ws.onclose = () => resolve();
+    ws.onerror = (e) => reject(new Error('ws open failed'));
+  });
+  if (ws.readyState !== WebSocket.OPEN) throw new Error('ws not open');
+  const clientTs = Date.now();
+  ws.send(JSON.stringify({ type: 'message', text, ts: clientTs }));
+
+  // Accumulate frames and parse the SSE stream. We translate the same
+  // SseIncoming union into setMessages calls so the renderer doesn't care
+  // which transport produced the events.
+  let buf = '';
+  const toolCalls = new Map<string, ToolCallLite>();
+  await new Promise<void>((resolve) => {
+    ws.onmessage = (ev) => {
+      buf += String(ev.data);
+      parseSseStream(buf, (raw) => {
+        const evt = raw as SseIncoming;
+        if (evt.type === 'text_block' && typeof evt.text === 'string') {
+          setMessages(m => [...m, { type: 'assistant_text', content: evt.text, ts: Date.now() }]);
+        } else if (evt.type === 'text_delta' && typeof evt.text === 'string') {
+          // text_delta is a sub-block delta; append to a hidden buffer.
+          // Without this branch the v0 renderer would lose intra-block deltas.
+          // For now we ignore; the matching text_block will render the chunk.
+        } else if (evt.type === 'thinking_delta' && typeof evt.text === 'string') {
+          setMessages(m => {
+            const copy = m.slice();
+            const last = copy[copy.length - 1];
+            if (last && last.type === 'thinking') {
+              copy[copy.length - 1] = { ...last, content: last.content + evt.text };
+            } else {
+              copy.push({ type: 'thinking', content: evt.text, ts: Date.now() });
+            }
+            return copy;
+          });
+        } else if (evt.type === 'tool_start') {
+          const tc: ToolCallLite = { id: evt.id, name: evt.name, input: {} };
+          toolCalls.set(evt.id, tc);
+          setMessages(m => [...m, { type: 'tool_call', call: tc, ts: Date.now() }]);
+        } else if (evt.type === 'tool_end') {
+          const tc = toolCalls.get(evt.id);
+          if (tc) {
+            tc.result = evt.summary;
+            tc.isError = !!evt.isError;
+            tc.durationMs = evt.durationMs;
+            setMessages(m => m.map(x => (x.type === 'tool_call' && x.call.id === evt.id) ? { ...x, call: { ...tc } } : x));
+          }
+        } else if (evt.type === 'error') {
+          setMessages(m => [...m, { type: 'error', message: evt.message, ts: Date.now() }]);
+        } else if (evt.type === 'done') {
+          ws.close();
+          resolve();
+        }
+      });
+      const lastSep = buf.lastIndexOf('\n\n');
+      if (lastSep >= 0) buf = buf.slice(lastSep + 2);
+    };
+    ws.onclose = () => resolve();
+    ws.onerror = () => resolve();
+  });
+}
 
 export function ChatWidget() {
   const { open, setOpen, toggle } = useDrawerState();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streaming, setStreaming] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const aborterRef = useRef<AbortController | null>(null);
   const assistantBufferRef = useRef<string>('');
   const toolCallsRef = useRef<Map<string, ToolCallLite>>(new Map());
+
+  // Resolve current userId (from /api/auth/me) once on mount. Used by the
+  // agent-service feature flag for sticky per-user rollout. We don't block
+  // chat on this — if /me fails (e.g. logged out), the flag returns false
+  // and the user stays on the v0 chat path.
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => {
+        if (j && j.success && j.data && j.data.user_id) {
+          setUserId(String(j.data.user_id));
+        }
+      })
+      .catch(() => { /* keep userId=null, fall through to v0 */ });
+  }, []);
 
   // Cmd/Ctrl+K global toggle
   useEffect(() => {
@@ -55,6 +161,23 @@ export function ChatWidget() {
     setStreaming(true);
     assistantBufferRef.current = '';
     toolCallsRef.current = new Map();
+
+    // Feature flag: when the rollout hash matches, route to the new Agent
+    // Service (WebSocket). v0 is the default (ROLLOUT_PERCENT=0) and the
+    // existing /api/chat path is preserved below.
+    if (shouldUseAgentService(userId)) {
+      try {
+        await sendViaAgent(text, setMessages);
+      } catch (e) {
+        if ((e as Error).name !== 'AbortError') {
+          setMessages(m => [...m, { type: 'error', message: (e as Error).message, ts: Date.now() }]);
+        }
+      } finally {
+        setStreaming(false);
+        aborterRef.current = null;
+      }
+      return;
+    }
 
     const controller = new AbortController();
     aborterRef.current = controller;
@@ -175,7 +298,7 @@ export function ChatWidget() {
       setStreaming(false);
       aborterRef.current = null;
     }
-  }, [streaming]);
+  }, [streaming, userId]);
 
   const reset = useCallback(async () => {
     await fetch('/api/chat/context', {
