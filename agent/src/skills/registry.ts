@@ -40,6 +40,17 @@ export function listSkillNames(): string[] {
   return [...registry.keys()]
 }
 
+/**
+ * Reload skills at runtime.  'all' 重新 load 整个目录 (含新增/删除/改名).
+ * 单个 name 简化: 走 'all' (registry 是单一来源, 增量重载收益小, 复杂度不值).
+ */
+export function reloadSkill(name: string): void {
+  if (name !== 'all' && !registry.has(name)) {
+    throw new Error(`[skills] reload: skill not found: ${name}`)
+  }
+  initRegistry()
+}
+
 function formatSkillForLLM(s: Skill): string {
   return `# Skill: ${s.frontmatter.name}\n\n${s.body}`
 }

@@ -46,6 +46,7 @@ export default async function Page() {
   const initial = await loadInitialConfig();
   return (
     <div className="min-h-screen bg-gray-50">
+      <AdminNav />
       <header className="border-b border-gray-200 bg-white px-6 py-4">
         <h1 className="text-lg font-semibold text-gray-900">Agent 配置 (Admin)</h1>
         <p className="text-xs text-gray-500">编辑 agent.md 自定义提示词 · 调整调试参数 · 配置 Anthropic API · 变更热生效</p>
@@ -54,5 +55,18 @@ export default async function Page() {
         <ClientAgentConfig initial={initial} defaultParams={DEFAULT_PARAMS} />
       </main>
     </div>
+  );
+}
+
+function AdminNav() {
+  return (
+    <nav className="border-b border-gray-200 bg-gray-100 px-6 py-2 text-xs">
+      <div className="mx-auto flex max-w-6xl gap-4">
+        <a href="/u/admin/agent-config" className="text-gray-700 hover:text-blue-600">Agent 配置</a>
+        <a href="/u/admin/skills" className="text-gray-700 hover:text-blue-600">Skill 管理</a>
+        <a href="/u/admin/brands" className="text-gray-700 hover:text-blue-600">Brands</a>
+        <a href="/u/admin/users" className="text-gray-700 hover:text-blue-600">Users</a>
+      </div>
+    </nav>
   );
 }
