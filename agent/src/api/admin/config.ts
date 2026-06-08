@@ -7,8 +7,9 @@ import { writeFileSync } from 'fs'
 import { AGENT_MD_FILE_PATH } from '../../config/agent-md-loader.js'
 
 export function registerAdminConfigRoutes(app: FastifyInstance) {
-  // 鉴权: 仅 admin
+  // 鉴权: 仅 admin, 限定到 /api/admin/* 路径
   app.addHook('preHandler', async (req, reply) => {
+    if (!req.url.startsWith('/api/admin/')) return
     const role = req.headers['x-wdg-user-role']
     if (role !== 'admin') return reply.code(403).send({ error: 'forbidden' })
   })

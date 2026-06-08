@@ -3,7 +3,6 @@
 import Fastify from 'fastify'
 import Anthropic from '@anthropic-ai/sdk'
 import cors from '@fastify/cors'
-import websocket from '@fastify/websocket'
 
 import { getPool } from './db.js'
 import { getAgentConfig } from './config/store.js'
@@ -37,7 +36,8 @@ async function main() {
   // Fastify
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } })
   await app.register(cors, { origin: true, credentials: true })
-  await app.register(websocket)
+  // 不再 register @fastify/websocket plugin: WebChannel 自己起 ws.WebSocketServer
+  // (plugin 接管所有 GET 转 WS upgrade, 跟 WebChannel 冲突)
 
   // Health + metrics
   app.get('/health', async () => ({ status: 'ok' }))
@@ -75,8 +75,11 @@ async function main() {
   // Admin API
   registerAdminConfigRoutes(app)
 
-  // Channels: WebChannel 需要 manager 注入, 但 manager 又需要 webChannel, 用临时 null 后回填
-  const webChannel = new WebChannel(PORT, null)
+  // Channels: WebChannel listen WS_PORT + 1, Fastify listen WS_PORT (HTTP)
+  // (单进程无法让 2 个 server 共享 1 个端口, 临时方案: 分两个端口)
+  const HTTP_PORT = PORT
+  const WS_PORT = PORT + 1  // 4102 (如果 HTTP_PORT=4101)
+  const webChannel = new WebChannel(WS_PORT, null)
   const manager = new ChannelManager(webChannel, runner, scheduler)
   ;(webChannel as any).manager = manager  // inject
 
@@ -84,7 +87,8 @@ async function main() {
 
   await webChannel.start()
   await cronChannel.start()
-  app.log.info(`Agent Service listening on ${PORT}`)
+  await app.listen({ port: HTTP_PORT, host: '0.0.0.0' })
+  app.log.info(`HTTP listening on ${HTTP_PORT}, WS on ${WS_PORT}`)
 
   // 优雅关闭
   const shutdown = async () => {
