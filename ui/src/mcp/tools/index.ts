@@ -44,3 +44,4 @@ export { listRuleFilesTool } from './list-rule-files';
 export { listRuleGroupsTool } from './list-rule-groups';
 export { listCategoriesTool } from './list-categories';
 export { rerunMatchByFileTool } from './rerun-match-by-file';
+export { createStoreTool } from './create-store';

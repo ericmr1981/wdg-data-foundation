@@ -159,7 +159,7 @@ bank_txn → fn_classify() → bank_txn_classified_snapshot (BASE TABLE)
 
 ## MCP Tools (Agent 接口)
 
-45 个 MCP 工具经 `POST /api/mcp` 暴露，封装 `/api/...` 端点供 Agent 调用。详见 [docs/mcp-tools.md](docs/mcp-tools.md)。
+46 个 MCP 工具经 `POST /api/mcp` 暴露，封装 `/api/...` 端点供 Agent 调用。详见 [docs/mcp-tools.md](docs/mcp-tools.md)。
 
 **Agent 写权限原则**：Agent **只能** `submit_proposal`（写审批队列）/ `rerun_match_by_file`（刷新 snapshot）/ `upload_*`（写 raw ODS）。所有规则 CRUD、审批决策、cfg 变更由**人工在 UI 完成**（提案→审→settle）。MCP 工具按"Agent 提议 → 人工审 → 落定"两阶段模式暴露。
 
@@ -168,6 +168,7 @@ bank_txn → fn_classify() → bank_txn_classified_snapshot (BASE TABLE)
 | 银行流水 | 11 | upload_bank_txn_file · submit_proposal · rerun_match_by_file · get_unclassified_by_file · get_coverage_by_file |
 | 审批 | 3 | submit_proposal · get_proposal · query_approval_status |
 | 门店月报 | 2 | query_store_report_snapshot / _trend |
+| 门店创建 | 1 | `create_store` · 直接落库 · **首个 create 类破例**,需 service token |
 | 财务 | 7 | query_financial_statement (3-in-1) · query_financial_overview · _kpi_trend · query_counterparty · query_income_metrics · _payment_metrics · _qimai_revenue |
 | 收入 | 4 | upload_gelatomiiix_income_detail · upload_bonjur_income_detail · query_gelatomiiix_income · get_qimai_entry_rate |
 | 销售 | 11 | gelatomiiix 7 件 + bonjur 4 件 |
@@ -201,7 +202,7 @@ bank_txn → fn_classify() → bank_txn_classified_snapshot (BASE TABLE)
 |---|---|---|
 | 架构说明 | [docs/architecture.md](docs/architecture.md) | 系统架构总览 |
 | 本地启动 | [docs/LOCAL_STARTUP.md](docs/LOCAL_STARTUP.md) | 开发环境搭建 |
-| **MCP 工具参考** | [docs/mcp-tools.md](docs/mcp-tools.md) | 45 个 Agent 工具完整清单 + 写权限原则 |
+| **MCP 工具参考** | [docs/mcp-tools.md](docs/mcp-tools.md) | 46 个 Agent 工具完整清单 + 写权限原则 |
 | **页面文档 (qmaireport)** | [docs/qmaireport/README.md](docs/qmaireport/README.md) | 索引 + 全站银行数据审计 |
 | ├ 收入分析 | [docs/qmaireport/income-page-structure.md](docs/qmaireport/income-page-structure.md) | /u/income 结构 |
 | │ | [docs/qmaireport/income-data-sources.md](docs/qmaireport/income-data-sources.md) | /u/income 数据来源 |

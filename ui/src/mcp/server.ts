@@ -52,6 +52,7 @@ import { listRuleFilesTool } from './tools/list-rule-files';
 import { listRuleGroupsTool } from './tools/list-rule-groups';
 import { listCategoriesTool } from './tools/list-categories';
 import { rerunMatchByFileTool } from './tools/rerun-match-by-file';
+import { createStoreTool } from './tools/create-store';
 
 type ToolModule = {
   name: string;
@@ -107,6 +108,7 @@ const TOOLS: Record<string, ToolModule> = {
   list_rule_groups:                    listRuleGroupsTool,
   list_categories:                     listCategoriesTool,
   rerun_match_by_file:                 rerunMatchByFileTool,
+  create_store:                        createStoreTool,
 };
 
 /** Try short-name match, then long-name match */
