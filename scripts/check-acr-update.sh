@@ -5,7 +5,7 @@
 # 由 cron 每 5 分钟调用
 #
 # 触发逻辑:
-#   1. 拉 ACR ui:latest 的 manifest digest
+#   1. docker pull ACR ui:latest, 拿到 digest
 #   2. 跟本地 wdg-data-foundation-ui:latest 的 digest 对比
 #   3. 不一致 → pull 新 image + restart ui 容器
 #   4. 一致 → 静默退出
@@ -39,20 +39,14 @@ fi
 
 log "检查 ACR 更新: $ACR_IMAGE"
 
-# 1. 取 ACR latest 的 digest
-ACR_DIGEST=$(docker buildx imagetools inspect "$ACR_IMAGE" --raw 2>/dev/null \
-  | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('manifests',[{}])[0].get('digest') or d.get('digest',''))" 2>/dev/null)
-# buildx imagetools 在某些情况会失败, 改用 manifest API
+# 1. login + pull + 取 digest
+echo "${ACR_PASSWORD}" | docker login "${ACR_REGISTRY}" -u "${ACR_USERNAME}" --password-stdin >/dev/null 2>&1
+PULL_OUTPUT=$(docker pull "$ACR_IMAGE" 2>&1)
+ACR_DIGEST=$(echo "$PULL_OUTPUT" | grep -oE 'sha256:[a-f0-9]{64}' | head -1)
 if [[ -z "$ACR_DIGEST" ]]; then
-  AUTH=$(echo -n "${ACR_USERNAME}:${ACR_PASSWORD}" | base64 -w0)
-  TOKEN_JSON=$(curl -fsS -m 8 -u "${ACR_USERNAME}:${ACR_PASSWORD}" \
-    "https://${ACR_REGISTRY}/v2/" 2>/dev/null | head -1)
-  # fallback: 直接用 docker pull --quiet 然后看 image digest
-  ACR_DIGEST=$(docker pull "$ACR_IMAGE" 2>&1 | grep -oE 'sha256:[a-f0-9]{64}' | head -1)
-  if [[ -z "$ACR_DIGEST" ]]; then
-    log "ERROR: 无法获取 ACR image digest"
-    exit 1
-  fi
+  log "ERROR: 无法获取 ACR image digest (image 可能还不存在)"
+  log "PULL output: $PULL_OUTPUT"
+  exit 1
 fi
 log "ACR digest: $ACR_DIGEST"
 
@@ -72,7 +66,6 @@ if [[ "$ACR_DIGEST" == "$LOCAL_DIGEST" ]]; then
 fi
 
 log "检测到新 image, 开始 pull + restart"
-echo "${ACR_PASSWORD}" | docker login "${ACR_REGISTRY}" -u "${ACR_USERNAME}" --password-stdin >/dev/null 2>&1
 docker pull "$ACR_IMAGE" 2>&1 | tee -a "$LOG_FILE"
 
 cd "$COMPOSE_DIR"
