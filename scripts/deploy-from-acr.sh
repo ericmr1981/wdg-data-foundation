@@ -17,7 +17,7 @@
 set -euo pipefail
 
 # -------- 配置 --------
-ACR_REGISTRY="${ACR_REGISTRY:-registry.cn-hangzhou.aliyuncs.com}"
+ACR_REGISTRY="${ACR_REGISTRY:-crpi-0pkv8qkraf4poq92.cn-hangzhou.personal.cr.aliyuncs.com}"
 ACR_NAMESPACE="${ACR_NAMESPACE:-wdg-data-foundation}"   # ACR 个人版 namespace
 ACR_REPO="${ACR_REPO:-ui}"                                # ACR 仓库名
 IMAGE_TAG="${1:-latest}"
