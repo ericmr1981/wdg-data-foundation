@@ -12,5 +12,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       </div>
     );
   }
-  return <>{children}</>;
+  return (
+    <>
+      <nav className="border-b border-gray-200 bg-gray-100 px-6 py-2 text-xs">
+        <div className="mx-auto flex max-w-6xl gap-4">
+          <a href="/u/admin/agent-config" className="text-gray-700 hover:text-blue-600">Agent 配置</a>
+          <a href="/u/admin/skills" className="text-gray-700 hover:text-blue-600">Skill</a>
+          <a href="/u/admin/tasks" className="text-gray-700 hover:text-blue-600">任务</a>
+          <a href="/u/admin/cron" className="text-gray-700 hover:text-blue-600">Cron</a>
+        </div>
+      </nav>
+      {children}
+    </>
+  );
 }
