@@ -38,6 +38,18 @@ export const queryStoreReportTrendTool = {
     if (!json.success) {
       throw new Error(json.error || 'Unknown error');
     }
-    return json.data ?? { note: json.note ?? 'no data' };
+    const data = json.data ?? { note: json.note ?? 'no data' };
+    // Attach download URLs for the latest month so the agent can share them
+    const trendData = data as { monthly?: Array<{ month: string }> };
+    if ((trendData as any).monthly?.length) {
+      const latest = (trendData as any).monthly[(trendData as any).monthly.length - 1].month;
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+      const exportQ = new URLSearchParams({ brand, store, month: latest }).toString();
+      (data as any).download_urls = {
+        excel: `${baseUrl}/api/store-report/export?${exportQ}`,
+        pdf: `${baseUrl}/api/store-report/pdf?${exportQ}`,
+      };
+    }
+    return data;
   },
 };

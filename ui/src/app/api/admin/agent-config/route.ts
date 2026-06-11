@@ -18,6 +18,8 @@ import {
   setCredentialConfig,
   resetAgentConfig,
   applyConfigToGlobals,
+  persistConfigToDb,
+  hydrateConfigFromDb,
   AGENT_MD_FILE_PATH,
   DEFAULT_PARAMS,
 } from '@/lib/chat/agent-config-store';
@@ -43,7 +45,7 @@ async function loadCredFromDb() {
   if (!encKey) return null;
   try {
     const { rows } = await pool.query(
-      'SELECT base_url, encrypted_api_key, model FROM ops.chat_agent_credentials WHERE id = 1',
+      'SELECT base_url, encrypted_api_key, model, params FROM ops.chat_agent_credentials WHERE id = 1',
     );
     if (rows.length === 0) return null;
     const row = rows[0];
@@ -53,6 +55,7 @@ async function loadCredFromDb() {
         ? decrypt(row.encrypted_api_key as string, encKey)
         : null,
       model: (row.model as string) || DEFAULT_MODEL,
+      params: (row.params as Record<string, unknown> | null) ?? null,
     };
   } catch (err) {
     console.warn('[admin/agent-config] DB load failed, falling back to in-memory store:', (err as Error).message);
@@ -96,11 +99,22 @@ export async function GET() {
   if (!isAdmin(user)) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
+  // Hydrate in-memory store from DB first (handles process restart / HMR)
+  await hydrateConfigFromDb(pool);
   const cfg = getAgentConfig();
   const fromDb = await loadCredFromDb();
+  // Merge DB params if available (they take precedence over in-memory defaults)
+  let params = { ...cfg.params };
+  if (fromDb?.params) {
+    for (const [k, v] of Object.entries(fromDb.params)) {
+      if (k in params && typeof v === typeof (params as any)[k]) {
+        (params as any)[k] = v;
+      }
+    }
+  }
   return NextResponse.json({
     agentMd: cfg.agentMd,
-    params: cfg.params,
+    params,
     defaultParams: DEFAULT_PARAMS,
     baseURL: fromDb?.baseURL ?? cfg.baseURL ?? null,
     apiKeyMasked: maskKey(fromDb?.apiKey ?? cfg.apiKey),
@@ -172,9 +186,11 @@ export async function POST(req: NextRequest) {
         ? body.model.trim()
         : currentFromDb?.model ?? DEFAULT_MODEL;
 
-    await saveCredToDb(newBaseURL, newApiKey, newModel, user.user_id);
     setCredentialConfig(newBaseURL, newApiKey, newModel);
   }
+
+  // Persist all config (params + creds) to DB
+  await persistConfigToDb(pool, user.user_id);
 
   applyConfigToGlobals();
   return NextResponse.json({ success: true, config: getAgentConfig() });

@@ -400,9 +400,31 @@ const CLICKABLE_KPIS: TrendKey[] = ['revenue', 'expenses', 'gross_margin_rate', 
 export default function DashboardPage() {
   const { brand } = useBrand();
   const [span, setSpan] = useState<SpanId>('month');
-  const [period, setPeriod] = useState('2026-06');
+  const [period, setPeriod] = useState('2026-01');
   const [store, setStore] = useState('all');
+  const [periodReady, setPeriodReady] = useState(false);
   const [overview, setOverview] = useState<OverviewData | null>(null);
+
+  // Auto-select latest month with data for the current brand
+  useEffect(() => {
+    if (!brand) return;
+    setPeriodReady(false);
+    // Use kpi-trend API to detect latest available month (lightweight — just last 12m of monthly)
+    fetch(`/api/financial/kpi-trend?brand=${brand}&period=2026-06&span=month&store=all`)
+      .then(r => r.json())
+      .then(d => {
+        if (d?.data?.monthly?.length) {
+          const latest = d.data.monthly[d.data.monthly.length - 1].month;
+          if (latest) setPeriod(latest);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setPeriodReady(true));
+  }, [brand]);
+
+  // Once the latest month is detected, pass it to PeriodSelector as initialPeriod.
+  // The first render of PeriodSelector will use this value; its span-change
+  // useEffect won't fire until the user actually changes span.
   const [bankRevenue, setBankRevenue] = useState<number | null>(null);
   const [qimaiRevenue, setQimaiRevenue] = useState<number | null>(null);
   const [kpiTrend, setKpiTrend] = useState<KpiTrendData | null>(null);

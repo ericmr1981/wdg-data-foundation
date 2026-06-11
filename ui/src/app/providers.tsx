@@ -76,7 +76,7 @@ function NavBar() {
   }
 
   return (
-    <nav className="bg-white shadow-sm border-b">
+    <nav className="bg-white shadow-sm border-b relative z-30">
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex justify-between h-14">
           <div className="flex space-x-8 items-center">

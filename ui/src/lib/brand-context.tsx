@@ -11,7 +11,7 @@ interface BrandContextType {
 
 const BrandContext = createContext<BrandContextType | undefined>(undefined);
 const STORAGE_KEY = 'wdg.brand';
-const DEFAULT_BRAND = 'bonjur';
+const DEFAULT_BRAND = 'tamkoko';
 
 export function BrandProvider({ children }: { children: ReactNode }) {
   const [brand, setBrandState] = useState<Brand>(DEFAULT_BRAND);
@@ -46,6 +46,7 @@ export function useBrand() {
 }
 
 export const BRAND_OPTIONS = [
+  { code: 'tamkoko', name: '泰柯茶园' },
   { code: 'gelatomiiix', name: '蜜可诗' },
   { code: 'bonjur', name: 'Bonjour' }
 ] as const;

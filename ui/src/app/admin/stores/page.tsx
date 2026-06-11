@@ -69,11 +69,12 @@ export default function AdminStoresPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ brand, store_code, store_name }),
+      body: JSON.stringify({ brand, store_code: store_code.trim(), store_name: store_name.trim() }),
     });
     const data = await res.json();
     if (!data.success) {
-      setError(data.error || 'Create failed');
+      const msg = data.error || 'Create failed';
+      setError(data.code ? `[${data.code}] ${msg}` : msg);
       return;
     }
     setCode('');
