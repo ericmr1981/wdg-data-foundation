@@ -6,6 +6,7 @@
 // whitelisted identifier; schema-qualified names and system tables are rejected.
 import pool from '@/lib/db';
 import type { UserRole } from '@/lib/auth-server';
+import { getCfgSchema } from '@/lib/brand-server';
 
 export const REQUIRED_BRAND_CODE_REGEX = /^[a-z][a-z0-9_]{1,31}$/;
 export const REQUIRED_STORE_CODE_REGEX = /^[a-z][a-z0-9_]{1,31}$/;
@@ -78,13 +79,15 @@ export async function queryBrandEnabled(brand: string): Promise<boolean> {
 }
 
 /**
- * Returns true iff `${brand}_cfg` is registered in `ops.allowed_schemas`
- * with `enabled = true`. Gates cfg-schema writes for the create_store flow.
+ * Returns true iff `${brand}_cfg` (with correct prefix) is registered in
+ * `ops.allowed_schemas` with `enabled = true`. Gates cfg-schema writes for
+ * the create_store flow.
  */
 export async function queryCfgSchemaAllowed(brand: string): Promise<boolean> {
+  const cfgSchema = getCfgSchema(brand);
   const { rowCount } = await pool.query(
     `SELECT 1 FROM ops.allowed_schemas WHERE schema_name = $1 AND enabled = true`,
-    [`${brand}_cfg`],
+    [cfgSchema],
   );
   return (rowCount ?? 0) > 0;
 }
@@ -230,7 +233,7 @@ export async function handleCreateStore(
     const storeRow = insertOps.rows[0];
     const updated = !storeRow.is_insert;
 
-    const cfgSchema = `${input.brand}_cfg`;
+    const cfgSchema = getCfgSchema(input.brand);
     // ${cfgSchema} is regex-validated by assertBrandCode (^[a-z][a-z0-9_]{1,31}$),
     // so it's a safe identifier — Postgres rejects non-identifiers as schema names.
     // Do NOT parameterize; parameterized form would break this SQL.
