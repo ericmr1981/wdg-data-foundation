@@ -64,7 +64,7 @@ export function ChatDrawer({ children, headerRight, title = 'AI 助手' }: Props
     <aside
       role="complementary"
       aria-label={title}
-      className="fixed inset-y-0 right-0 z-50 flex flex-col border-l border-gray-300 bg-white shadow-2xl"
+      className="fixed top-14 bottom-0 right-0 z-50 flex flex-col border-l border-gray-300 bg-white shadow-2xl"
       style={{
         width: width,
         transform: 'translateX(0)',

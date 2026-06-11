@@ -13,10 +13,12 @@ import { callMcpWithRetry, McpCallError } from '@/lib/chat/mcp-bridge';
 import { encodeSseEvent } from '@/lib/chat/stream';
 import { checkRateLimit } from '@/lib/chat/rate-limit';
 import { createTokenTracker } from '@/lib/chat/token-tracker';
-import { getAgentConfig, applyConfigToGlobals, thinkingConfigFor, THINKING_BUDGET } from '@/lib/chat/agent-config-store';
+import { getAgentConfig, applyConfigToGlobals, thinkingConfigFor, THINKING_BUDGET, hydrateConfigFromDb } from '@/lib/chat/agent-config-store';
 import { decrypt } from '@/lib/chat/secret-crypto';
 import { splitSentences } from '@/lib/chat/sentence-splitter';
 import { processStream } from '@/lib/chat/stream-processor';
+import { mkdirSync, writeFileSync } from 'fs';
+import { join } from 'path';
 import pool from '@/lib/db';
 
 export const runtime = 'nodejs';
@@ -43,6 +45,8 @@ export async function POST(req: NextRequest) {
   }
 
   // ---------- 1.6 apply runtime config to module-level globals ----------
+  // Hydrate from DB on first request if not already loaded.
+  await hydrateConfigFromDb(pool);
   // (token limits + rate limit max). Call per-request so /api/admin/agent-config
   // updates take effect on the next request.
   applyConfigToGlobals();
@@ -57,8 +61,70 @@ export async function POST(req: NextRequest) {
   if (contentType.startsWith('multipart/form-data')) {
     const form = await req.formData();
     userText = (form.get('text') as string | null) ?? '';
-    // files are dropped at the SSE endpoint in v1 — they go through
-    // a separate /api/upload flow. We accept the field but ignore it.
+    const file = form.get('file') as File | null;
+    // Save uploaded file to staging dir and build a preview message for the model.
+    // We need the session before staging — create/update after session init below.
+    // Store the file info temporarily; session is created a few lines down.
+    const filePayload: { file: File; text: string } | null = file && file.name
+      ? { file, text: userText }
+      : null;
+
+    if (filePayload) {
+      try {
+        // Create a preliminary session-like id just for staging dir naming
+        const stagingUserId = user.user_id;
+        const stagingDir = join(process.cwd(), '..', 'inputs', '_staging', stagingUserId);
+        mkdirSync(stagingDir, { recursive: true });
+        const destPath = join(stagingDir, filePayload.file.name);
+        const buf = Buffer.from(await filePayload.file.arrayBuffer());
+        writeFileSync(destPath, buf);
+
+        // Build a preview: column names + first 5 rows for xlsx/csv
+        let filePreview = '';
+        try {
+          const ext = filePayload.file.name.split('.').pop()?.toLowerCase();
+          if (ext === 'csv') {
+            // Parse CSV via xlsx (already installed) — read as single-sheet workbook
+            const XLSX = await import('xlsx');
+            const wb = XLSX.read(buf.toString('utf-8').slice(0, 256 * 1024), { type: 'string', raw: true });
+            const sheetName = wb.SheetNames[0];
+            const data: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
+            if (data.length > 0) {
+              const headers = data[0].map((c: any) => String(c ?? ''));
+              filePreview = `列名: ${headers.join(', ')}\n前${Math.min(data.length - 1, 5)}行:\n`;
+              for (let i = 1; i < Math.min(data.length, 6); i++) {
+                const row: Record<string, unknown> = {};
+                headers.forEach((h: string, ci: number) => { row[h] = data[i]?.[ci] ?? null; });
+                filePreview += `${JSON.stringify(row)}\n`;
+              }
+            }
+          } else if (ext === 'xlsx' || ext === 'xls') {
+            const XLSX = await import('xlsx');
+            const wb = XLSX.read(buf, { type: 'buffer' });
+            const sheetName = wb.SheetNames[0];
+            const data: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
+            if (data.length > 0) {
+              const headers = data[0].map((c: any) => String(c ?? ''));
+              filePreview = `列名: ${headers.join(', ')}\n前${Math.min(data.length - 1, 5)}行:\n`;
+              for (let i = 1; i < Math.min(data.length, 6); i++) {
+                const row: Record<string, unknown> = {};
+                headers.forEach((h: string, ci: number) => { row[h] = data[i]?.[ci] ?? null; });
+                filePreview += `${JSON.stringify(row)}\n`;
+              }
+            }
+          }
+        } catch {
+          filePreview = `(无法解析文件预览)`;
+        }
+
+        // Augment userText with file metadata so the model sees it
+        const fileInfo = `[用户上传了文件: ${filePayload.file.name} (${(buf.length / 1024).toFixed(1)}KB)]\n服务器路径: ${destPath}\n${filePreview ? '数据预览:\n' + filePreview : '(无预览)'}`;
+        userText = filePayload.text ? `${fileInfo}\n\n用户消息: ${filePayload.text}` : fileInfo;
+      } catch (err) {
+        console.error('[chat] file upload staging failed:', err);
+        userText = `${userText}\n\n[文件上传失败: ${(err as Error).message}]`;
+      }
+    }
   } else {
     const body = await req.json().catch(() => ({}));
     userText = (body.text as string | null) ?? '';
@@ -281,8 +347,12 @@ export async function POST(req: NextRequest) {
               toolResults.push({ type: 'tool_result', tool_use_id: tb.id, content: result.message, is_error: true });
               send({ type: 'tool_end', id: tb.id, name: tb.name, isError: true, summary: result.message, durationMs: durMs });
             } else {
-              toolResults.push({ type: 'tool_result', tool_use_id: tb.id, content: result.text });
-              send({ type: 'tool_end', id: tb.id, name: tb.name, summary: result.text.slice(0, 200), durationMs: durMs });
+              // Sanitize tool result text: strip ASCII control chars that would
+              // break the next Anthropic turn (Anthropic rejects certain
+              // control bytes in tool_result content).
+              const safeText = result.text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+              toolResults.push({ type: 'tool_result', tool_use_id: tb.id, content: safeText });
+              send({ type: 'tool_end', id: tb.id, name: tb.name, summary: safeText.slice(0, 200), durationMs: durMs });
             }
           }
           toolDepth++;

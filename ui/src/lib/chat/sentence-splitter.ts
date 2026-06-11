@@ -1,41 +1,38 @@
 // Split a streaming assistant text buffer into sentence/paragraph blocks.
 // Rules (priority order):
-//   1. Triple-backtick fences (single-level) at line start are preserved as a
+//   1. Markdown links [text](url) are kept intact — never split inside URL.
+//   2. Triple-backtick fences (single-level) at line start are preserved as a
 //      single block; leading prose on the same line stays attached.
-//   2. Paragraph break \n\n splits blocks.
-//   3. Sentence terminators (。！？.!? — with a numeric-context exception for
-//      `.` and `,`) flush the buffer; the terminator stays with the preceding
-//      segment. The numeric exception prevents mid-number splits: a `.` or
-//      `,` with a digit on either side is treated as a decimal point /
-//      thousands separator, NOT a sentence end (e.g. "165,814.57 元" stays
-//      together).
-//   4. Whitespace-only fragments are dropped.
-// Inline backticks (not at line start) are not treated as a fence — they
-// remain in the buffer as plain text.
+//   3. Paragraph break \n\n splits blocks.
+//   4. Table rows (lines starting with |) are kept together.
+//   5. Sentence terminators (。！？!?) flush the buffer.
+//      NOTE: `.` is deliberately NOT a terminator — it breaks URLs, numbers,
+//      file extensions (.pdf/.xlsx), and markdown ordered lists (1. 2.).
+//   6. Whitespace-only fragments are dropped.
 
-const TERMINATOR_CHARS = new Set(['。', '！', '？', '.', '!', '?']);
-// `.` and `,` are sentence terminators ONLY when they are NOT flanked by
-// digits. A "." between digits is a decimal point (16.66); a "," between
-// digits is a thousands separator (165,814).
-const NUMERIC_PUNCT = new Set(['.', ',']);
-
-function isDigit(c: string | undefined): boolean {
-  return !!c && c >= '0' && c <= '9';
-}
+const TERMINATOR_CHARS = new Set(['。', '！', '？', '!', '?']);
 
 /**
- * True iff `ch` at position `i` of `input` should be treated as a sentence
- * terminator (i.e. flush the buffer). Returns false for `.` / `,` between
- * digits so numeric data like "165,814.57 元" stays in one block.
+ * Find the end of a markdown link if we're at the `[` position.
+ * Returns the index AFTER the closing `)` if a link [text](url) was found,
+ * or -1 if this is not a link start.
  */
-function isTerminator(ch: string, i: number, input: string): boolean {
-  if (!TERMINATOR_CHARS.has(ch)) return false;
-  if (NUMERIC_PUNCT.has(ch)) {
-    const prev = i > 0 ? input[i - 1] : undefined;
-    const next = i + 1 < input.length ? input[i + 1] : undefined;
-    if (isDigit(prev) || isDigit(next)) return false;
-  }
-  return true;
+function findLinkEnd(input: string, start: number): number {
+  // Must start with [
+  if (input[start] !== '[') return -1;
+  // Find matching ]
+  const closeBracket = input.indexOf(']', start + 1);
+  if (closeBracket === -1) return -1;
+  // Must be immediately followed by (
+  if (input[closeBracket + 1] !== '(') return -1;
+  // Find matching ) — URLs can contain nested parens but that's rare;
+  // find the first ) after the (
+  const closeParen = input.indexOf(')', closeBracket + 2);
+  if (closeParen === -1) return -1;
+  // Validate: there must be non-empty content between [ and ], and between ( and )
+  if (closeBracket === start + 1) return -1; // empty []
+  if (closeParen === closeBracket + 2) return -1; // empty ()
+  return closeParen + 1;
 }
 
 export function splitSentences(input: string): string[] {
@@ -43,6 +40,7 @@ export function splitSentences(input: string): string[] {
   const out: string[] = [];
   let buf = '';
   let inFence = false;
+  let inTable = false;
   let fenceStartBuf = '';
 
   const flush = () => {
@@ -54,11 +52,42 @@ export function splitSentences(input: string): string[] {
   for (let i = 0; i < input.length; i++) {
     const ch = input[i];
 
+    // Markdown link detection: [text](url) — consume as an atomic unit.
+    // This prevents `.` inside URLs (export?...pdf) from breaking links.
+    if (ch === '[' && !inFence && !inTable) {
+      const linkEnd = findLinkEnd(input, i);
+      if (linkEnd > i) {
+        buf += input.slice(i, linkEnd);
+        i = linkEnd - 1; // loop increment will set to linkEnd
+        continue;
+      }
+    }
+
+    // Table detection: lines starting with | are kept together
+    const atLineStart = i === 0 || input[i - 1] === '\n';
+    if (atLineStart && ch === '|' && !inFence) {
+      if (!inTable) {
+        flush();
+        inTable = true;
+      }
+      buf += ch;
+      i++;
+      while (i < input.length && input[i] !== '\n') {
+        buf += input[i];
+        i++;
+      }
+      if (i < input.length) buf += input[i]; // the \n
+      continue;
+    }
+
+    // End of table: line does NOT start with |, and we were in a table
+    if (inTable && atLineStart && ch !== '|' && ch !== '`') {
+      flush();
+      inTable = false;
+    }
+
     if (ch === '`' && input[i + 1] === '`' && input[i + 2] === '`') {
-      const atLineStart = i === 0 || input[i - 1] === '\n';
       if (atLineStart && !inFence) {
-        // Stash the buffer so leading prose on this line (e.g. "code:\n")
-        // stays attached to the closed fence block at EOF.
         fenceStartBuf = buf;
         buf = '';
         inFence = true;
@@ -76,8 +105,6 @@ export function splitSentences(input: string): string[] {
         buf += '```';
         i += 2;
         inFence = false;
-        // Re-attach leading prose; do not flush yet so following text on the
-        // same logical line stays in the block until a terminator/paragraph.
         buf = fenceStartBuf + buf;
         fenceStartBuf = '';
         continue;
@@ -85,6 +112,11 @@ export function splitSentences(input: string): string[] {
     }
 
     if (inFence) {
+      buf += ch;
+      continue;
+    }
+
+    if (inTable) {
       buf += ch;
       continue;
     }
@@ -97,7 +129,7 @@ export function splitSentences(input: string): string[] {
 
     buf += ch;
 
-    if (isTerminator(ch, i, input)) {
+    if (TERMINATOR_CHARS.has(ch)) {
       flush();
     }
   }

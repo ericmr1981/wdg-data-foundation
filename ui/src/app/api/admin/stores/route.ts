@@ -1,7 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { normalizeBrand, getCfgSchema } from '@/lib/brand-server';
+import { handleCreateStore, type CreateStoreInput, type Caller } from '@/lib/admin-stores';
+import { verifyMcpServiceToken } from '@/lib/mcp-service-token';
 
 function normStoreCode(code: string) {
   const c = String(code || '').trim();
@@ -29,56 +31,75 @@ export async function GET(request: Request) {
   }
 }
 
-// POST /api/admin/stores
-// body: { brand, store_code, store_name }
-export async function POST(request: Request) {
-  const user = await getSessionUser();
+// POST /api/admin/stores — single entry point = handleCreateStore()
+// Used by both admin UI and MCP (POST /api/mcp → /api/admin/stores).
+//
+// Response shape is a SUPERSET of both new and legacy contracts:
+//   New (spec §2.1, MCP consumers):   { ok, store, rule_snapshot, code }
+//   Legacy (admin UI page.tsx:75):    { success, data, error: <string> }
+// The admin UI only reads data.success / data.error, so a single response
+// that carries both old and new fields keeps both consumers happy.
+export async function POST(req: NextRequest) {
   try {
-    assertRole(user, ['admin']);
-    const body = await request.json();
-
-    const brand = normalizeBrand(body.brand || 'yufeng');
-    if (!brand) return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
-
-    const store_code = normStoreCode(body.store_code);
-    const store_name = String(body.store_name || '').trim() || store_code;
-
-    const cfgSchema = getCfgSchema(brand);
-
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      await client.query(
-        `
-        INSERT INTO ops.stores (brand_code, store_code, store_name)
-        VALUES ($1,$2,$3)
-        ON CONFLICT (brand_code, store_code) DO UPDATE SET store_name=EXCLUDED.store_name, enabled=true, updated_at=NOW()
-        `,
-        [brand, store_code, store_name]
+    const session = await getSessionUser();
+    if (!session) {
+      return NextResponse.json(
+        { ok: false, success: false, code: 'unauthenticated', error: 'No active session', data: null },
+        { status: 401 }
       );
-
-      // also upsert into cfg.dim_store (for dropdown used by UI)
-      await client.query(
-        `
-        INSERT INTO ${cfgSchema}.dim_store (store_code, store_name)
-        VALUES ($1,$2)
-        ON CONFLICT (store_code) DO UPDATE SET store_name=EXCLUDED.store_name
-        `,
-        [store_code, store_name]
-      );
-
-      await client.query('COMMIT');
-      return NextResponse.json({ success: true, data: { brand, store_code, store_name } });
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
     }
-  } catch (err: any) {
-    const status = err?.status || 500;
-    return NextResponse.json({ success: false, error: err.message || 'Failed' }, { status });
+    if (session.role !== 'admin') {
+      return NextResponse.json(
+        { ok: false, success: false, code: 'forbidden', error: 'Admin role required', data: null },
+        { status: 403 }
+      );
+    }
+
+    const isMcp = req.headers.get('x-mcp-session') === 'internal';
+    let serviceTokenMatched = false;
+    if (isMcp) {
+      const provided = req.headers.get('x-service-token') ?? '';
+      serviceTokenMatched = await verifyMcpServiceToken(provided);
+      if (!serviceTokenMatched) {
+        return NextResponse.json(
+          { ok: false, success: false, code: 'forbidden_mcp', error: 'Invalid or missing service token', data: null },
+          { status: 403 }
+        );
+      }
+    }
+
+    const body = (await req.json()) as CreateStoreInput;
+    const caller: Caller = isMcp
+      ? { kind: 'mcp', user: { id: session.user_id, role: session.role }, serviceTokenMatched }
+      : { kind: 'admin_ui', user: { id: session.user_id, role: session.role } };
+
+    const result = await handleCreateStore(body, caller);
+    return NextResponse.json(
+      {
+        ok: true,
+        success: true,                  // legacy admin UI compat
+        data: result.store,             // legacy admin UI compat
+        store: result.store,            // new (MCP / spec §2.1)
+        rule_snapshot: result.rule_snapshot,
+      },
+      { status: 200 }
+    );
+  } catch (e: any) {
+    const code = e?.code ?? 'internal_error';
+    const message = e?.message ?? 'Internal error';
+    // Map spec §2.1 error codes → HTTP status. Anything not listed → 422.
+    const STATUS: Record<string, number> = {
+      unauthenticated: 401,
+      forbidden: 403,
+      forbidden_mcp: 403,
+      brand_not_found: 404,
+      internal_error: 500,
+    };
+    const status = STATUS[code] ?? 422;
+    return NextResponse.json(
+      { ok: false, success: false, code, error: message, data: null },
+      { status }
+    );
   }
 }
 

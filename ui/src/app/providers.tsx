@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BrandProvider, BRAND_OPTIONS, useBrand } from '@/lib/brand-context';
 import { fetchBrands } from '@/lib/brands-client';
+import NotificationBell from '@/components/NotificationBell';
 
 function BrandSelector() {
   const { brand, setBrand } = useBrand();
@@ -75,7 +76,7 @@ function NavBar() {
   }
 
   return (
-    <nav className="bg-white shadow-sm border-b">
+    <nav className="bg-white shadow-sm border-b relative z-30">
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex justify-between h-14">
           <div className="flex space-x-8 items-center">
@@ -158,6 +159,8 @@ function NavBar() {
             {me && (
               <span className="text-xs text-gray-500">{me.username} ({me.role})</span>
             )}
+
+            <NotificationBell />
 
             <button onClick={logout} className="text-xs border rounded px-2 py-1 bg-white hover:bg-gray-50">
               退出

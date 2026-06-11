@@ -1,34 +1,35 @@
-// ui/src/app/api/notifications/route.ts
-// Proxy agent's /api/tasks endpoint for browser consumption.
-// Auth: must be logged-in WDG user. The agent trusts the wdg user-id header
-// for filtering, but only ops/agent-side tooling may schedule tasks.
-import { NextRequest, NextResponse } from 'next/server'
-import { getSessionUser } from '@/lib/auth-server'
+import { NextRequest, NextResponse } from 'next/server';
+import { getSessionUser } from '@/lib/auth-server';
+import { getErrorMessage } from '@/lib/query-types';
+import pool from '@/lib/db';
+import type { NotificationListResponse } from '@/lib/notification-types';
+import {
+  listNotificationsSql,
+  countUnreadNotificationsSql,
+  buildNotificationListResponse,
+  type NotificationRow,
+  type CountRow,
+} from '@/lib/notification-queries';
 
-const AGENT_URL = process.env.AGENT_INTERNAL_URL ?? 'http://agent:4101'
+export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest) {
-  const user = await getSessionUser()
-  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-
-  const url = new URL(req.url)
-  const limit = url.searchParams.get('limit') ?? '20'
-
+export async function GET(_req: NextRequest) {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  const userId = user.user_id;  // NOTE: SessionUser uses user_id (UUID string), not id
   try {
-    const r = await fetch(
-      `${AGENT_URL}/api/tasks?user_id=${user.user_id}&limit=${limit}`,
-      {
-        headers: {
-          'x-wdg-user-id': user.user_id,
-          'x-wdg-user-role': user.role,
-        },
-        cache: 'no-store',
-      },
-    )
-    const data = await r.json().catch(() => ({}))
-    return NextResponse.json(data, { status: r.status })
+    const [listRes, countRes] = await Promise.all([
+      pool.query(listNotificationsSql(userId), [userId]),
+      pool.query(countUnreadNotificationsSql(userId), [userId]),
+    ]);
+    const body: NotificationListResponse = buildNotificationListResponse(
+      listRes.rows as NotificationRow[],
+      countRes.rows as CountRow[],
+    );
+    return NextResponse.json(body);
   } catch (e) {
-    // Agent offline — return empty list rather than 500, so UI renders gracefully.
-    return NextResponse.json({ tasks: [], note: 'agent_unreachable' })
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }

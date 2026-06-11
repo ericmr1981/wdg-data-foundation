@@ -30,7 +30,8 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api/bonjur/income/bank-entry-stats') ||
     pathname.startsWith('/api/bonjur/sales/upload-product') ||
     pathname.startsWith('/api/bonjur/sales/qimai-pos') ||
-    pathname.startsWith('/api/bonjur/sales/upload-self-service')
+    pathname.startsWith('/api/bonjur/sales/upload-self-service') ||
+    pathname.startsWith('/api/admin/analyze-unclassified')
   ) {
     return NextResponse.next();
   }

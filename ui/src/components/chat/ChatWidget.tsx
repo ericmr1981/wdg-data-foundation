@@ -154,10 +154,12 @@ export function ChatWidget() {
     }).catch(() => {});
   }, [open]);
 
-  const send = useCallback(async (text: string) => {
+  const send = useCallback(async (text: string, file?: File) => {
     if (streaming) return;
     const ts = Date.now();
-    setMessages(m => [...m, { type: 'user', content: text, ts }]);
+    // Show file info in the user's message bubble
+    const userContent = file ? `[📎 ${file.name}] ${text}` : text;
+    setMessages(m => [...m, { type: 'user', content: userContent, ts }]);
     setStreaming(true);
     assistantBufferRef.current = '';
     toolCallsRef.current = new Map();
@@ -182,12 +184,24 @@ export function ChatWidget() {
     const controller = new AbortController();
     aborterRef.current = controller;
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-        signal: controller.signal,
-      });
+      let res: Response;
+      if (file) {
+        const form = new FormData();
+        form.append('text', text);
+        form.append('file', file);
+        res = await fetch('/api/chat', {
+          method: 'POST',
+          body: form,
+          signal: controller.signal,
+        });
+      } else {
+        res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+          signal: controller.signal,
+        });
+      }
       if (!res.ok || !res.body) {
         setMessages(m => [...m, { type: 'error', message: `HTTP ${res.status}`, ts: Date.now() }]);
         setStreaming(false);
@@ -321,7 +335,7 @@ export function ChatWidget() {
       }
     >
       <MessageList messages={messages} />
-      <ChatInput onSend={send} onReset={reset} disabled={streaming} />
+      <ChatInput onSend={send} disabled={streaming} canUpload={true} />
     </ChatDrawer>
   );
 }

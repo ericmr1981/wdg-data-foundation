@@ -13,6 +13,7 @@ services:
     restart: unless-stopped
 
   ui:
+    image: ${UI_IMAGE:-wdg-data-foundation-ui:latest}
     build:
       context: ./ui
     container_name: dataplatform-ui

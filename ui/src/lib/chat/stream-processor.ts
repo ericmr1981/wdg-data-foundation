@@ -14,6 +14,11 @@ export interface ProcessStreamResult {
   usage: { input: number; output: number };
 }
 
+// ASCII control characters that break JSON.parse (i.e. not \t \n \r).
+// These can sneak into tool_use input JSON when the model emits literal
+// control bytes. We strip them before parsing.
+const CONTROL_CHARS_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
+
 export async function processStream(
   stream: AsyncIterable<Anthropic.MessageStreamEvent>,
   send: (evt: Record<string, unknown>) => void,
@@ -55,7 +60,14 @@ export async function processStream(
     } else if (event.type === 'content_block_stop') {
       const blk = blocks.get(event.index);
       if (blk?.type === 'tool_use' && blk.id && blk.name) {
-        const input = blk.partialInput ? JSON.parse(blk.partialInput) : {};
+        const raw = blk.partialInput ?? '';
+        const cleaned = raw.replace(CONTROL_CHARS_RE, '');
+        let input: unknown = {};
+        try {
+          input = cleaned ? JSON.parse(cleaned) : {};
+        } catch (err) {
+          input = { _raw: cleaned, _parse_error: (err as Error).message };
+        }
         toolUseBlocks.push({ id: blk.id, name: blk.name, input });
         send({ type: 'tool_start', id: blk.id, name: blk.name });
       }

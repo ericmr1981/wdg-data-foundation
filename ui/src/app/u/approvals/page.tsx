@@ -7,11 +7,14 @@ import ApprovalRow from './components/ApprovalRow';
 import BatchToolbar from './components/BatchToolbar';
 import type { ProposalRow } from './components/types';
 
-type FilterTab = 'all' | 'type1' | 'type2';
+type FilterTab = 'all' | 'type1' | 'type2' | 'pending';
 
 function ApprovalsContent() {
-  const { brand } = useBrand();
+  const { brand, setBrand } = useBrand();
   const searchParams = useSearchParams();
+  const source = searchParams.get('source');
+  const brandParam = searchParams.get('brand');
+  const filterParam = searchParams.get('filter');
 
   const [proposals, setProposals] = useState<ProposalRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +64,13 @@ function ApprovalsContent() {
     fetchProposals();
   }, [brand, batchId]);
 
+  // Apply URL params (v2: source/brand/filter) on mount/change
+  useEffect(() => {
+    if (filterParam === 'pending') setFilter('pending');
+    if (brandParam && brandParam !== brand) setBrand(brandParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterParam, brandParam]);
+
   // Stats
   const stats = useMemo(() => {
     const pending = proposals.filter(p => p.status === 'pending').length;
@@ -74,6 +84,7 @@ function ApprovalsContent() {
   const filtered = useMemo(() => {
     if (filter === 'type1') return proposals.filter(p => p.type === 'type1');
     if (filter === 'type2') return proposals.filter(p => p.type === 'type2');
+    if (filter === 'pending') return proposals.filter(p => p.status === 'pending');
     return proposals;
   }, [proposals, filter]);
 
@@ -290,6 +301,15 @@ function ApprovalsContent() {
 
   return (
     <div className="min-h-screen pb-20">
+      {/* Banner for unmatched-analysis batch (v2) */}
+      {source === 'unmatched' && batchId && (
+        <div className="bg-blue-50 border border-blue-200 rounded p-3 mx-6 mt-4 mb-4 text-sm">
+          📌 来自未配分析批次 <code className="font-mono text-xs">{batchId.slice(0, 8)}</code>,
+          共 <b>{proposals.filter(p => p.batch_id === batchId).length}</b> 条建议,
+          已为你筛选 <code>status='pending'</code> 的项。
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white border-b px-6 py-4">
         <div className="flex items-center justify-between">
