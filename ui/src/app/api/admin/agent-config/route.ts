@@ -1,7 +1,8 @@
 // ui/src/app/api/admin/agent-config/route.ts
-// v1: 改为 5 行 fetch 代理, 实际配置存在 Agent 进程
-import { NextRequest, NextResponse } from 'next/server'
-import { getSessionUser } from '@/lib/auth-server'
+// (保留远端完整版本: v2 style — agent-config 直接在 UI 进程 + DB 加密存储)
+// V2 now manages credentials directly (encrypted in ops.chat_agent_credentials),
+// rendering the v1 5-line proxy to agent obsolete.
+// Keep this file as-is from origin/main, resolving merge conflict.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFileSync } from 'fs';
@@ -21,23 +22,19 @@ import {
 } from '@/lib/chat/agent-config-store';
 import { encrypt, decrypt, SecretCryptoError } from '@/lib/chat/secret-crypto';
 
-async function proxy(req: NextRequest, method: 'GET' | 'POST' | 'DELETE') {
-  const user = await getSessionUser()
-  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  if (user.role !== 'admin') return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-opus-4-8';
 
-  const body = method === 'GET' ? undefined : await req.text()
-  const r = await fetch(`${AGENT_URL}/api/admin/config`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-wdg-user-id': user.user_id,
-      'x-wdg-user-role': user.role,
-    },
-    body,
-  })
-  return NextResponse.json(await r.json())
+function isAdmin(user: any): boolean {
+  return user?.role === 'admin';
 }
+
+const VALID_KEYS = new Set([
+  'maxTokens', 'temperature', 'topP', 'maxToolChainDepth',
+  'rateLimitMaxPerMinute', 'tokenSoftLimit', 'tokenHardLimit',
+  'mcpRetryMaxAttempts', 'thinkingLevel',
+]);
+
+const AGENT_URL = process.env.AGENT_INTERNAL_URL ?? 'http://agent:4101';
 
 function maskKey(k: string | null): string | null {
   if (!k) return null;
@@ -66,37 +63,6 @@ async function loadCredFromDb() {
     console.warn('[admin/agent-config] DB load failed, falling back to in-memory store:', (err as Error).message);
     return null;
   }
-}
-
-async function saveCredToDb(
-  baseURL: string | null,
-  apiKey: string | null,
-  model: string,
-  userId: string,
-): Promise<{ persistedToDb: boolean }> {
-  const encKey = process.env.AGENT_CRED_ENCRYPTION_KEY;
-  // If encryption key is unset, skip DB persistence — credentials still go
-  // into the in-memory store, so the chat will use them this session.
-  // Process restart → lose them (in-memory only). Admin gets a console warning
-  // and the POST response should reflect that.
-  if (!encKey) {
-    console.warn(
-      '[admin/agent-config] AGENT_CRED_ENCRYPTION_KEY unset — credentials will be in-memory only (lost on process restart). Set the env var to persist across restarts.',
-    );
-    return { persistedToDb: false };
-  }
-  const encryptedKey = apiKey ? encrypt(apiKey, encKey) : null;
-  await pool.query(
-    `INSERT INTO ops.chat_agent_credentials (id, base_url, encrypted_api_key, model, updated_by)
-     VALUES (1, $1, $2, $3, $4)
-     ON CONFLICT (id) DO UPDATE SET
-       base_url = EXCLUDED.base_url,
-       encrypted_api_key = EXCLUDED.encrypted_api_key,
-       model = EXCLUDED.model,
-       updated_by = EXCLUDED.updated_by`,
-    [baseURL, encryptedKey, model, userId],
-  );
-  return { persistedToDb: true };
 }
 
 export async function GET() {
@@ -145,10 +111,7 @@ export async function POST(req: NextRequest) {
     try {
       writeFileSync(AGENT_MD_FILE_PATH, body.agentMd, 'utf-8');
     } catch (err) {
-      console.warn(
-        '[agent-config] writeFileSync failed; in-memory update only:',
-        err,
-      );
+      console.warn('[agent-config] writeFileSync failed; in-memory update only:', err);
     }
   }
 
@@ -162,28 +125,24 @@ export async function POST(req: NextRequest) {
   }
 
   // Credentials: handle baseURL / apiKey / model updates with partial semantics.
-  if (
-    body.baseURL !== undefined ||
-    body.apiKey !== undefined ||
-    body.model !== undefined
-  ) {
+  if (body.baseURL !== undefined || body.apiKey !== undefined || body.model !== undefined) {
     const currentFromDb = await loadCredFromDb();
     const newBaseURL =
       body.baseURL !== undefined
         ? typeof body.baseURL === 'string' && body.baseURL.trim()
           ? body.baseURL.trim()
-          : null // explicit null/empty => clear
+          : null
         : (currentFromDb?.baseURL ?? null);
 
     let newApiKey: string | null;
     if (typeof body.apiKey === 'string') {
       if (body.apiKey === '') {
-        newApiKey = null; // explicit clear
+        newApiKey = null;
       } else {
-        newApiKey = body.apiKey; // update
+        newApiKey = body.apiKey;
       }
     } else {
-      newApiKey = currentFromDb?.apiKey ?? null; // unchanged
+      newApiKey = currentFromDb?.apiKey ?? null;
     }
 
     const newModel =
@@ -207,22 +166,13 @@ export async function DELETE() {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
   resetAgentConfig();
-  // Also clear DB credentials row
   try {
     await pool.query(
-      `UPDATE ops.chat_agent_credentials
-         SET base_url = NULL,
-             encrypted_api_key = NULL,
-             model = $1,
-             updated_by = $2
-       WHERE id = 1`,
+      `UPDATE ops.chat_agent_credentials SET base_url = NULL, encrypted_api_key = NULL, model = $1, updated_by = $2 WHERE id = 1`,
       [DEFAULT_MODEL, user.user_id],
     );
   } catch (err) {
-    console.warn(
-      '[admin/agent-config] DB clear on reset failed:',
-      (err as Error).message,
-    );
+    console.warn('[admin/agent-config] DB clear on reset failed:', (err as Error).message);
   }
   applyConfigToGlobals();
   return NextResponse.json({ success: true, config: getAgentConfig() });
