@@ -10,15 +10,16 @@ async function proxy(req: NextRequest, method: 'GET' | 'POST') {
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   if (user.role !== 'admin') return NextResponse.json({ error: 'forbidden' }, { status: 403 })
 
-  const body = method === 'GET' ? undefined : await req.text()
+  // POST /api/admin/skills 创建 skill 不带 body (body 在 URL params 里), 不传 Content-Type
+  // Fastify 拒绝空 body + application/json
+  const bodyText = method === 'GET' ? '' : await req.clone().text()
   const r = await fetch(`${AGENT_URL}/api/admin/skills`, {
     method,
     headers: {
-      'Content-Type': 'application/json',
       'x-wdg-user-id': user.user_id,
       'x-wdg-user-role': user.role,
     },
-    body,
+    body: bodyText || undefined,
   })
   return NextResponse.json(await r.json())
 }

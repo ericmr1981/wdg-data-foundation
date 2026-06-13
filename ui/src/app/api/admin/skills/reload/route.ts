@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   const r = await fetch(`${AGENT_URL}/api/admin/skills/reload`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
+      // 不传 Content-Type: Fastify 拒空 body + JSON content-type
       'x-wdg-user-id': user.user_id,
       'x-wdg-user-role': user.role,
     },
