@@ -21,6 +21,7 @@ import { registerAdminTaskRoutes } from './api/admin/tasks.js'
 import { registerAdminCronRoutes } from './api/admin/cron.js'
 import { registerTestConnectionRoute } from './api/admin/test-connection.js'
 import { registerAdminSkillRoutes } from './api/admin/skills.js'
+import { registerAdminToolRoutes } from './api/admin/tools.js'
 import { getMetrics } from './metrics/server.js'
 
 const PORT = parseInt(process.env.WS_PORT ?? '4101', 10)
@@ -80,6 +81,7 @@ async function main() {
   registerAdminConfigRoutes(app)
   registerTestConnectionRoute(app)
   registerAdminSkillRoutes(app)
+  registerAdminToolRoutes(app)
 
   // Channels: WebChannel listen WS_PORT + 1, Fastify listen WS_PORT (HTTP)
   // (单进程无法让 2 个 server 共享 1 个端口, 临时方案: 分两个端口)

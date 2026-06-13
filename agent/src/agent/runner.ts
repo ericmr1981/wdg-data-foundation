@@ -6,6 +6,7 @@ import type { ConversationManager, IncomingMsg } from '../conversation/manager.j
 import type { Notifier } from '../notifications/notifier.js'
 import { initRegistry as _ } from '../skills/registry.js'  // trigger init
 import { handleLoadSkill, LOAD_SKILL_NAME } from '../skills/load-skill-tool.js'
+import { isToolEnabled } from '../api/admin/tools.js'
 import { buildSystemPrompt } from './prompt.js'
 import { LlmError, mapAnthropicError } from '../errors.js'
 
@@ -23,7 +24,8 @@ export class AgentRunner {
     const cfg = getAgentConfig()
     const conv = await this.deps.conversation.getOrCreate(msg)
     const history = await this.deps.conversation.getMessages(conv.conversationId, 10)
-    const tools = await this.deps.mcpBridge.listTools()
+    const tools = (await this.deps.mcpBridge.listTools())
+      .filter((t: any) => isToolEnabled(t.name))
     tools.push({
       name: LOAD_SKILL_NAME,
       description: '加载 skill 完整内容',
