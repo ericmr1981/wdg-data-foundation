@@ -12,7 +12,6 @@ export async function POST(req: NextRequest) {
   const r = await fetch(`${AGENT_URL}/api/admin/test-connection`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
       'x-wdg-user-id': user.user_id,
       'x-wdg-user-role': user.role,
     },
