@@ -1,4 +1,4 @@
-name: Build and Push UI to ACR
+name: Build and Push UI + Agent to ACR
 
 on:
   push:
@@ -18,7 +18,6 @@ jobs:
           # Node 22.6+ required for --experimental-strip-types used in chat unit tests
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: ui/package-lock.json
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -66,8 +65,22 @@ jobs:
           cache-from: type=registry,ref=${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/ui:buildcache
           cache-to: type=registry,ref=${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/ui:buildcache,mode=max
 
+      - name: Build and push agent image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./agent
+          file: ./agent/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/agent:latest
+            ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/agent:${{ steps.meta.outputs.short_sha }}
+            ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/agent:${{ steps.meta.outputs.ts }}
+          cache-from: type=registry,ref=${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/agent:buildcache
+          cache-to: type=registry,ref=${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/agent:buildcache,mode=max
+
       - name: Notify VPS to pull (optional, future)
         # 留个 hook,以后可以加 SSH 触发 VPS 立即拉
         run: |
-          echo ">>> image pushed: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/ui:${{ steps.meta.outputs.short_sha }}"
+          echo ">>> ui image pushed: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/ui:${{ steps.meta.outputs.short_sha }}"
+          echo ">>> agent image pushed: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/agent:${{ steps.meta.outputs.short_sha }}"
           echo ">>> VPS cron 会在 5 分钟内自动拉取并 restart"
