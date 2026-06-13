@@ -31,6 +31,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
       AGENT_INTERNAL_URL: http://agent:4101
       NEXT_PUBLIC_AGENT_WS_URL: ws://agent:4102/ws
+      AGENT_CRED_ENCRYPTION_KEY: ${AGENT_CRED_ENCRYPTION_KEY:-local-dev-only-do-not-use-in-prod}
       NEXT_PUBLIC_AGENT_ROLLOUT_PERCENT: ${NEXT_PUBLIC_AGENT_ROLLOUT_PERCENT:-10}
     ports:
       - "${UI_PORT:-3002}:3000"
