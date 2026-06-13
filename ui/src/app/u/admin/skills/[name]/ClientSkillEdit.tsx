@@ -23,6 +23,10 @@ export function ClientSkillEdit({ name, initialDescription, initialTriggers, ini
 
   const dirty = raw !== initialRaw || disabled !== initialDisabled;
 
+  // rebuildRaw 是非破坏性的: 它从 description/triggers/disabled 重写 frontmatter,
+  // 保留 raw textarea 里的 body. 即使 dirty=false 也允许 Save, 防止新建 skill 状态没变就锁死.
+  const canSave = raw.length > 0
+
   function rebuildRaw(): string {
     // 用最新的 description / triggers / disabled 替换 frontmatter, body 保留 raw 里的
     const fmEnd = raw.indexOf('---', 4);
@@ -158,7 +162,7 @@ export function ClientSkillEdit({ name, initialDescription, initialTriggers, ini
       <div className="flex items-center gap-3 border-t pt-4">
         <button
           onClick={handleSave}
-          disabled={!dirty || saving}
+          disabled={!canSave || saving}
           className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
         >
           {saving ? '保存中...' : 'Save'}
