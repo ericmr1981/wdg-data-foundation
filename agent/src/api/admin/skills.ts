@@ -117,7 +117,11 @@ export function registerAdminSkillRoutes(app: FastifyInstance) {
     if (!existsSync(SKILLS_DIR)) mkdirSync(SKILLS_DIR, { recursive: true })
     const filename = `${name}.md`
     const template = `---\nname: ${name}\ndescription: |\n  TODO: 描述这个 skill 的用途.\ntriggers:\n  - "${name}"\n---\n\n# ${name}\n\nTODO: 在这里写 skill 的具体内容.\n`
-    writeFileSync(join(SKILLS_DIR, filename), template, 'utf-8')
+    try {
+      writeFileSync(join(SKILLS_DIR, filename), template, 'utf-8')
+    } catch (e) {
+      return reply.code(500).send({ error: 'write_failed', message: (e as Error).message })
+    }
     return { success: true, filename, message: 'skill created, please fill content and call /reload' }
   })
 

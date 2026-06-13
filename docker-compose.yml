@@ -55,7 +55,7 @@ services:
       ui:
         condition: service_started
     volumes:
-      - ./agent/skills:/app/skills:ro
+      - ./agent/skills:/app/skills
       - ./agent/agent.md:/app/agent.md:ro
     ports:
       - "4101:4101"
