@@ -1,7 +1,6 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import type { AgentConfigParams, ThinkingLevel } from '@/lib/chat/agent-config-store';
-import { buildSystemPrompt } from '@/lib/chat/prompt';
 
 interface Props {
   initial: {
@@ -51,24 +50,6 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
   const [message, setMessage] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
-  const [showPrompt, setShowPrompt] = useState(false);
-
-  // Build a realistic system prompt preview from the current agentMd + core templates.
-  // Uses the actual buildSystemPrompt from prompt.ts (with null ctx/tools so the header
-  // slots show "<none>" — the preview is about seeing the full rule text, not page context).
-  const systemPromptPreview = useMemo(() => {
-    return buildSystemPrompt(
-      { brand: undefined, store: undefined, period: undefined, page: undefined },
-      [
-        { name: 'get_brand_stores', description: '获取品牌门店列表', input_schema: {} },
-        { name: 'query_financial_overview', description: '财务概览', input_schema: {} },
-        { name: 'query_financial_statement', description: '三表（利润/现金流/资产负债表）', input_schema: {} },
-        { name: 'query_financial_kpi_trend', description: 'KPI 趋势', input_schema: {} },
-        { name: 'query_income_metrics', description: '收入指标', input_schema: {} },
-      ],
-      { customInstructions: agentMd },
-    );
-  }, [agentMd]);
 
   const dirty = agentMd !== initial.agentMd
     || (Object.keys(params) as Array<keyof AgentConfigParams>).some(k => params[k] !== initial.params[k])
@@ -292,22 +273,7 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
         </div>
       )}
 
-      {/* System Prompt 预览（只读模板 + 可改 custom instructions） */}
-      <details className="mt-6 border rounded" open={showPrompt} onToggle={e => setShowPrompt((e.target as HTMLDetailsElement).open)}>
-        <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 select-none">
-          System Prompt 预览（只读）
-          <span className="ml-2 text-xs text-gray-400 font-normal">
-            agent.md 以上可编辑，以下核心模板只读
-          </span>
-        </summary>
-        <pre className="m-3 p-3 bg-gray-100 rounded text-xs max-h-96 overflow-auto whitespace-pre-wrap leading-relaxed">
-          {systemPromptPreview}
-        </pre>
-        <p className="px-3 pb-2 text-[10px] text-gray-400">
-          此预览展示 agent.md（Custom Instructions 段）拼接核心模板后的完整 system prompt。
-          实际运行时 ctx（brand/store/period/page）和工具列表由当前页面动态注入。
-        </p>
-      </details>
+      {/* System Prompt 预览已挪到下方 <AgentConfigPreview> 组件 (拉真实 46 工具) */}
     </div>
   );
 }
