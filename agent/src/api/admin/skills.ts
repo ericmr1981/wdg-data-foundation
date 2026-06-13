@@ -38,6 +38,7 @@ function listOne(filename: string) {
     name: fm.name ?? filename.replace(/\.md$/, ''),
     description: fm.description ?? '',
     triggers: fm.triggers ?? [],
+    disabled: fm.disabled === true,
     filename,
     size: raw.length,
     body: parsed.content.trim(),
@@ -66,12 +67,13 @@ export function registerAdminSkillRoutes(app: FastifyInstance) {
     const path = join(SKILLS_DIR, file)
     const raw = readFileSync(path, 'utf-8')
     const parsed = matter(raw)
-    const fm = parsed.data as { description?: string; triggers?: string[] }
+    const fm = parsed.data as { description?: string; triggers?: string[]; disabled?: boolean }
     return {
       success: true,
       name: req.params.name,
       description: fm.description ?? '',
       triggers: fm.triggers ?? [],
+      disabled: fm.disabled === true,
       body: parsed.content.trim(),
       raw,
       filename: file,

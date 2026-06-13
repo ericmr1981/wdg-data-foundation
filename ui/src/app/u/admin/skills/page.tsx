@@ -8,6 +8,7 @@ interface SkillSummary {
   name: string;
   description: string;
   triggers: string[];
+  disabled: boolean;
   filename: string;
   size: number;
   modifiedAt: string;

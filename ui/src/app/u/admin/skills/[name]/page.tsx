@@ -11,6 +11,7 @@ interface SkillDetail {
   body: string;
   raw: string;
   filename: string;
+  disabled: boolean;
 }
 
 async function loadSkill(name: string): Promise<{ skill: SkillDetail | null; error?: string }> {
@@ -50,6 +51,7 @@ export default async function Page({ params }: { params: Promise<{ name: string 
             initialDescription={skill.description}
             initialTriggers={skill.triggers}
             initialRaw={skill.raw}
+            initialDisabled={skill.disabled}
           />
         ) : null}
       </main>

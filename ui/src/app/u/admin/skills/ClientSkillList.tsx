@@ -7,6 +7,7 @@ interface SkillSummary {
   name: string;
   description: string;
   triggers: string[];
+  disabled: boolean;
   filename: string;
   size: number;
   modifiedAt: string;
@@ -34,7 +35,7 @@ export function ClientSkillList({ initialSkills, initialError }: Props) {
       const r = await fetch('/api/admin/skills/reload', { method: 'POST' });
       const j = await r.json();
       if (!r.ok || !j.success) throw new Error(j.error ?? `HTTP ${r.status}`);
-      setStatus('✅ Reloaded. 5 个 skill 已重新加载。');
+      setStatus('✅ Reloaded. Skill 已重新加载（disabled 的不会注入 LLM）。');
     } catch (e) {
       setStatus('❌ Reload 失败: ' + (e as Error).message);
     } finally {
@@ -68,6 +69,50 @@ export function ClientSkillList({ initialSkills, initialError }: Props) {
     }
   }
 
+  async function handleDelete(s: SkillSummary) {
+    if (!window.confirm(`确定删除 skill "${s.name}"？\n\n文件: ${s.filename}\n该操作不可恢复。`)) return;
+    setStatus(null);
+    try {
+      const r = await fetch(`/api/admin/skills/${encodeURIComponent(s.name)}`, { method: 'DELETE' });
+      const j = await r.json();
+      if (!r.ok || !j.success) throw new Error(j.error ?? `HTTP ${r.status}`);
+      setStatus(`✅ Deleted ${s.name}. 调 Reload 生效.`);
+      setSkills(prev => prev.filter(x => x.name !== s.name));
+    } catch (e) {
+      setStatus('❌ 删除失败: ' + (e as Error).message);
+    }
+  }
+
+  async function handleToggleDisabled(s: SkillSummary) {
+    setStatus(null);
+    try {
+      // 拉完整 raw, 改 frontmatter.disabled, PUT 回
+      const r = await fetch(`/api/admin/skills/${encodeURIComponent(s.name)}`);
+      const j = await r.json();
+      if (!r.ok || !j.success) throw new Error(j.error ?? `HTTP ${r.status}`);
+      const raw: string = j.raw
+      const newRaw = raw.match(/^---\n([\s\S]*?)\n---/)?.[1]
+        ? raw.replace(/^(---[\s\S]*?---)/, (m) => {
+            const block = m.replace(/^---|---$/g, '')
+            const lines = block.split('\n').filter((l: string) => !/^disabled\s*:/.test(l))
+            const newBlock = lines.join('\n') + (s.disabled ? '' : '\ndisabled: true')
+            return `---\n${newBlock}\n---`
+          })
+        : raw + '\n---\ndisabled: true\n---'
+      const r2 = await fetch(`/api/admin/skills/${encodeURIComponent(s.name)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: newRaw }),
+      })
+      const j2 = await r2.json()
+      if (!r2.ok || !j2.success) throw new Error(j2.error ?? `HTTP ${r2.status}`)
+      setStatus(s.disabled ? `✅ ${s.name} 已启用. 调 Reload 生效.` : `✅ ${s.name} 已禁用. 调 Reload 生效.`)
+      setSkills(prev => prev.map(x => x.name === s.name ? { ...x, disabled: !s.disabled } : x))
+    } catch (e) {
+      setStatus('❌ toggle 失败: ' + (e as Error).message);
+    }
+  }
+
   async function handleView(s: SkillSummary) {
     setViewing(s);
     setViewBody('');
@@ -89,6 +134,11 @@ export function ClientSkillList({ initialSkills, initialError }: Props) {
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-600">
           共 {skills.length} 个 skill
+          {skills.filter(s => s.disabled).length > 0 && (
+            <span className="ml-2 text-yellow-600">
+              ({skills.filter(s => s.disabled).length} disabled — 不会注入 LLM)
+            </span>
+          )}
           {error && <span className="ml-3 text-red-600">加载失败: {error}</span>}
         </div>
         <div className="flex gap-2">
@@ -123,19 +173,20 @@ export function ClientSkillList({ initialSkills, initialError }: Props) {
               <th className="px-4 py-2">Description</th>
               <th className="px-4 py-2">Triggers</th>
               <th className="px-4 py-2 text-right">Size</th>
+              <th className="px-4 py-2">Status</th>
               <th className="px-4 py-2">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {skills.length === 0 && !error && (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-gray-400">
+                <td colSpan={6} className="px-4 py-6 text-center text-gray-400">
                   暂无 skill
                 </td>
               </tr>
             )}
             {skills.map(s => (
-              <tr key={s.filename} className="hover:bg-gray-50">
+              <tr key={s.filename} className={`hover:bg-gray-50 ${s.disabled ? 'opacity-60' : ''}`}>
                 <td className="px-4 py-2 font-mono text-xs text-gray-900">{s.name}</td>
                 <td className="px-4 py-2 text-gray-700">
                   <span className="line-clamp-2">{s.description.split('\n')[0]}</span>
@@ -146,8 +197,15 @@ export function ClientSkillList({ initialSkills, initialError }: Props) {
                 <td className="px-4 py-2 text-right font-mono text-xs text-gray-500">
                   {(s.size / 1024).toFixed(1)} KB
                 </td>
+                <td className="px-4 py-2 text-xs">
+                  {s.disabled ? (
+                    <span className="rounded bg-yellow-100 px-2 py-0.5 text-yellow-800">disabled</span>
+                  ) : (
+                    <span className="rounded bg-green-100 px-2 py-0.5 text-green-800">enabled</span>
+                  )}
+                </td>
                 <td className="px-4 py-2">
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-1">
                     <button
                       onClick={() => handleView(s)}
                       className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"
@@ -160,6 +218,18 @@ export function ClientSkillList({ initialSkills, initialError }: Props) {
                     >
                       Edit
                     </Link>
+                    <button
+                      onClick={() => handleToggleDisabled(s)}
+                      className={`rounded border px-2 py-0.5 text-xs ${s.disabled ? 'border-green-300 text-green-700 hover:bg-green-50' : 'border-yellow-300 text-yellow-700 hover:bg-yellow-50'}`}
+                    >
+                      {s.disabled ? 'Enable' : 'Disable'}
+                    </button>
+                    <button
+                      onClick={() => handleDelete(s)}
+                      className="rounded border border-red-300 px-2 py-0.5 text-xs text-red-700 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </td>
               </tr>

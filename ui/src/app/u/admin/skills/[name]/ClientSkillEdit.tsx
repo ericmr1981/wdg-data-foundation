@@ -8,21 +8,23 @@ interface Props {
   initialDescription: string;
   initialTriggers: string[];
   initialRaw: string;
+  initialDisabled: boolean;
 }
 
-export function ClientSkillEdit({ name, initialDescription, initialTriggers, initialRaw }: Props) {
+export function ClientSkillEdit({ name, initialDescription, initialTriggers, initialRaw, initialDisabled }: Props) {
   const router = useRouter();
   const [raw, setRaw] = useState(initialRaw);
   const [description, setDescription] = useState(initialDescription);
   const [triggersText, setTriggersText] = useState(initialTriggers.join(', '));
+  const [disabled, setDisabled] = useState(initialDisabled);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
-  const dirty = raw !== initialRaw;
+  const dirty = raw !== initialRaw || disabled !== initialDisabled;
 
   function rebuildRaw(): string {
-    // 用最新的 description / triggers 替换 frontmatter, body 保留 raw 里的
+    // 用最新的 description / triggers / disabled 替换 frontmatter, body 保留 raw 里的
     const fmEnd = raw.indexOf('---', 4);
     const body = fmEnd > 0 ? raw.slice(fmEnd + 3).replace(/^\n+/, '') : raw;
     const triggersYaml = triggersText
@@ -31,7 +33,8 @@ export function ClientSkillEdit({ name, initialDescription, initialTriggers, ini
       .filter(Boolean)
       .map(t => `  - "${t.replace(/"/g, '\\"')}"`)
       .join('\n');
-    const newFm = `---\nname: ${name}\ndescription: |\n  ${description.replace(/\n/g, '\n  ')}\ntriggers:\n${triggersYaml || '  []'}\n---\n\n`;
+    const disabledYaml = disabled ? 'disabled: true\n' : '';
+    const newFm = `---\nname: ${name}\ndescription: |\n  ${description.replace(/\n/g, '\n  ')}\n${disabledYaml}triggers:\n${triggersYaml || '  []'}\n---\n\n`;
     return newFm + body;
   }
 
@@ -113,6 +116,21 @@ export function ClientSkillEdit({ name, initialDescription, initialTriggers, ini
               placeholder="e.g. 银行分类, 流水, in_amt"
               className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm"
             />
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <input
+              id="disabled-toggle"
+              type="checkbox"
+              checked={disabled}
+              onChange={e => setDisabled(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <label htmlFor="disabled-toggle" className="text-xs text-gray-700 select-none">
+              <span className="font-semibold">禁用此 skill</span>
+              <span className="ml-2 text-gray-500">
+                (.md 文件保留, 但 agent 不会加载, 不会注入到 LLM 的 skill 列表)
+              </span>
+            </label>
           </div>
         </div>
       </div>

@@ -29,6 +29,12 @@ export function loadOneSkill(path: string): Skill | null {
       return null
     }
 
+    // disabled 字段: 留 .md 文件 (UI 仍可看), 但 agent 不加载 (不注入 LLM 列表)
+    if (fm.disabled === true) {
+      console.log(`[skills] ${path}: disabled by frontmatter, skipping load`)
+      return null
+    }
+
     return {
       frontmatter: fm,
       body: parsed.content.trim(),
