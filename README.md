@@ -100,6 +100,24 @@ Key files:
 - Numeric prefix = layer: `00_*` (infra) → `10_*` (cfg) → `20_*` (ods) → `30_*` (dm) → `40_*` (views) → `50_*` (analysis) → `60_*` (fixes)
 - Idempotent: `IF NOT EXISTS` / `OR REPLACE`
 
+## Agent Service (新增)
+
+WDG Agent-First Product 的核心服务, 独立 Node.js 进程:
+
+- **WebSocket 端点**: `ws://agent:4101/ws`
+- **HTTP 健康检查**: `GET /health` → `{"status":"ok"}`
+- **Prometheus metrics**: `GET /metrics`
+- **复用既有 45 MCP tools**: 通过 `/api/mcp` 调
+
+能力:
+- 短期记忆 (PG `agent.conversations` / `agent.messages`)
+- 任务队列 (PG `agent.tasks` / `agent.task_steps`)
+- Skills (Y 方案按需加载, `agent/skills/*.md`)
+- Cron 主动巡检 (周一 9 点跑 weekly_bank_review)
+- 通知推送 (WebSocket 流式到 UI)
+
+详见 [docs/agent-service.md](docs/agent-service.md) 和 spec [docs/superpowers/specs/2026-06-08-agent-first-product.md](docs/superpowers/specs/2026-06-08-agent-first-product.md).
+
 ## Development Commands
 
 ```bash

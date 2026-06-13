@@ -1,0 +1,52 @@
+services:
+  agent-test-db:
+    image: postgres:16-alpine
+    container_name: wdg-agent-test-db
+    environment:
+      - POSTGRES_USER=agent
+      - POSTGRES_PASSWORD=local-dev-only
+      - POSTGRES_DB=agent_dev
+    volumes:
+      - agent-test-db-data:/var/lib/postgresql/data
+      - ./sql/00_agent_schema.sql:/docker-entrypoint-initdb.d/00_agent_schema.sql:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d agent_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  agent:
+    build: ./agent
+    container_name: wdg-agent
+    environment:
+      - WS_PORT=4101
+      - DATABASE_URL=postgresql://agent:local-dev-only@agent-test-db:5432/agent_dev
+      - MCP_ENDPOINT=http://host.docker.internal:4100/api/mcp
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-opus-4-8}
+      - CRON_TIMEZONE=Asia/Shanghai
+      - CRON_WEEKLY_REVIEW=0 9 * * 1
+      - TASK_WORKER_COUNT=4
+      - LOG_LEVEL=info
+    depends_on:
+      agent-test-db:
+        condition: service_healthy
+    volumes:
+      - ./agent/skills:/app/skills:ro
+      - ./agent/agent.md:/app/agent.md:ro
+    ports:
+      - "4101:4101"
+      - "4102:4102"
+      - "4102:4102"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4101/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  agent-test-db-data:
