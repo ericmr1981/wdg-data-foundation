@@ -14,11 +14,13 @@ async function proxy(
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   if (user.role !== 'admin') return NextResponse.json({ error: 'forbidden' }, { status: 403 })
 
-  const body = method === 'GET' ? undefined : await req.text()
+  const hasBody = method !== 'GET' && method !== 'DELETE'
+  const body = hasBody ? await req.text() : undefined
   const r = await fetch(`${AGENT_URL}/api/admin/skills/${encodeURIComponent(name)}`, {
     method,
     headers: {
-      'Content-Type': 'application/json',
+      // PUT 带 body 时设 Content-Type, GET/DELETE 不设 (Fastify 拒空 body + JSON content-type)
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
       'x-wdg-user-id': user.user_id,
       'x-wdg-user-role': user.role,
     },
