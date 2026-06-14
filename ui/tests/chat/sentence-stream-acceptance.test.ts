@@ -11,6 +11,17 @@ import { strict as assert } from 'node:assert';
 import { splitSentences } from '../../src/lib/chat/sentence-splitter.ts';
 
 // Exact replica of route.ts flushSentences
+function hasUnclosedParens(text: string): boolean {
+  let open = 0, fullOpen = 0;
+  for (const ch of text) {
+    if (ch === '(') open++;
+    else if (ch === ')') open = open > 0 ? open - 1 : 0;
+    else if (ch === '（') fullOpen++;
+    else if (ch === '）') fullOpen = fullOpen > 0 ? fullOpen - 1 : 0;
+  }
+  return open > 0 || fullOpen > 0;
+}
+
 function flushSentences(buffer: string, final = false): { emitted: string[]; held: string | null } {
   const SENTENCE_FLUSH_THRESHOLD = 800;
   const result: { emitted: string[]; held: string | null } = { emitted: [], held: null };
@@ -29,6 +40,7 @@ function flushSentences(buffer: string, final = false): { emitted: string[]; hel
         const prev = last[dotIdx - 1];
         if (prev >= '0' && prev <= '9') return false;
       }
+      if (hasUnclosedParens(last)) return false;
       return true;
     })();
 
@@ -177,4 +189,54 @@ test('Acceptance C7b: splitSentences keeps ordered list prefix', () => {
   const p = splitSentences('2. 点击上传');
   assert.equal(p.length, 1, 'list not split');
   assert.ok(p[0].startsWith('2.'), 'prefix preserved');
+});
+
+// ─── C8: Parenthesized content not split ───
+
+test('Acceptance C8a: English () with dot not emitted mid-content', () => {
+  const r = flushSentences('测试 (abc.', false);
+  assert.equal(r.emitted.length, 0, 'not emitted');
+  assert.ok(r.held!.includes('(abc.'), 'held with parens');
+});
+
+test('Acceptance C8b: Chinese （） with dot not emitted mid-content', () => {
+  const r = flushSentences('示例（详见附件。', false);
+  assert.equal(r.emitted.length, 0, 'not emitted');
+  assert.ok(r.held!.includes('详见附件。'), 'held with fullwidth parens');
+});
+
+test('Acceptance C8c: complete parenthesized content emits after close parens', () => {
+  const r = flushSentences('测试 (abc.xyz)。', false);
+  assert.equal(r.emitted.length, 1, 'one block');
+  assert.ok(r.emitted[0].includes('abc.xyz'), 'content intact');
+});
+
+test('Acceptance C8d: complete Chinese parenthesized content emits', () => {
+  const r = flushSentences('示例（详见附件。）。', false);
+  assert.equal(r.emitted.length, 1, 'one block');
+  assert.ok(r.emitted[0].includes('详见附件。'), 'content intact');
+});
+
+test('Acceptance C8e: nested parentheses held', () => {
+  const r = flushSentences('函数 f(x) = x²。', false);
+  assert.equal(r.emitted.length, 1, 'balanced parens within');
+  assert.ok(r.emitted[0].includes('f(x)'), 'balanced parens preserved');
+});
+
+test('Acceptance C8f: DeepSeek chunk with (xxx) pattern', () => {
+  const p = streamSimulate([
+    '数据来源（企迈', '平台。', '）分析结果',
+  ]);
+  const joined = p.join('');
+  // Parens content should be uninterrupted — no split inside （）
+  assert.ok(joined.includes('数据来源（企迈平台。）'), 'parens block intact');
+  assert.ok(joined.includes('分析结果'), 'outside content also present');
+  // No orphaned fragment from mid-parens split
+  assert.ok(!joined.includes('）\n分析结果'), 'no newline between close parens and content');
+});
+
+test('Acceptance C8g: unclosed parens with final flush still emits', () => {
+  const r = flushSentences('说明 (未完成内容', true);
+  assert.ok(r.emitted.length > 0, 'final flush emits despite unclosed parens');
+  assert.ok(r.emitted[0].includes('未完成'), 'content present');
 });
