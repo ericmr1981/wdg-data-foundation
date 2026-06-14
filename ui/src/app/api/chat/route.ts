@@ -261,10 +261,28 @@ export async function POST(req: NextRequest) {
                 }
                 // Don't flush inside unclosed parentheses (preserves (xxx) integrity)
                 if (hasUnclosedParens(last)) return false;
+                // Don't flush when inside a markdown table row
+                if (last.trimStart().startsWith('|')) return false;
                 return true;
               })();
               if (!hasTerminator) {
+                // Don't emit blocks before an uncompleted table row —
+                // they belong together as one markdown table block
                 const completed = blocks.slice(0, -1);
+                if (last.trimStart().startsWith('|')) {
+                  // The held block is a table row. Emit any non-table
+                  // preceding blocks now, but not the row right before
+                  // the table (if any) — hold it to avoid orphaned cells
+                  const nonTable = completed.filter(b => !b.trimStart().startsWith('|'));
+                  for (const text of nonTable) {
+                    send({ type: 'text_block', text, index: sentenceIndex++, turnId });
+                  }
+                  // Reconstruct held buffer: part of the table that was
+                  // already emitted + the current uncompleted row
+                  const tablePart = blocks.slice(nonTable.length, -1);
+                  sentenceBuffer = tablePart.join('') + last;
+                  return;
+                }
                 for (const text of completed) {
                   send({ type: 'text_block', text, index: sentenceIndex++, turnId });
                 }
