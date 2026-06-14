@@ -1,16 +1,29 @@
 // Split a streaming assistant text buffer into sentence/paragraph blocks.
 // Rules (priority order):
-//   1. Markdown links [text](url) are kept intact — never split inside URL.
-//   2. Triple-backtick fences (single-level) at line start are preserved as a
+//   1. Parentheses () and （） are kept intact — never split inside unclosed parens.
+//   2. Markdown links [text](url) are kept intact — never split inside URL.
+//   3. Triple-backtick fences (single-level) at line start are preserved as a
 //      single block; leading prose on the same line stays attached.
-//   3. Paragraph break \n\n splits blocks.
-//   4. Table rows (lines starting with |) are kept together.
-//   5. Sentence terminators (。！？!?) flush the buffer.
+//   4. Paragraph break \n\n splits blocks.
+//   5. Table rows (lines starting with |) are kept together.
+//   6. Sentence terminators (。！？!?) flush the buffer.
 //      NOTE: `.` is deliberately NOT a terminator — it breaks URLs, numbers,
 //      file extensions (.pdf/.xlsx), and markdown ordered lists (1. 2.).
-//   6. Whitespace-only fragments are dropped.
+//   7. Whitespace-only fragments are dropped.
 
 const TERMINATOR_CHARS = new Set(['。', '！', '？', '!', '?']);
+
+/** Check if text has unclosed parentheses — prevents splitting inside (xxx) or （xxx） */
+function hasUnclosedParens(text: string): boolean {
+  let open = 0, fullOpen = 0;
+  for (const ch of text) {
+    if (ch === '(') open++;
+    else if (ch === ')') open = open > 0 ? open - 1 : 0;
+    else if (ch === '（') fullOpen++;
+    else if (ch === '）') fullOpen = fullOpen > 0 ? fullOpen - 1 : 0;
+  }
+  return open > 0 || fullOpen > 0;
+}
 
 /**
  * Find the end of a markdown link if we're at the `[` position.
@@ -129,7 +142,7 @@ export function splitSentences(input: string): string[] {
 
     buf += ch;
 
-    if (TERMINATOR_CHARS.has(ch)) {
+    if (TERMINATOR_CHARS.has(ch) && !hasUnclosedParens(buf)) {
       flush();
     }
   }

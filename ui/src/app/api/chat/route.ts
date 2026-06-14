@@ -229,6 +229,20 @@ export async function POST(req: NextRequest) {
           let sentenceBuffer = '';
           let sentenceIndex = 0;
           const SENTENCE_FLUSH_THRESHOLD = 800;  // chars; force-flush if buffer grows past this without a terminator
+
+          /** Check if buffer has unclosed parentheses — prevents splitting inside (xxx) or （xxx） */
+          const hasUnclosedParens = (text: string): boolean => {
+            // Count opening vs closing parens of both types
+            let open = 0, fullOpen = 0;
+            for (const ch of text) {
+              if (ch === '(') open++;
+              else if (ch === ')') open = open > 0 ? open - 1 : 0;
+              else if (ch === '（') fullOpen++;
+              else if (ch === '）') fullOpen = fullOpen > 0 ? fullOpen - 1 : 0;
+            }
+            return open > 0 || fullOpen > 0;
+          };
+
           const flushSentences = (final: boolean) => {
             if (!sentenceBuffer) return;
             if (!final && sentenceBuffer.length < SENTENCE_FLUSH_THRESHOLD) {
@@ -245,6 +259,8 @@ export async function POST(req: NextRequest) {
                   const prev = last[dotIdx - 1];
                   if (prev >= '0' && prev <= '9') return false;
                 }
+                // Don't flush inside unclosed parentheses (preserves (xxx) integrity)
+                if (hasUnclosedParens(last)) return false;
                 return true;
               })();
               if (!hasTerminator) {
