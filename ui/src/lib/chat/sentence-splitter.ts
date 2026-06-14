@@ -97,6 +97,11 @@ export function splitSentences(input: string): string[] {
     if (inTable && atLineStart && ch !== '|' && ch !== '`') {
       flush();
       inTable = false;
+      // If exit is triggered by \n, it's part of the paragraph break;
+      // re-add it so the \n\n detection below works correctly
+      if (ch === '\n') {
+        buf += ch;
+      }
     }
 
     if (ch === '`' && input[i + 1] === '`' && input[i + 2] === '`') {
@@ -131,6 +136,11 @@ export function splitSentences(input: string): string[] {
 
     if (inTable) {
       buf += ch;
+      // Don't break on \n\n inside tables — let the table end detection handle it
+      if (ch === '\n' && input[i + 1] === '\n') {
+        buf += input[i + 1]; // keep the second \n
+        i += 1;
+      }
       continue;
     }
 
@@ -142,7 +152,7 @@ export function splitSentences(input: string): string[] {
 
     buf += ch;
 
-    if (TERMINATOR_CHARS.has(ch) && !hasUnclosedParens(buf)) {
+    if (TERMINATOR_CHARS.has(ch) && !hasUnclosedParens(buf) && !inTable) {
       flush();
     }
   }
