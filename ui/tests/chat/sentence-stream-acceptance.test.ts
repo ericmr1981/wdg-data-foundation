@@ -45,6 +45,11 @@ function flushSentences(buffer: string, final = false): { emitted: string[]; hel
     })();
 
     if (!hasTerminator) {
+      // When the held block is a table row, hold EVERYTHING —
+      // don't emit preceding blocks, don't trim buffer
+      if (last.trimStart().startsWith('|')) {
+        return { emitted: [], held: null }; // signal: hold entire buffer
+      }
       result.emitted = blocks.slice(0, -1);
       result.held = last;
       return result;
@@ -65,7 +70,13 @@ function streamSimulate(tokens: string[]): string[] {
     buf += token;
     const r = flushSentences(buf, false);
     for (const e of r.emitted) emitted.push(e);
-    buf = r.held !== null ? r.held : (r.emitted.length > 0 ? '' : buf);
+    // When neither emitted nor held, buffer stays intact (table hold)
+    if (r.held !== null) {
+      buf = r.held;
+    } else if (r.emitted.length > 0) {
+      buf = '';
+    }
+    // else: buf unchanged (table-in-progress hold)
   }
   const r = flushSentences(buf, true);
   for (const e of r.emitted) emitted.push(e);
