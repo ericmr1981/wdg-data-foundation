@@ -1,0 +1,102 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: dataplatform-pg-dashboard
+    environment:
+      POSTGRES_DB: ${DB_NAME:-dataplatform}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - dataplatform_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-dataplatform}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  ui:
+    image: ${UI_IMAGE:-wdg-data-foundation-ui:latest}
+    container_name: dataplatform-ui
+    depends_on:
+      - postgres
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-dataplatform}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      SCRIPTS_DIR: /scripts
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      AGENT_INTERNAL_URL: ${AGENT_INTERNAL_URL:-http://agent:4101}
+      NEXT_PUBLIC_AGENT_WS_URL: ${NEXT_PUBLIC_AGENT_WS_URL:-ws://agent:4102/ws}
+      AGENT_CRED_ENCRYPTION_KEY: ${AGENT_CRED_ENCRYPTION_KEY:-local-dev-only-do-not-use-in-prod}
+      NEXT_PUBLIC_AGENT_ROLLOUT_PERCENT: ${NEXT_PUBLIC_AGENT_ROLLOUT_PERCENT:-100}
+    volumes:
+      - ./scripts:/scripts
+      - ./sql:/sql
+      - ./agent/skills:/app/skills  # 让 UI 能读 agent skill 元数据做 preview
+    ports:
+      - "${UI_PORT:-3002}:3000"
+    restart: unless-stopped
+
+  agent:
+    image: ${AGENT_IMAGE:-wdg-agent:latest}
+    container_name: wdg-agent
+    environment:
+      - WS_PORT=4101
+      - DATABASE_URL=postgresql://agent:${AGENT_DB_PASSWORD:-agent}@agent-test-db:5432/agent_dev
+      - MCP_ENDPOINT=http://ui:3000/api/mcp
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-opus-4-8}
+      - CRON_TIMEZONE=Asia/Shanghai
+      - CRON_WEEKLY_REVIEW=0 9 * * 1
+      - TASK_WORKER_COUNT=4
+      - LOG_LEVEL=info
+    depends_on:
+      - agent-test-db
+      - ui
+    volumes:
+      - ./agent/skills:/app/skills
+      - ./agent/agent.md:/app/agent.md:ro
+    ports:
+      - "4101:4101"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:4101/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ─── 隔离 agent 服务的 Postgres ────────────────────────
+  # 跟 production DB 完全隔离 — agent 自己的 conversations/messages/tasks/audit_log
+  # 5433 端口挂主机, initdb 跑 ./sql/00_agent_schema.sql
+  agent-test-db:
+    image: postgres:16
+    container_name: wdg-agent-test-db
+    environment:
+      - POSTGRES_USER=agent
+      - POSTGRES_PASSWORD=${AGENT_DB_PASSWORD:-agent}
+      - POSTGRES_DB=agent_dev
+    volumes:
+      - agent-test-db-data:/var/lib/postgresql/data
+      - ./sql/00_agent_schema.sql:/docker-entrypoint-initdb.d/00_agent_schema.sql:ro
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d agent_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  default:
+    name: wdg-data-foundation_default
+
+volumes:
+  dataplatform_pg_data:
+  agent-test-db-data:
