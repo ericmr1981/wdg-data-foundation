@@ -46,22 +46,31 @@ export function MarkdownMessage({ content }: { content: string }) {
           table({ children }: { children?: ReactNode }) {
             return (
               <div className="overflow-x-auto my-2">
-                <table className="min-w-full text-xs border-collapse border border-gray-200">
+                <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.75rem' }}>
                   {children}
                 </table>
               </div>
             );
           },
+          thead({ children }: { children?: ReactNode }) {
+            return <thead>{children}</thead>;
+          },
+          tbody({ children }: { children?: ReactNode }) {
+            return <tbody>{children}</tbody>;
+          },
+          tr({ children }: { children?: ReactNode }) {
+            return <tr>{children}</tr>;
+          },
           th({ children }: { children?: ReactNode }) {
             return (
-              <th className="border border-gray-200 bg-gray-100 px-2 py-1 text-left font-semibold">
+              <th style={{ border: '1px solid #e5e7eb', backgroundColor: '#f3f4f6', padding: '4px 8px', textAlign: 'left', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
                 {children}
               </th>
             );
           },
           td({ children }: { children?: ReactNode }) {
             return (
-              <td className="border border-gray-200 px-2 py-1">
+              <td style={{ border: '1px solid #e5e7eb', padding: '3px 8px', color: '#111827', verticalAlign: 'top' }}>
                 {children}
               </td>
             );
