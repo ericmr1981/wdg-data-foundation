@@ -1,9 +1,13 @@
-name: Build and Push UI to ACR
+name: Build and Push UI + Agent to ACR
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:  # 允许 GitHub 网页手动触发
+  workflow_dispatch:
+
+env:
+  ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+  ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
 
 jobs:
   build-and-push:
@@ -12,13 +16,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Set up Node.js (UI)
+        id: setup-node-ui
         uses: actions/setup-node@v4
         with:
-          # Node 22.6+ required for --experimental-strip-types used in chat unit tests
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: ui/package-lock.json
+
+      - name: Set up Node.js (Agent)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: agent/package-lock.json
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -53,6 +64,19 @@ jobs:
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "ts=$(date +%Y%m%d-%H%M%S)" >> "$GITHUB_OUTPUT"
 
+      - name: Build and push agent image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./agent
+          file: ./agent/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/agent:latest
+            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/agent:${{ steps.meta.outputs.short_sha }}
+            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/agent:${{ steps.meta.outputs.ts }}
+          cache-from: type=registry,ref=${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/agent:buildcache
+          cache-to: type=registry,ref=${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/agent:buildcache,mode=max
+
       - name: Build and push ui image
         uses: docker/build-push-action@v6
         with:
@@ -60,14 +84,14 @@ jobs:
           file: ./ui/Dockerfile
           push: true
           tags: |
-            ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/ui:latest
-            ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/ui:${{ steps.meta.outputs.short_sha }}
-            ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/ui:${{ steps.meta.outputs.ts }}
-          cache-from: type=registry,ref=${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/ui:buildcache
-          cache-to: type=registry,ref=${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/ui:buildcache,mode=max
+            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/ui:latest
+            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/ui:${{ steps.meta.outputs.short_sha }}
+            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/ui:${{ steps.meta.outputs.ts }}
+          cache-from: type=registry,ref=${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/ui:buildcache
+          cache-to: type=registry,ref=${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/ui:buildcache,mode=max
 
-      - name: Notify VPS to pull (optional, future)
-        # 留个 hook,以后可以加 SSH 触发 VPS 立即拉
+      - name: Notify VPS to pull
         run: |
-          echo ">>> image pushed: ${{ secrets.ACR_REGISTRY }}/${{ secrets.ACR_NAMESPACE }}/ui:${{ steps.meta.outputs.short_sha }}"
-          echo ">>> VPS cron 会在 5 分钟内自动拉取并 restart"
+          echo ">>> agent image pushed: ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/agent:${{ steps.meta.outputs.short_sha }}"
+          echo ">>> ui image pushed: ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/ui:${{ steps.meta.outputs.short_sha }}"
+          echo ">>> VPS cron will pull and restart within 5 minutes"
