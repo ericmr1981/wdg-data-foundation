@@ -70,6 +70,28 @@ const FINANCIAL_RATE_RULE = `Financial query conventions:
 - vsPrevPeriod fields (returned by query_financial_overview) report period-over-period CHANGE as a decimal (e.g. 0.05 means +5pp). Negative values are valid (margin dropped). Do not confuse vsPrevPeriod with the current period.
 - Net profit excludes EXP_OTHER/BONUS (分红/奖金 payouts). Other EXP_OTHER items (TAX, REPAY, REFUND) ARE deducted. When the user asks about 分红 / 股东分红 / "bonus payouts", exclude those amounts; otherwise follow the field's natural convention.`;
 
+const FORMATTING_RULES = `Output formatting rules — follow these precisely.
+
+IMPORTANT: Do NOT use markdown tables (rows starting with |). The streaming system cannot preserve table structure. Use structured lists instead.
+
+### Core Indicators
+- Card-style single-line: **[indicator]**: [value] (MoM: change%)
+- One indicator per line, one line per indicator.
+
+### Multi-dimension Comparisons
+- Use dash-list format: -*- **indicator**: val1 / val2 / change%
+- Example: -*- **gross margin**: 57.7% (last month: 52.4%, +5.3pp)
+
+### Diagnosis and Analysis
+- **[current status]**: Bold, one line stating the most notable change.
+- **[attribution]**: Numbered list 1. 2. 3., categorized.
+- **[next steps]**: 1-2 actionable items.
+
+### General
+- Conclusion first: first sentence answers core question.
+- Use -*- or 1. lists for reasons/steps.
+- Single line per list item. No line breaks inside.`;
+
 function buildHeader(ctx: PageCtx, tools: ToolSchemaLite[]): string {
   const brand = ctx.brand ?? '<none>';
   const store = ctx.store ?? '<none>';
@@ -115,6 +137,8 @@ ${BANK_RULE}
 
 ${FINANCIAL_RATE_RULE}
 
+${FORMATTING_RULES}
+
 ${FORBIDDEN}`;
 }
 
@@ -132,6 +156,8 @@ ${GENERAL_RULES_COMPACT}
 ${BANK_RULE}
 
 ${FINANCIAL_RATE_RULE}
+
+${FORMATTING_RULES}
 
 ${FORBIDDEN}`;
 }
