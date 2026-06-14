@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const GetQimaiEntryRateInput = z.object({
   period: z.string().describe('Period in YYYY-MM format'),
@@ -30,15 +31,7 @@ export const getQimaiEntryRateTool = {
       headers: { 'x-mcp-session': 'internal' },
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`get_qimai_entry_rate failed: ${err}`);
-    }
-
-    const json = await res.json();
-    if (!json.success) {
-      throw new Error(json.error || 'Unknown error');
-    }
-    return json.data;
+    const json = await assertApiSuccess(res, 'get_qimai_entry_rate');
+    return (json as Record<string, unknown>).data;
   },
 };

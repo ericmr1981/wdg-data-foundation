@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const GetRulesInput = z.object({
   brand: brandParamSchema.optional().default('gelatomiiix').describe('Brand code: gelatomiiix | bonjur | tamkoko'),
@@ -14,7 +15,7 @@ export const getRulesTool = {
     const res = await mcpFetch(`/api/rules?brand=${brand}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
-    const json = await res.json();
-    return json.data ?? json;
+    const json = await assertApiSuccess(res, 'get_rules');
+    return (json as Record<string, unknown>).data ?? json;
   },
 };

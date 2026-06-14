@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const UploadBankTxnInput = z.object({
   brand:     brandParamSchema.describe('Brand code: gelatomiiix | bonjur | tamkoko'),
@@ -44,13 +45,9 @@ export const uploadBankTxnTool = {
       headers: { 'x-mcp-session': 'internal' },
       body: form,
     });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Upload failed: ${err}`);
-    }
-    const json = await res.json();
+    const json = await assertApiSuccess(res, 'upload_bank_txn_file');
     // Normalize field names for MCP consumption
-    const data = json.data ?? json;
+    const data = ((json as Record<string, unknown>).data as Record<string, unknown>) ?? json;
     return {
       success: true,
       sourceFileId: data.sourceFileId ?? data.source_file_id ?? null,

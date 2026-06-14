@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const UploadTamkokoInventoryInput = z.object({
   file_path: z.string().describe('Absolute path to the inventory .xlsx/.xls file'),
@@ -35,15 +36,7 @@ export const uploadTamkokoInventoryTool = {
       body: form,
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`upload_tamkoko_inventory failed: ${err}`);
-    }
-
-    const json = await res.json();
-    if (!json.success) {
-      throw new Error(json.error || 'Unknown error');
-    }
-    return json.data ?? json;
+    const json = await assertApiSuccess(res, 'upload_tamkoko_inventory');
+    return (json as Record<string, unknown>).data ?? json;
   },
 };

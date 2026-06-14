@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { readFile } from 'fs/promises';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const UploadGelatomiiixIncomeInput = z.object({
   file_path: z.string().describe('Absolute path to the Qimai income detail CSV file (企迈 收入明细表 YYYY-MM-DD 至 YYYY-MM-DD.csv)'),
@@ -36,13 +37,8 @@ export const uploadGelatomiiixIncomeDetailTool = {
       body: form,
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`upload_gelatomiiix_income_detail failed: ${err}`);
-    }
-
-    const json = await res.json();
-    const data = json.data ?? json;
+    const json = await assertApiSuccess(res, 'upload_gelatomiiix_income_detail');
+    const data = ((json as Record<string, unknown>).data as Record<string, unknown>) ?? json;
     return {
       success: true,
       sourceFileId: data.sourceFileId ?? null,

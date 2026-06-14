@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const PreviewMatchInput = z.object({
   brand: brandParamSchema.optional().default('gelatomiiix')
@@ -29,15 +30,7 @@ export const previewMatchTool = {
       headers: { 'x-mcp-session': 'internal' },
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`preview_match failed: ${err}`);
-    }
-
-    const json = await res.json();
-    if (!json.success) {
-      throw new Error(json.error || 'Unknown error');
-    }
-    return json.data;
+    const json = await assertApiSuccess(res, 'preview_match');
+    return (json as Record<string, unknown>).data;
   },
 };

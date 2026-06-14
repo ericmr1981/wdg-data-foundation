@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const QueryStatusInput = z.object({
   brand:    brandParamSchema.optional().default('gelatomiiix').describe('Brand code: gelatomiiix | bonjur | tamkoko'),
@@ -17,11 +18,10 @@ export const queryStatusTool = {
     const res = await mcpFetch(`/api/approval/proposals?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
-    if (!res.ok) throw new Error(`query_status failed: ${await res.text()}`);
-    const json = await res.json();
+    const json = await assertApiSuccess(res, 'query_status');
 
     // Group by status
-    const items: any[] = json.data ?? [];
+    const items: any[] = ((json as Record<string, unknown>).data as any[]) ?? [];
     const counts: Record<string, number> = {};
     for (const item of items) {
       counts[item.status ?? 'unknown'] = (counts[item.status ?? 'unknown'] ?? 0) + 1;

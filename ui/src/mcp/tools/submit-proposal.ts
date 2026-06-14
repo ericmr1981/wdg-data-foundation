@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const RecordSchema = z.object({
   bank_txn_id:  z.number().int().positive().describe('Bank transaction ID'),
@@ -64,11 +65,6 @@ export const submitProposalTool = {
       body: JSON.stringify(body),
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`submit_proposal failed: ${err}`);
-    }
-
-    return await res.json();
+    return await assertApiSuccess(res, 'submit_proposal');
   },
 };

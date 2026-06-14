@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const GetPipelineKpiInput = z.object({
   brand: brandParamSchema.optional().default('gelatomiiix')
@@ -24,15 +25,7 @@ export const getPipelineKpiTool = {
       headers: { 'x-mcp-session': 'internal' },
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`get_pipeline_kpi failed: ${err}`);
-    }
-
-    const json = await res.json();
-    if (!json.success) {
-      throw new Error(json.error || 'Unknown error');
-    }
-    return json.data;
+    const json = await assertApiSuccess(res, 'get_pipeline_kpi');
+    return (json as Record<string, unknown>).data;
   },
 };

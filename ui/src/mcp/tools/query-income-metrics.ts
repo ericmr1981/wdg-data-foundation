@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const QueryIncomeMetricsInput = z.object({
   brand: brandParamSchema.optional().default('gelatomiiix')
@@ -30,9 +31,7 @@ export const queryIncomeMetricsTool = {
     const res = await mcpFetch(`/api/financial/income-metrics?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
-    if (!res.ok) throw new Error(`query_income_metrics failed: ${await res.text()}`);
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error || 'Unknown error');
-    return json.data ?? { note: json.note ?? 'no data' };
+    const json = await assertApiSuccess(res, 'query_income_metrics');
+    return (json as Record<string, unknown>).data ?? { note: (json as Record<string, unknown>).note ?? 'no data' };
   },
 };

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { readFile } from 'fs/promises';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const UploadBonjurIncomeDetailInput = z.object({
   file_path: z.string().describe('Absolute path to the Bonjur Qimai income detail CSV file'),
@@ -31,13 +32,8 @@ export const uploadBonjurIncomeDetailTool = {
       body: form,
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`upload_bonjur_income_detail failed: ${err}`);
-    }
-
-    const json = await res.json();
-    const data = json.data ?? json;
+    const json = await assertApiSuccess(res, 'upload_bonjur_income_detail');
+    const data = ((json as Record<string, unknown>).data as Record<string, unknown>) ?? json;
     return {
       success: true,
       sourceFileId: data.sourceFileId ?? null,

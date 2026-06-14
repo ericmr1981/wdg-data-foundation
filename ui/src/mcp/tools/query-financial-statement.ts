@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const QueryFinancialStatementInput = z.object({
   statement: z.enum(['profit', 'cashflow', 'balance_sheet'])
@@ -42,15 +43,7 @@ export const queryFinancialStatementTool = {
       headers: { 'x-mcp-session': 'internal' },
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`query_financial_statement failed: ${err}`);
-    }
-
-    const json = await res.json();
-    if (!json.success) {
-      throw new Error(json.error || 'Unknown error');
-    }
-    return json.data ?? { note: json.note ?? 'no data' };
+    const json = await assertApiSuccess(res, 'query_financial_statement');
+    return (json as Record<string, unknown>).data ?? { note: (json as Record<string, unknown>).note ?? 'no data' };
   },
 };

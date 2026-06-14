@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const GetProposalInput = z.object({
   proposal_id: z.number().int().positive().describe('Proposal ID (integer from approval queue)'),
@@ -21,9 +22,7 @@ export const getProposalTool = {
     const res = await mcpFetch(`/api/approval/proposals/${proposal_id}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
-    if (!res.ok) throw new Error(`get_proposal failed: ${await res.text()}`);
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error || 'Unknown error');
-    return json.data;
+    const json = await assertApiSuccess(res, 'get_proposal');
+    return (json as Record<string, unknown>).data;
   },
 };

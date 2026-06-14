@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const QueryCounterpartyInput = z.object({
   period: z.string().regex(/^\d{4}-\d{2}$/, 'YYYY-MM').describe('Period in YYYY-MM format'),
@@ -31,9 +32,7 @@ export const queryCounterpartyTool = {
     const res = await mcpFetch(`/api/financial/counterparty?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
-    if (!res.ok) throw new Error(`query_counterparty failed: ${await res.text()}`);
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error || 'Unknown error');
-    return json.data ?? { note: json.note ?? 'no data' };
+    const json = await assertApiSuccess(res, 'query_counterparty');
+    return (json as Record<string, unknown>).data ?? { note: (json as Record<string, unknown>).note ?? 'no data' };
   },
 };

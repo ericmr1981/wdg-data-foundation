@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const QueryFinancialKpiTrendInput = z.object({
   brand: brandParamSchema.describe('Brand code: gelatomiiix | bonjur | tamkoko'),
@@ -45,9 +46,7 @@ export const queryFinancialKpiTrendTool = {
     const res = await mcpFetch(`/api/financial/kpi-trend?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
-    if (!res.ok) throw new Error(`query_financial_kpi_trend failed: ${await res.text()}`);
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error || 'Unknown error');
-    return json.data ?? { note: json.note ?? 'no data' };
+    const json = await assertApiSuccess(res, 'query_financial_kpi_trend');
+    return (json as Record<string, unknown>).data ?? { note: (json as Record<string, unknown>).note ?? 'no data' };
   },
 };

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const GetUnclassifiedInput = z.object({
   brand:          brandParamSchema.optional().default('gelatomiiix').describe('Brand code: gelatomiiix | bonjur | tamkoko'),
@@ -32,15 +33,12 @@ export const getUnclassifiedTool = {
     const res = await mcpFetch(`/api/match?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`get_unclassified_transactions failed: ${err}`);
-    }
-    const json = await res.json();
+    const json = await assertApiSuccess(res, 'get_unclassified_transactions');
+    const data = (json as Record<string, unknown>).data as Record<string, unknown>;
     return {
-      count: json.data?.total ?? 0,
-      transactions: json.data?.items ?? [],
-      ...json.data,
+      count: data?.total ?? 0,
+      transactions: data?.items ?? [],
+      ...data,
     };
   },
 };

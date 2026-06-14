@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const GetCoverageByFileInput = z.object({
   brand: brandParamSchema.optional().default('gelatomiiix')
@@ -24,9 +25,7 @@ export const getCoverageByFileTool = {
     const res = await mcpFetch(`/api/coverage/by-file?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
-    if (!res.ok) throw new Error(`get_coverage_by_file failed: ${await res.text()}`);
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error || 'Unknown error');
-    return json.data;
+    const json = await assertApiSuccess(res, 'get_coverage_by_file');
+    return (json as Record<string, unknown>).data;
   },
 };

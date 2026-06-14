@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const GetCandidatesInput = z.object({
   brand:       brandParamSchema.optional().default('gelatomiiix').describe('Brand code: gelatomiiix | bonjur | tamkoko'),
@@ -15,8 +16,7 @@ export const getCandidatesTool = {
     const res = await mcpFetch(`/api/match/candidates?brand=${brand}&bank_txn_id=${bank_txn_id}`,
       { headers: { 'x-mcp-session': 'internal' } }
     );
-    if (!res.ok) throw new Error(`get_candidates failed: ${await res.text()}`);
-    const json = await res.json();
-    return json.data ?? json;
+    const json = await assertApiSuccess(res, 'get_candidates');
+    return (json as Record<string, unknown>).data ?? json;
   },
 };

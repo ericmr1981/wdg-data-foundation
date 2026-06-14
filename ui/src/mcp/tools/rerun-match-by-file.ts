@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const RerunMatchByFileInput = z.object({
   brand: brandParamSchema.describe('Brand code: gelatomiiix | bonjur | tamkoko'),
@@ -41,9 +42,7 @@ export const rerunMatchByFileTool = {
       },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`rerun_match_by_file failed: ${await res.text()}`);
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error || 'Unknown error');
-    return json.data ?? json;
+    const json = await assertApiSuccess(res, 'rerun_match_by_file');
+    return (json as Record<string, unknown>).data ?? json;
   },
 };

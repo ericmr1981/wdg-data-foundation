@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assertApiSuccess } from '@/lib/api-error';
 
 export type SalesDimension = 'overview' | 'trend' | 'channels' | 'products' | 'details' | 'distribution' | 'hourly';
 
@@ -77,13 +78,8 @@ export function salesToolFactory(config: SalesToolConfig) {
     const url = `${pathPrefix}${DIMENSION_PATH[dimension]}?${qs}`;
     const res = await fetchFn(url, { headers: { 'x-mcp-session': 'internal' } });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`${name} failed: ${err}`);
-    }
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error || 'Unknown error');
-    return json.data;
+    const json = await assertApiSuccess(res, name);
+    return (json as Record<string, unknown>).data;
   }
 
   return {

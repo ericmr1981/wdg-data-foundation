@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const QueryFinancialOverviewInput = z.object({
   brand: brandParamSchema.optional().default('gelatomiiix')
@@ -45,9 +46,7 @@ EXP_OTHER/BONUS (分红/奖金) **不计入**净利润。EXP_OTHER/TAX, REPAY, R
     const res = await mcpFetch(`/api/financial/overview?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
-    if (!res.ok) throw new Error(`query_financial_overview failed: ${await res.text()}`);
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error || 'Unknown error');
-    return json.data ?? { note: json.note ?? 'no data' };
+    const json = await assertApiSuccess(res, 'query_financial_overview');
+    return (json as Record<string, unknown>).data ?? { note: (json as Record<string, unknown>).note ?? 'no data' };
   },
 };

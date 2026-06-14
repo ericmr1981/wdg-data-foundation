@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const QueryStoreReportSnapshotInput = z.object({
   brand: brandParamSchema.describe('Brand code: gelatomiiix | bonjur | tamkoko'),
@@ -31,16 +32,8 @@ export const queryStoreReportSnapshotTool = {
       headers: { 'x-mcp-session': 'internal' },
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`query_store_report_snapshot failed: ${err}`);
-    }
-
-    const json = await res.json();
-    if (!json.success) {
-      throw new Error(json.error || 'Unknown error');
-    }
-    const data = json.data ?? { note: json.note ?? 'no data' };
+    const json = await assertApiSuccess(res, 'query_store_report_snapshot');
+    const data = (json as Record<string, unknown>).data ?? { note: (json as Record<string, unknown>).note ?? 'no data' };
     // Attach download URLs so the agent can share them with the user
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
     const exportQ = new URLSearchParams({ brand, store, month }).toString();

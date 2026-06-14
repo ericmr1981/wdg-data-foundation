@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const ListRuleGroupsInput = z.object({
   brand: brandParamSchema.optional().default('gelatomiiix')
@@ -22,9 +23,7 @@ export const listRuleGroupsTool = {
     const res = await mcpFetch(`/api/rule-groups?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
-    if (!res.ok) throw new Error(`list_rule_groups failed: ${await res.text()}`);
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error || 'Unknown error');
-    return json.data;
+    const json = await assertApiSuccess(res, 'list_rule_groups');
+    return (json as Record<string, unknown>).data;
   },
 };

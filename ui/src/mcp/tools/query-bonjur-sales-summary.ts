@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const QueryBonjurSalesSummaryInput = z.object({
   view: z.enum(['overview', 'trend', 'channels'])
@@ -38,15 +39,7 @@ export const queryBonjurSalesSummaryTool = {
       headers: { 'x-mcp-session': 'internal' },
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`query_bonjur_sales_summary failed: ${err}`);
-    }
-
-    const json = await res.json();
-    if (!json.success) {
-      throw new Error(json.error || 'Unknown error');
-    }
-    return json.data;
+    const json = await assertApiSuccess(res, 'query_bonjur_sales_summary');
+    return (json as Record<string, unknown>).data;
   },
 };

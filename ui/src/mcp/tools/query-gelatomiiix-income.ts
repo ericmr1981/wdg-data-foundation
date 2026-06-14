@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const QueryGelatomiiixIncomeInput = z.object({
   month: z.string().optional().describe('Month in YYYY-MM format (required if date_from/date_to not provided)'),
@@ -41,15 +42,7 @@ export const queryGelatomiiixIncomeTool = {
       headers: { 'x-mcp-session': 'internal' },
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`query_gelatomiiix_income failed: ${err}`);
-    }
-
-    const json = await res.json();
-    if (!json.success) {
-      throw new Error(json.error || 'Unknown error');
-    }
-    return json.data;
+    const json = await assertApiSuccess(res, 'query_gelatomiiix_income');
+    return (json as Record<string, unknown>).data;
   },
 };

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const ListRuleFilesInput = z.object({
   brand: brandParamSchema.optional().describe('Brand code: gelatomiiix | bonjur | tamkoko'),
@@ -25,9 +26,7 @@ export const listRuleFilesTool = {
     const res = await mcpFetch(`/api/rules/files?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
-    if (!res.ok) throw new Error(`list_rule_files failed: ${await res.text()}`);
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error || 'Unknown error');
-    return json.data;
+    const json = await assertApiSuccess(res, 'list_rule_files');
+    return (json as Record<string, unknown>).data;
   },
 };

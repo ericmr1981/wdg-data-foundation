@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const QueryStoreReportTrendInput = z.object({
   brand: brandParamSchema.describe('Brand code: gelatomiiix | bonjur | tamkoko'),
@@ -30,16 +31,8 @@ export const queryStoreReportTrendTool = {
       headers: { 'x-mcp-session': 'internal' },
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`query_store_report_trend failed: ${err}`);
-    }
-
-    const json = await res.json();
-    if (!json.success) {
-      throw new Error(json.error || 'Unknown error');
-    }
-    const data = json.data ?? { note: json.note ?? 'no data' };
+    const json = await assertApiSuccess(res, 'query_store_report_trend');
+    const data = (json as Record<string, unknown>).data ?? { note: (json as Record<string, unknown>).note ?? 'no data' };
     // Attach download URLs for the latest month so the agent can share them
     const trendData = data as { monthly?: Array<{ month: string }> };
     if ((trendData as any).monthly?.length) {
