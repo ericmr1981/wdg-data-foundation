@@ -3,6 +3,7 @@ export interface SkillFrontmatter {
   name: string
   description: string
   triggers?: string[]
+  disabled?: boolean
   version?: string
 }
 
