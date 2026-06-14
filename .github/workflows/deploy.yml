@@ -69,8 +69,6 @@ jobs:
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/agent:latest
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/agent:${{ steps.meta.outputs.short_sha }}
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/agent:${{ steps.meta.outputs.ts }}
-          cache-from: type=registry,ref=${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/agent:buildcache
-          cache-to: type=registry,ref=${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/agent:buildcache,mode=max
 
       - name: Build and push ui image
         uses: docker/build-push-action@v6
@@ -82,8 +80,6 @@ jobs:
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/ui:latest
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/ui:${{ steps.meta.outputs.short_sha }}
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/ui:${{ steps.meta.outputs.ts }}
-          cache-from: type=registry,ref=${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/ui:buildcache
-          cache-to: type=registry,ref=${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/ui:buildcache,mode=max
 
       - name: Notify VPS to pull
         run: |
