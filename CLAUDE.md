@@ -219,6 +219,7 @@ bank_txn → fn_classify() → bank_txn_classified_snapshot (BASE TABLE)
 | └ 匹配规则 | [docs/qmaireport/match-page-structure.md](docs/qmaireport/match-page-structure.md) | /match, /rules 结构 |
 |   | [docs/qmaireport/match-data-sources.md](docs/qmaireport/match-data-sources.md) | 数据来源 |
 |   | [docs/qmaireport/match-user-stories.md](docs/qmaireport/match-user-stories.md) | 用户故事 |
+| MCP 工具—数据源映射 | [docs/mcp-tools-data-sources.md](docs/mcp-tools-data-sources.md) | 47 工具→表/视图/API路由全对应 |
 
 ## Constraints
 - Keep changes bounded and reversible; verify before claiming done
