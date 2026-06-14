@@ -137,11 +137,15 @@ function jsonRpcError(id: string | number | null, code: number, message: string,
  * Build the JSON-RPC "tools/list" result from the tool registry.
  */
 function listToolsResult() {
+  // Re-use listToolSchemas so the JSON-RPC `tools/list` returns the same
+  // zod-derived input_schema that the chat adapter sees.  Previously this
+  // returned `inputSchema: {}` and the admin Tools page rendered an empty
+  // schema panel.
   return {
-    tools: Object.values(TOOLS).map(t => ({
+    tools: listToolSchemas().map(t => ({
       name:        t.name,
       description: t.description,
-      inputSchema: {}, // JSON-RPC mode — clients use tool.name for dispatch
+      inputSchema: t.input_schema,
     })),
   };
 }
