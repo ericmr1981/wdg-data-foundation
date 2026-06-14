@@ -1,41 +1,40 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 import { brandParamSchema } from '@/lib/brand-param';
+import { assertApiSuccess } from '@/lib/api-error';
 
 const GetTxnDetailInput = z.object({
-  brand:       brandParamSchema.optional().default('gelatomiiix').describe('Brand code: gelatomiiix | bonjur | tamkoko'),
   bank_txn_id: z.number().int().positive().describe('Bank transaction ID'),
+  brand: brandParamSchema.optional().default('gelatomiiix')
+    .describe('Brand code: gelatomiiix | bonjur | tamkoko'),
 });
 
 export const getTxnDetailTool = {
   name: 'get_txn_detail',
-  description: 'Fetch full detail for a specific bank transaction including counterparty, summary, memo, purpose, and keyword candidates for classification.',
-  inputSchema: GetTxnDetailInput,
-  async execute({ brand = 'gelatomiiix', bank_txn_id }: z.infer<typeof GetTxnDetailInput>) {
+  description: `Fetch full detail for a specific bank transaction including counterparty, summary, memo, purpose, and keyword candidates for classification.
 
-    // Fetch candidates and the full unclassified list (filter locally for this txn)
-    const [candRes, listRes] = await Promise.all([
-      mcpFetch(`/api/match/candidates?brand=${brand}&bank_txn_id=${bank_txn_id}`, {
-        headers: { 'x-mcp-session': 'internal' },
-      }),
-      mcpFetch(`/api/match?brand=${brand}&pageSize=500`, {
-        headers: { 'x-mcp-session': 'internal' },
-      }),
+**Parameters**:
+- bank_txn_id (required): bank transaction ID
+- brand (optional): brand code, default gelatomiiix
+
+**Response**: { bank_txn_id, candidates, transaction }`,
+  inputSchema: GetTxnDetailInput,
+  async execute({ bank_txn_id, brand }: z.infer<typeof GetTxnDetailInput>) {
+    // Direct lookup: pass bank_txn_id to both API calls, no list-then-filter
+    const [candRes, matchRes] = await Promise.all([
+      mcpFetch(`/api/match/candidates?brand=${brand}&bank_txn_id=${bank_txn_id}`),
+      mcpFetch(`/api/match?brand=${brand}&bank_txn_id=${bank_txn_id}&pageSize=1`),
     ]);
 
-    if (!candRes.ok) throw new Error(`get_txn_detail candidates failed: ${await candRes.text()}`);
-    if (!listRes.ok) throw new Error(`get_txn_detail list failed: ${await listRes.text()}`);
-
-    const [candJson, listJson] = await Promise.all([candRes.json(), listRes.json()]);
-
-    const txn = (listJson.data?.items ?? []).find(
-      (row: any) => String(row.bank_txn_id) === String(bank_txn_id)
-    );
+    const [candJson, matchJson] = await Promise.all([
+      assertApiSuccess<{ data?: { candidates?: unknown } }>(candRes, 'get_txn_detail.candidates'),
+      assertApiSuccess<{ data?: { items?: Array<Record<string, unknown>> } }>(matchRes, 'get_txn_detail.match'),
+    ]);
 
     return {
-      bank_txn_id: bank_txn_id,
+      bank_txn_id,
       candidates: candJson.data?.candidates ?? [],
-      transaction: txn ?? null,
+      transaction: matchJson.data?.items?.[0] ?? null,
     };
   },
 };

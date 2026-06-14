@@ -61,6 +61,12 @@ export async function GET(request: Request) {
       params.push(parseInt(sourceFileId));
     }
 
+    const bankTxnId = searchParams.get('bank_txn_id');
+    if (bankTxnId) {
+      query += ' AND t.id = $' + (params.length + 1);
+      params.push(parseInt(bankTxnId));
+    }
+
     query += ' ORDER BY t.txn_time DESC LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
     params.push(pageSize, (page - 1) * pageSize);
 
@@ -81,6 +87,10 @@ export async function GET(request: Request) {
     if (sourceFileId) {
       countQuery += ' AND t.source_file_id = $' + (countParams.length + 1);
       countParams.push(parseInt(sourceFileId));
+    }
+    if (bankTxnId) {
+      countQuery += ' AND t.id = $' + (countParams.length + 1);
+      countParams.push(parseInt(bankTxnId));
     }
     const countResult = await pool.query(countQuery, countParams);
     const total = parseInt(countResult.rows[0].total);
