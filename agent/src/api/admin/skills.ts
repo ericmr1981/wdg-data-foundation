@@ -32,7 +32,7 @@ function listOne(filename: string) {
   const path = join(SKILLS_DIR, filename)
   const raw = readFileSync(path, 'utf-8')
   const parsed = matter(raw)
-  const fm = parsed.data as { name?: string; description?: string; triggers?: string[] }
+  const fm = parsed.data as { name?: string; description?: string; triggers?: string[]; disabled?: boolean }
   const s = statSync(path)
   return {
     name: fm.name ?? filename.replace(/\.md$/, ''),
