@@ -235,7 +235,18 @@ export async function POST(req: NextRequest) {
               const blocks = splitSentences(sentenceBuffer);
               if (blocks.length === 0) return;
               const last = blocks[blocks.length - 1];
-              const hasTerminator = /[。！？.!?]\s*$/.test(last);
+              const hasTerminator = (() => {
+                const m = /[。！？.!?]\s*$/.exec(last);
+                if (!m) return false;
+                // Don't treat '.' as terminator when preceded by a digit
+                // (preserves numbers like 46,602.26 and 3.14%)
+                const dotIdx = last.length - m[0].length;
+                if (last[dotIdx] === '.' && dotIdx > 0) {
+                  const prev = last[dotIdx - 1];
+                  if (prev >= '0' && prev <= '9') return false;
+                }
+                return true;
+              })();
               if (!hasTerminator) {
                 const completed = blocks.slice(0, -1);
                 for (const text of completed) {
