@@ -115,7 +115,7 @@ export function MessageList({ messages }: { messages: ChatMessage[] }) {
               <FadeInBlock key={i} delayMs={delayMs}>
                 <div className="flex items-start justify-start gap-2">
                   <UserAvatar role="assistant" />
-                  <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-white px-3 py-2 text-sm text-gray-900 shadow-sm">
+                  <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-white px-3 py-2 text-sm text-gray-900 shadow-sm break-words">
                     <MarkdownMessage content={m.content} />
                   </div>
                 </div>
