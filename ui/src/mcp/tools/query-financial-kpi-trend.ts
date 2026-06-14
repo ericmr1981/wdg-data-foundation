@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { brandParamSchema } from '@/lib/brand-param';
 
 const QueryFinancialKpiTrendInput = z.object({
-  brand: z.enum(['gelatomiiix', 'bonjur', 'tamkoko']).describe('Brand code'),
+  brand: brandParamSchema.describe('Brand code: gelatomiiix | bonjur | tamkoko'),
   period: z.string().regex(/^\d{4}-\d{2}$/, 'YYYY-MM').describe('Period in YYYY-MM format'),
   span: z.enum(['month', 'quarter', 'year']).optional().default('month')
     .describe('Time span (default month)'),

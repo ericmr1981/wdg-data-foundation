@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { brandParamSchema } from '@/lib/brand-param';
 
 const ListRuleFilesInput = z.object({
-  brand: z.string().optional().describe('Filter by brand code (optional)'),
+  brand: brandParamSchema.optional().describe('Brand code: gelatomiiix | bonjur | tamkoko'),
   limit: z.number().int().positive().max(100).optional().default(20)
     .describe('Max rows (default 20)'),
 });

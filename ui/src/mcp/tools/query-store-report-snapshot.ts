@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { brandParamSchema } from '@/lib/brand-param';
 
 const QueryStoreReportSnapshotInput = z.object({
-  brand: z.enum(['gelatomiiix', 'bonjur', 'tamkoko']).describe('Brand code'),
+  brand: brandParamSchema.describe('Brand code: gelatomiiix | bonjur | tamkoko'),
   store: z.string().describe('Store code'),
   month: z.string().regex(/^\d{4}-\d{2}$/, 'YYYY-MM').describe('Month in YYYY-MM format'),
 });

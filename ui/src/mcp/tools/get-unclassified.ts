@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { brandParamSchema } from '@/lib/brand-param';
 
 const GetUnclassifiedInput = z.object({
-  brand:          z.string().describe('Brand code: yufeng | gelatomiiix | bonjur').optional().default('yufeng'),
+  brand:          brandParamSchema.optional().default('gelatomiiix').describe('Brand code: gelatomiiix | bonjur | tamkoko'),
   source_file_id:  z.number().int().positive().optional().describe('Filter to a specific upload batch (source_file_id from upload response)'),
   month:          z.string().describe('Period in YYYY-MM or YYYY-MM-01 format').optional(),
   page:           z.number().int().positive().optional().default(1),
@@ -24,7 +25,7 @@ export const getUnclassifiedTool = {
 - page/pageSize (optional): pagination`,
   inputSchema: GetUnclassifiedInput,
   async execute(params: z.infer<typeof GetUnclassifiedInput>) {
-    const { brand = 'yufeng', source_file_id, month, page = 1, pageSize = 100 } = params;
+    const { brand = 'gelatomiiix', source_file_id, month, page = 1, pageSize = 100 } = params;
     const qs = new URLSearchParams({ brand, page: String(page), pageSize: String(pageSize) });
     if (source_file_id) qs.set('source_file_id', String(source_file_id));
     if (month) qs.set('month', month);

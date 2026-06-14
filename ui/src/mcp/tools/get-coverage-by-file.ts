@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { brandParamSchema } from '@/lib/brand-param';
 
 const GetCoverageByFileInput = z.object({
-  brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).optional().default('yufeng')
-    .describe('Brand code (default yufeng = gelatomiiix)'),
+  brand: brandParamSchema.optional().default('gelatomiiix')
+    .describe('Brand code: gelatomiiix | bonjur | tamkoko'),
 });
 
 export const getCoverageByFileTool = {
@@ -13,12 +14,12 @@ export const getCoverageByFileTool = {
 **Use case**: After upload, find which files still have unclassified txns; identify data quality issues per upload batch.
 
 **Parameters**:
-- brand (optional): gelatomiiix | yufeng | bonjur, default yufeng
+- brand (optional): gelatomiiix | bonjur | tamkoko, default gelatomiiix
 
 **Response**: rows of { source_file_id, file_name, store_code, total_txn, auto_count, manual_count, unclassified_count, coverage_pct, ... }`,
   inputSchema: GetCoverageByFileInput,
   async execute(params: z.infer<typeof GetCoverageByFileInput>) {
-    const { brand = 'yufeng' } = params;
+    const { brand = 'gelatomiiix' } = params;
     const qs = new URLSearchParams({ brand });
     const res = await mcpFetch(`/api/coverage/by-file?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },

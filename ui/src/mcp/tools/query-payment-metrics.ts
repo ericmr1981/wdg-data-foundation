@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { brandParamSchema } from '@/lib/brand-param';
 
 const QueryPaymentMetricsInput = z.object({
-  brand: z.enum(['gelatomiiix', 'bonjur', 'tamkoko']).optional().default('gelatomiiix')
+  brand: brandParamSchema.optional().default('gelatomiiix')
     .describe('Brand code (default gelatomiiix)'),
   period: z.string().optional().default('all')
     .describe('Period in YYYY-MM format, or "all" (default)'),

@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { brandParamSchema } from '@/lib/brand-param';
 
 const RerunMatchByFileInput = z.object({
-  brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).describe('Brand code'),
+  brand: brandParamSchema.describe('Brand code: gelatomiiix | bonjur | tamkoko'),
   source_file_ids: z.array(z.number().int().positive()).optional()
     .describe('Specific source file IDs to rerun (provide this OR all_files=true)'),
   all_files: z.boolean().optional().default(false)
@@ -16,7 +17,7 @@ export const rerunMatchByFileTool = {
 **Use case**: After rules are updated (via human-approved proposals that settled), call this to re-apply the new rules to historical data.
 
 **Parameters**:
-- brand (required): gelatomiiix | yufeng | bonjur
+- brand (required): gelatomiiix | bonjur | tamkoko
 - source_file_ids (optional): array of source file IDs to rerun
 - all_files (optional): if true, rerun for ALL successful bank files for the brand (use with caution — large impact)
 

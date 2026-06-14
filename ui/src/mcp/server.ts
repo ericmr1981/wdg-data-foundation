@@ -111,9 +111,21 @@ const TOOLS: Record<string, ToolModule> = {
   create_store:                        createStoreTool,
 };
 
+/** Aliases: old name → canonical name. Preserves backward compatibility. */
+const TOOL_ALIASES: Record<string, string> = {
+  'get_unclassified':            'get_unclassified_transactions',
+  'get_transaction_detail':      'get_txn_detail',
+  'get_existing_rules':          'get_rules',
+  'submit_approval_proposal':    'submit_proposal',
+  'query_status':                'query_approval_status',
+};
+
 /** Try short-name match, then long-name match */
 function resolveTool(name: string): ToolModule | undefined {
-  return TOOLS[name] ?? Object.values(TOOLS).find(t => t.name === name);
+  if (TOOLS[name]) return TOOLS[name];
+  const canonical = TOOL_ALIASES[name];
+  if (canonical) return TOOLS[canonical];
+  return Object.values(TOOLS).find(t => t.name === name);
 }
 
 // JSON-RPC 2.0 request shape

@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { brandParamSchema } from '@/lib/brand-param';
 
 const GetTxnDetailInput = z.object({
-  brand:       z.string().describe('Brand code: yufeng | gelatomiiix | bonjur').optional().default('yufeng'),
+  brand:       brandParamSchema.optional().default('gelatomiiix').describe('Brand code: gelatomiiix | bonjur | tamkoko'),
   bank_txn_id: z.number().int().positive().describe('Bank transaction ID'),
 });
 
@@ -10,7 +11,7 @@ export const getTxnDetailTool = {
   name: 'get_txn_detail',
   description: 'Fetch full detail for a specific bank transaction including counterparty, summary, memo, purpose, and keyword candidates for classification.',
   inputSchema: GetTxnDetailInput,
-  async execute({ brand = 'yufeng', bank_txn_id }: z.infer<typeof GetTxnDetailInput>) {
+  async execute({ brand = 'gelatomiiix', bank_txn_id }: z.infer<typeof GetTxnDetailInput>) {
 
     // Fetch candidates and the full unclassified list (filter locally for this txn)
     const [candRes, listRes] = await Promise.all([

@@ -10,11 +10,12 @@
 
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { brandParamSchema } from '@/lib/brand-param';
 
 const STORE_CODE_RE = /^[a-z][a-z0-9_]{1,31}$/;
 
 const CreateStoreInput = z.object({
-  brand: z.string().describe('Existing brand code in ops.brands, e.g. "gelatomiiix" or "bonjur"'),
+  brand: brandParamSchema.describe('Existing brand code: gelatomiiix | bonjur | tamkoko'),
   store_code: z.string().regex(STORE_CODE_RE, 'store_code must match ^[a-z][a-z0-9_]{1,31}$'),
   store_name: z.string().min(1).describe('Human-readable store name shown in the UI'),
   rule_snapshot_source_store_code: z.string().optional()

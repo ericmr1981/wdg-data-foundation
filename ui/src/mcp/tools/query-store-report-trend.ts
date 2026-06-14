@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { brandParamSchema } from '@/lib/brand-param';
 
 const QueryStoreReportTrendInput = z.object({
-  brand: z.enum(['gelatomiiix', 'bonjur', 'tamkoko']).describe('Brand code'),
+  brand: brandParamSchema.describe('Brand code: gelatomiiix | bonjur | tamkoko'),
   store: z.string().describe('Store code'),
   months: z.number().int().min(1).max(24).optional().default(12)
     .describe('Number of trailing months (1-24, default 12)'),

@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { brandParamSchema } from '@/lib/brand-param';
 
 const GetRulesHistoryInput = z.object({
-  brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).optional().default('yufeng')
-    .describe('Brand code (default yufeng = gelatomiiix)'),
+  brand: brandParamSchema.optional().default('gelatomiiix')
+    .describe('Brand code: gelatomiiix | bonjur | tamkoko'),
   rule_id: z.number().int().positive().optional()
     .describe('Filter by specific rule ID (recommended for tracking a single rule)'),
   limit: z.number().int().positive().max(200).optional().default(50)
@@ -17,14 +18,14 @@ export const getRulesHistoryTool = {
 **Use case**: Audit rule changes; investigate why a particular txn was classified a certain way by tracing back to the rule edit.
 
 **Parameters**:
-- brand (optional): gelatomiiix | yufeng | bonjur, default yufeng
+- brand (optional): gelatomiiix | bonjur | tamkoko, default gelatomiiix
 - rule_id (optional): filter by specific rule
 - limit (optional): max rows, default 50
 
 **Response**: rows of { id, rule_id, action (insert/update/delete), changed_by, changed_at, old_value, new_value, ... }`,
   inputSchema: GetRulesHistoryInput,
   async execute(params: z.infer<typeof GetRulesHistoryInput>) {
-    const { brand = 'yufeng', rule_id, limit = 50 } = params;
+    const { brand = 'gelatomiiix', rule_id, limit = 50 } = params;
     const qs = new URLSearchParams({ brand, limit: String(limit) });
     if (rule_id !== undefined) qs.set('rule_id', String(rule_id));
     const res = await mcpFetch(`/api/rules/history?${qs}`, {

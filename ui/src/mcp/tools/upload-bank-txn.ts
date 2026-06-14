@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { brandParamSchema } from '@/lib/brand-param';
 
 const UploadBankTxnInput = z.object({
-  brand:     z.string().describe('Brand code: yufeng | gelatomiiix | bonjur'),
+  brand:     brandParamSchema.describe('Brand code: gelatomiiix | bonjur | tamkoko'),
   store:     z.string().describe('Store code (e.g. wz_wxc for 温州万象城, wz_ra for 瑞安吾悦广场)'),
   file_path: z.string().describe('Absolute path to the bank statement Excel file (.xlsx)'),
 });
