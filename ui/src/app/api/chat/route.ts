@@ -266,23 +266,13 @@ export async function POST(req: NextRequest) {
                 return true;
               })();
               if (!hasTerminator) {
-                // Don't emit blocks before an uncompleted table row —
-                // they belong together as one markdown table block
-                const completed = blocks.slice(0, -1);
+                // When the held block is part of a markdown table (starts with |),
+                // hold the ENTIRE buffer. Don't emit anything — wait for the table
+                // to be complete so it doesn't fragment across text_block events.
                 if (last.trimStart().startsWith('|')) {
-                  // The held block is a table row. Emit any non-table
-                  // preceding blocks now, but not the row right before
-                  // the table (if any) — hold it to avoid orphaned cells
-                  const nonTable = completed.filter(b => !b.trimStart().startsWith('|'));
-                  for (const text of nonTable) {
-                    send({ type: 'text_block', text, index: sentenceIndex++, turnId });
-                  }
-                  // Reconstruct held buffer: part of the table that was
-                  // already emitted + the current uncompleted row
-                  const tablePart = blocks.slice(nonTable.length, -1);
-                  sentenceBuffer = tablePart.join('') + last;
-                  return;
+                  return; // keep sentenceBuffer unchanged
                 }
+                const completed = blocks.slice(0, -1);
                 for (const text of completed) {
                   send({ type: 'text_block', text, index: sentenceIndex++, turnId });
                 }
