@@ -48,7 +48,7 @@ services:
     environment:
       - WS_PORT=4101
       - DATABASE_URL=postgresql://agent:${AGENT_DB_PASSWORD:-agent}@agent-test-db:5432/agent_dev
-      - MCP_ENDPOINT=http://ui:3000/api/mcp
+      - MCP_ENDPOINT=http://dataplatform-ui:3000/api/mcp
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-opus-4-8}

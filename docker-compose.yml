@@ -43,7 +43,7 @@ services:
     environment:
       - WS_PORT=4101
       - DATABASE_URL=postgresql://agent:local-dev-only@agent-test-db:5432/agent_dev
-      - MCP_ENDPOINT=http://ui:3000/api/mcp
+      - MCP_ENDPOINT=http://dataplatform-ui:3000/api/mcp
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-opus-4-8}
       - CRON_TIMEZONE=Asia/Shanghai

@@ -6,6 +6,113 @@ import path from 'path';
 import { spawn } from 'child_process';
 import crypto from 'crypto';
 import pool from '@/lib/db';
+import * as XLSX from 'xlsx';
+
+/**
+ * Extract YYYY-MM from a filename. Returns null if no usable date is found.
+ * Supports:
+ *   - "2603-温州..."          → 2026-03
+ *   - "2026-03-01 至 2026-03-31" → 2026-03 (latest)
+ *   - "2025年12月"             → 2025-12
+ *   - "2603", "2504" (4 digits, MM<=12) anywhere in filename → 20YY-MM
+ */
+function extractMonthFromFilename(fname: string): string | null {
+  if (!fname) return null;
+  const patterns: [RegExp, number, number?][] = [
+    [/(\d{4})-(\d{2})-\d{2}/g, 1, 2],        // YYYY-MM-DD
+    [/(\d{4})年(\d{1,2})月/g, 1, 2],          // YYYY年M月
+  ];
+  const candidates: number[] = [];
+  for (const [pat, yi, mi] of patterns) {
+    pat.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = pat.exec(fname)) !== null) {
+      const y = parseInt(m[yi], 10);
+      const mo = parseInt(m[mi!], 10);
+      if (mo >= 1 && mo <= 12) candidates.push(y * 100 + mo);
+    }
+  }
+  // YYMM: 4 consecutive digits where 1-12 followed by 01-12
+  // e.g. "2603" in "2603-温州..." → YY=26 MM=03
+  const yymmRe = /(?:^|[^\d])(\d{2})(0[1-9]|1[0-2])(?:[^\d]|$)/g;
+  let ym: RegExpExecArray | null;
+  while ((ym = yymmRe.exec(fname)) !== null) {
+    const yy = parseInt(ym[1], 10);
+    const mm = parseInt(ym[2], 10);
+    // Only treat as YYMM if YY looks like a plausible recent year (00-40 = 2000-2040)
+    if (yy >= 0 && yy <= 40) candidates.push((2000 + yy) * 100 + mm);
+  }
+  if (!candidates.length) return null;
+  const latest = Math.max(...candidates);
+  const y = Math.floor(latest / 100);
+  const mo = latest % 100;
+  return `${y}-${String(mo).padStart(2, '0')}`;
+}
+
+/**
+ * Extract YYYY-MM from the first transaction record inside an xlsx file.
+ * Used as fallback when filename has no date. Reads the first sheet and
+ * scans cells for any parseable date, returning the month of the earliest
+ * date found in the first ~5 data rows.
+ *
+ * Supports ICBC format ([HISTORYDETAIL] + 交易时间 col) and any xlsx where
+ * a date appears in any cell of the first rows.
+ */
+function extractMonthFromXlsx(buffer: Buffer): string | null {
+  try {
+    const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    const firstSheet = wb.SheetNames[0];
+    if (!firstSheet) return null;
+    const ws = wb.Sheets[firstSheet];
+    const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+    const dates: number[] = [];
+    for (let i = 0; i < Math.min(rows.length, 10); i++) {
+      const row = rows[i] || [];
+      for (const cell of row) {
+        if (cell == null) continue;
+        const d = parseCellDate(cell);
+        if (d) dates.push(d);
+      }
+    }
+    if (!dates.length) return null;
+    const earliest = Math.min(...dates);
+    const d = new Date(earliest);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  } catch {
+    return null;
+  }
+}
+
+function parseCellDate(cell: unknown): number | null {
+  if (cell instanceof Date) {
+    const t = cell.getTime();
+    return isNaN(t) ? null : t;
+  }
+  if (typeof cell === 'number') {
+    // Excel serial date (days since 1899-12-30). Plausible range: 1900-2100.
+    if (cell > 1 && cell < 80000) {
+      const ms = (cell - 25569) * 86400 * 1000;
+      const d = new Date(ms);
+      if (!isNaN(d.getTime())) return d.getTime();
+    }
+    return null;
+  }
+  if (typeof cell === 'string') {
+    const trimmed = cell.trim();
+    if (!trimmed) return null;
+    // Common formats: 2026-03-31, 2026/03/31, 2026-03-31 17:59:51, 2026年3月31日
+    const m = trimmed.match(/(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})/);
+    if (m) {
+      const y = parseInt(m[1], 10);
+      const mo = parseInt(m[2], 10);
+      const da = parseInt(m[3], 10);
+      if (mo >= 1 && mo <= 12 && da >= 1 && da <= 31) {
+        return new Date(y, mo - 1, da).getTime();
+      }
+    }
+  }
+  return null;
+}
 
 // POST /api/upload - 上传文件并触发导入
 export async function POST(request: Request) {
@@ -27,9 +134,16 @@ export async function POST(request: Request) {
   const triggerImport = formData.get('triggerImport') === 'true';
 
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const yyyyMM = `${year}-${month}`;
+  const fallbackYYYYMM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const uploadedFileName = file ? (file.name || '') : '';
+  // 1) try filename (2603-, 2026-03, 2025年12月, etc.)
+  // 2) if missing, read the first transaction date from inside the xlsx
+  // 3) last resort: current month
+  const fileBufferForMonth = file ? Buffer.from(await file.arrayBuffer()) : null;
+  const yyyyMM =
+    extractMonthFromFilename(uploadedFileName) ||
+    (fileBufferForMonth ? extractMonthFromXlsx(fileBufferForMonth) : null) ||
+    fallbackYYYYMM;
 
   if (!file || !brand || !store || !source) {
     return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
@@ -42,8 +156,7 @@ export async function POST(request: Request) {
 
   const fileName = file.name;
   const filePath = path.join(uploadDir, fileName);
-  const arrayBuffer = await file.arrayBuffer();
-  const fileBuffer = Buffer.from(arrayBuffer);
+  const fileBuffer = fileBufferForMonth ?? Buffer.from(await file.arrayBuffer());
   const fileHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
 
   await writeFile(filePath, fileBuffer);
