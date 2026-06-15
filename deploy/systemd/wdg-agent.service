@@ -20,7 +20,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
-ReadWritePaths=/opt/wdg/agent/data /opt/wdg/agent/dist
+ReadWritePaths=/opt/wdg/agent
 
 [Install]
 WantedBy=multi-user.target
