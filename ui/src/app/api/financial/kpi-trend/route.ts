@@ -10,7 +10,7 @@ import { parsePeriod } from '../period-utils';
 //   - monthly[]: 12-month trend (unfiltered by period, for chart)
 //   - current_month / prev_month: filtered by period+span (for expense breakdown)
 export async function GET(request: Request) {
-  const user = await getSessionUser();
+  const user = await getSessionUser(request);
   try {
     assertRole(user, ['admin', 'operator']);
 

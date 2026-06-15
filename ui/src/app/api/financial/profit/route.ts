@@ -126,7 +126,7 @@ function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: 
 
 // GET /api/financial/profit?brand=gelatomiiix&period=2026-01&span=month&store=all
 export async function GET(request: Request) {
-  const user = await getSessionUser();
+  const user = await getSessionUser(request);
   const { searchParams } = new URL(request.url);
   const period = searchParams.get('period') || '';
   const span = searchParams.get('span') || 'month';

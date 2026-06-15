@@ -7,8 +7,8 @@ import { parsePeriod } from '../period-utils';
 // GET /api/financial/qimai-revenue?brand=gelatomiiix&period=2026-06&span=month&store=xxx
 // Returns cumulative bank revenue and qimai revenue up to the selected period
 export async function GET(request: Request) {
-  const user = await getSessionUser();
   try {
+    const user = await getSessionUser(request);
     assertRole(user, ['admin', 'operator']);
 
     const { searchParams } = new URL(request.url);
@@ -27,7 +27,6 @@ export async function GET(request: Request) {
     const odsSchema = getOdsSchema(brand);
     const incomeOds = brand === 'gelatomiiix' ? 'gelatomiiix_ods' : odsSchema;
 
-    // Cumulative bank revenue up to endDate
     const storeClause = store !== 'all' ? 'AND store_code = $2' : '';
     const storeParams = store !== 'all' ? [endDate, store] : [endDate];
 
@@ -46,8 +45,6 @@ export async function GET(request: Request) {
       // view not ready
     }
 
-    // Cumulative qimai revenue up to endDate
-    // 口径: net_amt (扣除折扣/手续费后的实收), 排除会员支付(内部流转)
     let qimaiRevenue: number | null = null;
     try {
       const qiRes = await pool.query(
@@ -70,7 +67,6 @@ export async function GET(request: Request) {
       },
     });
   } catch (err: any) {
-    const status = err?.status || 500;
-    return NextResponse.json({ success: false, error: err.message }, { status });
+    return NextResponse.json({ success: false, error: err.message }, { status: err?.status || 500 });
   }
 }

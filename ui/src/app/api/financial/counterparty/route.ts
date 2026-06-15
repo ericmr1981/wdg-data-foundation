@@ -8,7 +8,7 @@ import { getErrorMessage } from '@/lib/query-types';
 // GET /api/financial/counterparty?brand=gelatomiiix
 // GET /api/financial/counterparty?brand=gelatomiiix&counterparty=xxx&period=2026-01&span=month&store=all
 export async function GET(request: Request) {
-  const user = await getSessionUser();
+  const user = await getSessionUser(request);
   const { searchParams } = new URL(request.url);
   const period = searchParams.get('period') || '';
   const span = searchParams.get('span') || 'month';

@@ -98,7 +98,7 @@ function buildCashflowLines(raw: CashflowRow[]): LineItem[] {
 
 // GET /api/financial/cashflow?brand=gelatomiiix&period=2026-01&span=month&store=all
 export async function GET(request: Request) {
-  const user = await getSessionUser();
+  const user = await getSessionUser(request);
   const { searchParams } = new URL(request.url);
   const period = searchParams.get('period') || '';
   const span = searchParams.get('span') || 'month';
