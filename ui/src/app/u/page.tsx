@@ -21,9 +21,11 @@ interface StoreWithGaps extends StoreRow {
   gap_dates: string[];
 }
 
-interface DataSource {
-  schema: string;
+interface DataSourceStore {
   table: string;
+  brand_code: string;
+  store_code: string;
+  store_name: string;
   rows: number;
   latest_at: string | null;
   min_date: string | null;
@@ -104,7 +106,7 @@ export default async function HomePage() {
           (SELECT MAX(txn_time)::text FROM ${sanitizeSchema(odsSchema)}.bank_txn WHERE store_code = s.store_code) as latest_txn
         FROM ops.stores s
         WHERE s.brand_code = $1 AND s.enabled = true
-        ORDER BY s.sort_order NULLS LAST
+        ORDER BY s.store_name
       `, [brand.brand_code]);
 
       // 计算每行门店的 txn_time 日期缺口
@@ -132,34 +134,45 @@ export default async function HomePage() {
     }
   }
 
-  // Get extra data sources for each brand
-  const allSources: DataSource[] = [];
+  // Get per-store data for extra Qimai data sources
+  const allSources: DataSourceStore[] = [];
   for (const brand of brands) {
     const tables = EXTRA_SOURCES[brand.brand_code] || [];
     for (const table of tables) {
       try {
-        // 与 qimai-revenue API (route.ts) 保持一致: gelatomiiix 的 income_detail / product_sales_detail
-        // 仍在 legacy `gelatomiiix_ods`;其他非 legacy 品牌 (含 tamkoko) 走 schema_prefix。
+        // gelatomiiix 的 income_detail/product_sales_detail 仍在 legacy gelatomiiix_ods
         const schema = brand.brand_code === 'gelatomiiix' ? 'gelatomiiix_ods' : `${brand.schema_prefix}_ods`;
         const tn = sanitizeSchema(table);
+        // Per-store rows, date range, and gap detection
         const res = await pool.query(`
-          SELECT count(*)::int as rows,
-            (SELECT MAX(biz_date)::text FROM ${sanitizeSchema(schema)}.${tn}) as latest_at,
-            (SELECT MIN(biz_date)::text FROM ${sanitizeSchema(schema)}.${tn}) as min_date
+          SELECT store_code, COALESCE(store_name, store_code) as store_name,
+            count(*)::int as rows,
+            MIN(biz_date)::text as min_date,
+            MAX(biz_date)::text as latest_at
           FROM ${sanitizeSchema(schema)}.${tn}
+          GROUP BY store_code, store_name
+          ORDER BY store_name
         `);
-        // Gap detection
-        const gapRes = await pool.query(`
-          SELECT DISTINCT biz_date::text AS d FROM ${sanitizeSchema(schema)}.${tn} ORDER BY d
-        `);
-        const dates: string[] = (gapRes.rows as { d: string }[]).map(r => r.d);
-        allSources.push({
-          schema, table,
-          rows: res.rows[0]?.rows || 0,
-          latest_at: res.rows[0]?.latest_at || null,
-          min_date: res.rows[0]?.min_date || null,
-          gap_dates: findGaps(dates),
-        });
+        for (const row of res.rows as { store_code: string; store_name: string; rows: number; min_date: string; latest_at: string }[]) {
+          // Gap detection per store
+          const gapRes = await pool.query(`
+            SELECT DISTINCT biz_date::text AS d
+            FROM ${sanitizeSchema(schema)}.${tn}
+            WHERE store_code = $1
+            ORDER BY d
+          `, [row.store_code]);
+          const dates: string[] = (gapRes.rows as { d: string }[]).map(r => r.d);
+          allSources.push({
+            table,
+            brand_code: brand.brand_code,
+            store_code: row.store_code,
+            store_name: row.store_name,
+            rows: row.rows,
+            latest_at: row.latest_at || null,
+            min_date: row.min_date || null,
+            gap_dates: findGaps(dates),
+          });
+        }
       } catch {
         // table might not exist
       }
@@ -169,14 +182,7 @@ export default async function HomePage() {
   const grouped = brands.map(brand => ({
     ...brand,
     stores: stores.filter(s => s.brand_code === brand.brand_code),
-    // 与 allSources 拼装逻辑保持一致: gelatomiiix 的 income/product_sales 仍在 legacy `gelatomiiix_ods`,
-    // 其他品牌走 `${brand.schema_prefix}_ods`。
-    sources: allSources.filter(s => {
-      const expectedSchema = brand.brand_code === 'gelatomiiix'
-        ? 'gelatomiiix_ods'
-        : `${brand.schema_prefix}_ods`;
-      return s.schema === expectedSchema;
-    }),
+    sources: allSources.filter(s => s.brand_code === brand.brand_code),
   }));
 
   return (
@@ -236,56 +242,68 @@ export default async function HomePage() {
             })()}
           </div>
 
-          {/* 其他数据源 */}
+          {/* 其他数据源 — 按门店分组 */}
           {brand.sources.length > 0 && (
             <div>
               <div className="flex items-center mb-2">
                 <h3 className="text-sm font-medium text-gray-700">企迈数据</h3>
               </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-gray-500">
-                    <th className="py-2 font-medium">数据表</th>
-                    <th className="py-2 font-medium">记录数</th>
-                    <th className="py-2 font-medium">数据范围</th>
-                    <th className="py-2 font-medium">完整性</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {brand.sources.map(src => {
-                    const hasGaps = src.gap_dates.length > 0;
-                    return (
-                      <tr key={src.table} className="border-b last:border-0">
-                        <td className="py-2.5">{TABLE_LABELS[src.table] || src.table}</td>
-                        <td className="py-2.5 text-gray-600">{src.rows.toLocaleString()}</td>
-                        <td className="py-2.5 text-gray-600">
-                          {src.min_date && src.latest_at
-                            ? `${src.min_date} ~ ${src.latest_at}`
-                            : '暂无数据'}
-                        </td>
-                        <td className="py-2.5">
-                          {hasGaps ? (
-                            <span className="text-amber-600 text-xs">
-                              缺 {src.gap_dates.length} 天
-                            </span>
-                          ) : (
-                            <span className="text-green-600 text-xs">连续</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
               {(() => {
-                const sourcesWithGaps = brand.sources.filter(s => s.gap_dates.length > 0);
-                return sourcesWithGaps.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {sourcesWithGaps.map(src => (
-                      <GapDetail key={src.table} gaps={src.gap_dates} />
-                    ))}
+                // Group sources by store, preserving store order
+                const storeMap = new Map<string, { store_name: string; tables: DataSourceStore[] }>();
+                for (const src of brand.sources) {
+                  if (!storeMap.has(src.store_code)) {
+                    storeMap.set(src.store_code, { store_name: src.store_name, tables: [] });
+                  }
+                  storeMap.get(src.store_code)!.tables.push(src);
+                }
+                return Array.from(storeMap.entries()).map(([storeCode, group]) => (
+                  <div key={storeCode} className="mb-3 border rounded p-3 bg-gray-50">
+                    <div className="text-sm font-medium text-gray-800 mb-2">{group.store_name}</div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-gray-500">
+                          <th className="py-1.5 font-medium">数据表</th>
+                          <th className="py-1.5 font-medium">记录数</th>
+                          <th className="py-1.5 font-medium">数据范围</th>
+                          <th className="py-1.5 font-medium">完整性</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.tables.map(src => {
+                          const hasGaps = src.gap_dates.length > 0;
+                          return (
+                            <tr key={src.table} className="border-b last:border-0">
+                              <td className="py-2">{TABLE_LABELS[src.table] || src.table}</td>
+                              <td className="py-2 text-gray-600">{src.rows.toLocaleString()}</td>
+                              <td className="py-2 text-gray-600">
+                                {src.min_date && src.latest_at
+                                  ? `${src.min_date} ~ ${src.latest_at}`
+                                  : '暂无数据'}
+                              </td>
+                              <td className="py-2">
+                                {hasGaps ? (
+                                  <span className="text-amber-600 text-xs">缺 {src.gap_dates.length} 天</span>
+                                ) : (
+                                  <span className="text-green-600 text-xs">连续</span>
+                                )}
+                                {hasGaps && (() => {
+                                  const display = src.gap_dates.slice(-10).reverse();
+                                  return (
+                                    <div className="mt-1 text-xs text-amber-600">
+                                      {display.map(d => <span key={d} className="mr-1 inline-block bg-amber-50 px-1 rounded">{d}</span>)}
+                                      {src.gap_dates.length > 10 && <span className="text-gray-400">... 共 {src.gap_dates.length} 天</span>}
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                );
+                ));
               })()}
             </div>
           )}

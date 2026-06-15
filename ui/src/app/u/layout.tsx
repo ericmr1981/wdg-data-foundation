@@ -22,6 +22,10 @@ export default async function ULayout({ children }: { children: ReactNode }) {
         </Link>
       )}
       <ChatWidget />
+      {/* 构建版本号 — 在构建时由 next.config.js 注入 NEXT_PUBLIC_GIT_SHA */}
+      <div className="fixed bottom-4 left-4 z-40 text-[10px] text-gray-400 select-none">
+        {process.env.NEXT_PUBLIC_GIT_SHA || 'dev'}
+      </div>
     </PageContextProvider>
   );
 }

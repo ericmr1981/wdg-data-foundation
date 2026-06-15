@@ -2,6 +2,9 @@
 'use client';
 import { useEffect, useState, useCallback, useRef } from 'react';
 
+// 持久化键：使用 sessionStorage，浏览器关闭后状态自动清空。
+// 这样用户每次重新登录/打开浏览器时 AI 窗口都是收起状态，
+// 但在同一浏览器会话内用户主动展开/关闭的偏好仍会保留。
 const KEY = 'wdg.chat.drawer.v1';
 const MIN_W = 320;
 const MAX_W = 640;
@@ -12,10 +15,16 @@ interface Persisted {
   width: number;
 }
 
-function readPersisted(): Persisted | null {
+function getStorage(): Storage | null {
   if (typeof window === 'undefined') return null;
+  return window.sessionStorage;
+}
+
+function readPersisted(): Persisted | null {
+  const storage = getStorage();
+  if (!storage) return null;
   try {
-    const raw = window.localStorage.getItem(KEY);
+    const raw = storage.getItem(KEY);
     if (!raw) return null;
     const j = JSON.parse(raw) as Partial<Persisted>;
     const width = typeof j.width === 'number' && j.width >= MIN_W && j.width <= MAX_W
@@ -28,9 +37,10 @@ function readPersisted(): Persisted | null {
 }
 
 function writePersisted(p: Persisted): void {
-  if (typeof window === 'undefined') return;
+  const storage = getStorage();
+  if (!storage) return;
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(p));
+    storage.setItem(KEY, JSON.stringify(p));
   } catch {
     // private mode / quota — ignore
   }
