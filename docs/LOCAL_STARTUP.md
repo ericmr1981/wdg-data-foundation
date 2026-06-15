@@ -159,3 +159,12 @@ curl http://127.0.0.1:4711/health   # should return "ok"
 ### Health check
 
 The daemon writes a row to `ops.notification_schedule_run` on every job. If the UI's "Recent 10 runs" panel shows the latest run > 2× the cron interval ago, the daemon may be hung.
+
+## 9. VPS 部署 (systemd)
+
+本地仍可用 docker-compose;VPS 走 systemd,详见 [docs/SYSTEMD_DEPLOY.md](SYSTEMD_DEPLOY.md)。
+
+- Docker = 本地开发、容器化
+- systemd = Linux VPS 生产
+
+两者并存,按需选用。

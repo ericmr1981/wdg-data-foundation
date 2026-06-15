@@ -219,6 +219,7 @@ bank_txn → fn_classify() → bank_txn_classified_snapshot (BASE TABLE)
 | └ 匹配规则 | [docs/qmaireport/match-page-structure.md](docs/qmaireport/match-page-structure.md) | /match, /rules 结构 |
 |   | [docs/qmaireport/match-data-sources.md](docs/qmaireport/match-data-sources.md) | 数据来源 |
 |   | [docs/qmaireport/match-user-stories.md](docs/qmaireport/match-user-stories.md) | 用户故事 |
+| **VPS systemd 部署** | [docs/SYSTEMD_DEPLOY.md](docs/SYSTEMD_DEPLOY.md) | install / 数据迁移 / 运维 |
 
 ## Constraints
 - Keep changes bounded and reversible; verify before claiming done
