@@ -1,0 +1,26 @@
+# deploy/systemd/wdg-agent.service
+[Unit]
+Description=WDG Agent (Node 20, WS + MCP, port 4101)
+Documentation=file:/opt/wdg/docs/SYSTEMD_DEPLOY.md
+After=network.target wdg-postgres-agent.service wdg-ui.service
+Wants=wdg-postgres-agent.service wdg-ui.service
+PartOf=wdg.target
+Wants=wdg.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/wdg/agent
+EnvironmentFile=/opt/wdg/.env
+ExecStart=/usr/bin/node dist/server.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/wdg/agent/data /opt/wdg/agent/dist
+
+[Install]
+WantedBy=multi-user.target
