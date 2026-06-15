@@ -13,7 +13,7 @@ description: 当用户提到 WDG 数据平台 / 蜜可诗 / Bonjour / 泰柯茶�
 
 | brand_code | display | schema_prefix | stores |
 |---|---|---|---|
-| `gelatomiiix`（alias `yufeng`） | 蜜可诗 | `brand_gelatomiiix` | sh_sc, sh_xtd |
+| `gelatomiiix` | 蜜可诗 | `brand_gelatomiiix` | sh_sc, sh_xtd |
 | `bonjur` | Bonjour / 旺鼎阁 | `bonjur` | sh_wdg, wz_ra, wz_wxc |
 | `tamkoko` | 泰柯茶园 | `brand_tamkoko` | hz_fuyang, wz_bjwxc |
 
@@ -280,7 +280,7 @@ curl -X POST http://localhost:3000/api/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/call",
        "params":{"name":"get_unclassified_transactions",
-                 "arguments":{"brand":"yufeng","month":"2026-05"}}}'
+                 "arguments":{"brand":"gelatomiiix","month":"2026-05"}}}'
 ```
 
 ## 9. 文档与代码引用

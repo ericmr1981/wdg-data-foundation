@@ -7,7 +7,7 @@
 - **Endpoint**: `POST /api/mcp` (JSON-RPC 2.0)
 - **Method**: `tools/list` (discover) · `tools/call` (invoke)
 - **Header**: `x-mcp-session: internal` (auto-injected by tool wrappers)
-- **Count**: 46 tools across 10 modules
+- **Count**: 47 tools across 10 modules
 
 ## Agent write policy (important)
 
