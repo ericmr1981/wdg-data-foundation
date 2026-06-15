@@ -25,7 +25,7 @@ function getPrevBoundaries(period: string, span: string): [string, string] | nul
 }
 
 export async function GET(request: Request) {
-  const user = await getSessionUser();
+  const user = await getSessionUser(request);
   const { searchParams } = new URL(request.url);
   const period = searchParams.get('period') || '';
   const span = searchParams.get('span') || 'month';

@@ -22,6 +22,7 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api/pipeline') ||
     pathname.startsWith('/api/brands') ||
     pathname.startsWith('/api/stores') ||
+    pathname.startsWith('/api/financial') ||
     pathname.startsWith('/api/gelatomiiix/income/qimai-detail') ||
     pathname.startsWith('/api/gelatomiiix/income/upload-qimai') ||
     pathname.startsWith('/api/income/bank-entry-stats') ||
