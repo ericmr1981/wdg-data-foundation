@@ -1,0 +1,27 @@
+# deploy/systemd/wdg-postgres-agent.service
+[Unit]
+Description=WDG Agent test PostgreSQL 16 (port 5433)
+Documentation=file:/opt/wdg/docs/SYSTEMD_DEPLOY.md
+After=network.target
+PartOf=wdg.target
+Wants=wdg.target
+
+[Service]
+Type=simple
+User=postgres
+Group=postgres
+EnvironmentFile=/etc/wdg/postgres-agent.env
+ExecStart=/usr/lib/postgresql/16/bin/postgres -D /var/lib/postgresql/16/agent_main
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillMode=mixed
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/postgresql/16/agent_main /var/run/postgresql
+
+[Install]
+WantedBy=multi-user.target

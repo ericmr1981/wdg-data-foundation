@@ -1,0 +1,27 @@
+# deploy/systemd/wdg-postgres.service
+[Unit]
+Description=WDG Main PostgreSQL 16
+Documentation=file:/opt/wdg/docs/SYSTEMD_DEPLOY.md
+After=network.target
+PartOf=wdg.target
+Wants=wdg.target
+
+[Service]
+Type=simple
+User=postgres
+Group=postgres
+EnvironmentFile=/etc/wdg/postgres.env
+ExecStart=/usr/lib/postgresql/16/bin/postgres -D /var/lib/postgresql/16/main
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillMode=mixed
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/postgresql/16/main /var/run/postgresql
+
+[Install]
+WantedBy=multi-user.target
