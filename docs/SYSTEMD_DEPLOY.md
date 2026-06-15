@@ -84,6 +84,8 @@ sudo journalctl -u wdg-ui -n 50 --no-pager
 ```bash
 sudo journalctl -u wdg-agent -n 50 --no-pager
 # 常见: 1) agent-test-db 没起 2) MCP_ENDPOINT 指向 localhost:3000
+# 3) agent/.env 里 DATABASE_URL 用了 docker 时代的 host (db:5432),
+#    systemd 时代要改成 127.0.0.1:5433 或 localhost
 ```
 
 ## 卸载

@@ -134,12 +134,21 @@ echo "==> 应用 agent schema..."
 PGPASSWORD=local-dev-only psql -h 127.0.0.1 -p "${PGPORT_AGENT}" -U agent -d agent_dev \
   -f "${REPO_DIR}/sql/00_agent_schema.sql"
 
-# 9. 启 UI + Agent
+# 9. 装 npm 依赖 + build agent (UI 跑 dev 模式不需要 build, 但要 install)
+echo "==> 装 npm 依赖 (UI)..."
+sudo -u www-data npm --prefix "${REPO_DIR}/ui" install --no-audit --no-fund
+
+echo "==> 装 npm 依赖 + build agent..."
+sudo -u www-data npm --prefix "${REPO_DIR}/agent" install --no-audit --no-fund
+sudo -u www-data chown -R www-data:www-data "${REPO_DIR}/agent/dist" 2>/dev/null || true
+sudo -u www-data npm --prefix "${REPO_DIR}/agent" run build
+
+# 10. 启 UI + Agent
 echo "==> 启动 UI + Agent..."
-systemctl enable --now wdg-ui wdg-agent
+systemctl enable --now wdg-ui wdg-agent wdg.target
 sleep 5
 
-# 10. 验证
+# 11. 验证
 echo "==> 验证..."
 "${SCRIPT_DIR}/verify_systemd.sh" || { echo "!! 验证失败, 看 journalctl" >&2; exit 1; }
 
