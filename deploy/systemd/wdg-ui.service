@@ -1,0 +1,26 @@
+# deploy/systemd/wdg-ui.service
+[Unit]
+Description=WDG Next.js UI (dev mode)
+Documentation=file:/opt/wdg/docs/SYSTEMD_DEPLOY.md
+After=network.target wdg-postgres.service
+Wants=wdg-postgres.service
+PartOf=wdg.target
+Wants=wdg.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/wdg/ui
+EnvironmentFile=/opt/wdg/.env
+ExecStart=/usr/bin/npm run dev -- -p 3000
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/wdg/ui/.next /opt/wdg/ui/node_modules
+
+[Install]
+WantedBy=multi-user.target

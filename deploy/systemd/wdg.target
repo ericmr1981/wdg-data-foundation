@@ -1,0 +1,8 @@
+[Unit]
+Description=WDG application stack (PostgreSQL + UI + Agent + Scheduler)
+Documentation=file:/opt/wdg/docs/SYSTEMD_DEPLOY.md
+Wants=wdg-postgres.service wdg-postgres-agent.service wdg-ui.service wdg-agent.service wdg-scheduler.service
+After=wdg-postgres.service wdg-postgres-agent.service wdg-ui.service wdg-agent.service wdg-scheduler.service
+
+[Install]
+WantedBy=multi-user.target
