@@ -58,13 +58,22 @@ cp -r /tmp/wdg-migrate-*/ ~/Documents/wdg-backups/
 
 | 服务 | 端口 | 绑定 |
 |---|---|---|
+| wdg-ws-proxy (公网入口) | 3000 | 0.0.0.0 |
+| wdg-ui (next dev) | 3001 | 127.0.0.1 |
+| wdg-agent (HTTP/admin) | 4101 | 127.0.0.1 |
+| wdg-agent (WebChannel WS) | 4102 | 127.0.0.1 |
+| wdg-scheduler | 4711 | 127.0.0.1 |
 | 主 PostgreSQL | 5432 | 127.0.0.1 |
 | Agent test DB | 5433 | 127.0.0.1 |
-| UI | 3000 | 0.0.0.0 |
-| Agent | 4101 | 0.0.0.0 |
-| Scheduler | 4711 | 127.0.0.1 |
 
-**外部访问**: ECS 安全组放行 3000 (UI) + 4101 (agent WS/MCP) + 5432 (仅 VPN/SSH 跳板)。
+**外部访问 (用户视角)**: ECS 安全组**只放行 3000**。浏览器连 `http://112.124.18.246:3000`,所有内部端口 (3001/4101/4102/5432/5433/4711) 都不暴露公网 — `wdg-ws-proxy` 在 3000 入口根据路径分流:
+
+- 普通 HTTP 请求 → 127.0.0.1:3001 (next dev)
+- `Upgrade: websocket` 且路径 `/api/chat/ws` → 127.0.0.1:4102 (agent WebChannel)
+- 其他 WS upgrade 拒绝
+
+实现见 `agent/src/ws-proxy.ts` + `/etc/systemd/system/wdg-ws-proxy.service`。
+
 Docker 时代用 3002 是历史包袱,systemd 时代直接走 3000,**不要**用 iptables DNAT 把 3002→3000 — 那是绕路。
 Scheduler 4711 只本机调用,不对外。
 
