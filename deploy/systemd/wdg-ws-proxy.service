@@ -1,0 +1,27 @@
+# deploy/systemd/wdg-ws-proxy.service
+[Unit]
+Description=WDG Public Entry Proxy (port 3000 -> UI/Agent)
+Documentation=file:/opt/wdg/docs/SYSTEMD_DEPLOY.md
+After=network.target wdg-ui.service wdg-agent.service
+Wants=wdg-ui.service wdg-agent.service
+PartOf=wdg.target
+Wants=wdg.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/wdg/agent
+EnvironmentFile=/etc/wdg/ws-proxy.env
+ExecStart=/usr/bin/node /opt/wdg/agent/dist/ws-proxy.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
