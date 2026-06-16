@@ -60,9 +60,13 @@ cp -r /tmp/wdg-migrate-*/ ~/Documents/wdg-backups/
 |---|---|---|
 | 主 PostgreSQL | 5432 | 127.0.0.1 |
 | Agent test DB | 5433 | 127.0.0.1 |
-| UI | 3000 | 127.0.0.1 |
-| Agent | 4101 | 127.0.0.1 |
+| UI | 3000 | 0.0.0.0 |
+| Agent | 4101 | 0.0.0.0 |
 | Scheduler | 4711 | 127.0.0.1 |
+
+**外部访问**: ECS 安全组放行 3000 (UI) + 4101 (agent WS/MCP) + 5432 (仅 VPN/SSH 跳板)。
+Docker 时代用 3002 是历史包袱,systemd 时代直接走 3000,**不要**用 iptables DNAT 把 3002→3000 — 那是绕路。
+Scheduler 4711 只本机调用,不对外。
 
 **生产环境外部访问需配反代**(nginx / caddy),不在本设计范围。
 
