@@ -17,12 +17,18 @@ import csv
 import hashlib
 import os
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 import psycopg2
 from psycopg2.extras import execute_values
+
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+from _store_guard import load_valid_stores  # noqa: E402
 
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
@@ -382,10 +388,18 @@ def insert_rows(records: list[dict], source_file_id: int, store_code: str, conn)
     return len(values)
 
 
-def process_file(fp: str, conn, dry_run: bool) -> dict:
+def process_file(fp: str, conn, dry_run: bool, valid_stores: set[str]) -> dict:
     file_hash = calculate_sha256(fp)
     file_size = os.path.getsize(fp)
     meta = parse_path(fp)
+
+    # 跨品牌防御：路径推得的 store_code 必须属于 brand 合法集合
+    if meta["store_code"] not in valid_stores:
+        raise SystemExit(
+            f"FATAL: 文件 {fp} 路径推得 store_code={meta['store_code']!r} (brand={meta['brand_code']!r})，"
+            f"不在合法门店集合 {sorted(valid_stores)} 中。\n"
+            f"这通常意味着 (a) ops.stores 缺该门店，或 (b) CSV 路径中 store_code 段写错。"
+        )
 
     existing = check_ingest_file(file_hash, conn)
     if existing and existing["status"] == "success":
@@ -437,8 +451,13 @@ def main():
     print(f"Found {len(files)} CSV file(s)")
     conn = psycopg2.connect(**DB_CONFIG)
     try:
+        # 启动期加载 bonjur 合法门店集合（所有 bonjur 文件共享）
+        valid_stores = load_valid_stores("bonjur", conn)
+        if not valid_stores:
+            raise SystemExit("FATAL: ops.stores 中没有 brand=bonjur 的 enabled 门店")
+        print(f"Bonjur valid stores: {sorted(valid_stores)}")
         for fp in files:
-            process_file(fp, conn, args.dry_run)
+            process_file(fp, conn, args.dry_run, valid_stores)
     finally:
         conn.close()
     print("Done.")

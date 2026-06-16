@@ -11,7 +11,7 @@ Usage:
     python scripts/import_bonjur_product_sales.py --dry-run [csv_file]
 """
 
-import argparse, hashlib, os, re
+import argparse, hashlib, os, re, sys
 from datetime import datetime, date
 from pathlib import Path
 from typing import Optional
@@ -19,6 +19,11 @@ from typing import Optional
 import pandas as pd
 import psycopg2
 from psycopg2.extras import execute_values
+
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+from _store_guard import load_valid_stores  # noqa: E402
 
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
@@ -248,8 +253,16 @@ def transform(df: pd.DataFrame) -> list[dict]:
     return records
 
 
-def process_file(fp: str, conn, dry_run: bool) -> dict:
+def process_file(fp: str, conn, dry_run: bool, valid_stores: set[str]) -> dict:
     meta = parse_path(fp)
+
+    # 跨品牌防御：路径推得的 store_code 必须属于 brand 合法集合
+    if meta["store_code"] not in valid_stores:
+        raise SystemExit(
+            f"FATAL: 文件 {fp} 路径推得 store_code={meta['store_code']!r} (brand={meta['brand_code']!r})，"
+            f"不在合法门店集合 {sorted(valid_stores)} 中。"
+        )
+
     file_hash = calculate_sha256(fp)
     file_size = os.path.getsize(fp)
 
@@ -297,8 +310,13 @@ def main():
     print(f"Found {len(files)} CSV file(s)")
     conn = psycopg2.connect(**DB_CONFIG)
     try:
+        # 启动期加载 bonjur 合法门店集合
+        valid_stores = load_valid_stores("bonjur", conn)
+        if not valid_stores:
+            raise SystemExit("FATAL: ops.stores 中没有 brand=bonjur 的 enabled 门店")
+        print(f"Bonjur valid stores: {sorted(valid_stores)}")
         for fp in files:
-            process_file(fp, conn, args.dry_run)
+            process_file(fp, conn, args.dry_run, valid_stores)
     finally:
         conn.close()
     print("Done.")
