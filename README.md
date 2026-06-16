@@ -15,7 +15,10 @@ Code repo for WDG — bank transactions + daily sales + delivery manifests → c
 |-------|--------------|-------------|
 | Gelatomiiix (`gelatomiiix`) | `brand_gelatomiiix_*` | Bank txns, cash register, income detail, product sales |
 | Bonjur (`bonjur`) | `bonjur_*` | Daily sales, bank txns |
-| Xintiandi (`xintiandi`) | `xintiandi_*` | Delivery manifests |
+| Tamkoko (`tamkoko`) | `brand_tamkoko_*` | POS income, inventory month-end |
+| Xintiandi (`xintiandi`)¹ | `xintiandi_*` | Delivery manifests (template schema — not deployed; see [docs/XINTIANDI_MODULE.md](docs/XINTIANDI_MODULE.md)) |
+
+¹ `xintiandi` is a **template schema** cloned by `/api/admin/brands` when provisioning a new delivery brand. It is not a real brand.
 
 ## Data Sources
 
@@ -133,8 +136,10 @@ npm run dev        # Dev server on port 4100
 npm run build      # Production build
 npm run lint       # ESLint
 
-# Docker (full stack)
-docker compose up -d
+# Systemd (VPS deploy)
+bash scripts/install_systemd.sh
+# Unit files: deploy/systemd/{wdg-postgres,wdg-ui,wdg-agent,wdg-postgres-agent,wdg-scheduler,wdg-ws-proxy}.service + wdg.target
+# Manual: docs/SYSTEMD_DEPLOY.md
 
 # Bootstrap
 bash init.sh
@@ -144,10 +149,14 @@ bash scripts/init_local_env.sh  # See docs/LOCAL_STARTUP.md
 ## Docs
 
 - `docs/LOCAL_STARTUP.md` — local environment setup
+- `docs/SYSTEMD_DEPLOY.md` — VPS install + ops manual (post-docker era)
 - `docs/ACCEPTANCE_RUNBOOK.md` — end-to-end acceptance criteria
-- `docs/XINTIANDI_MODULE.md` — Xintiandi module details
+- `docs/XINTIANDI_MODULE.md` — Xintiandi module details (template schema)
+- `docs/agent-service.md` — Agent Service v1.0 architecture
 - `docs/productdata_schema.svg` — data model diagram
+- `docs/mcp-tools.md` — 46 Agent tools reference + write-permission policy
 - `docs/skills/wdg-bank-workflow-SKILL.md` — MCP/Agent workflow spec (45 tools, 9 modules, write policy)
+- `archive/docker-era/` — historical docker-compose artifacts (preserved, no longer in use)
 
 ## Project Governance
 
