@@ -12,6 +12,10 @@ export function shouldUseAgentService(userId: string | null | undefined): boolea
   return (hash % 100) < pct
 }
 
+// 浏览器在用户电脑上,它看见的 location.origin 就是它实际访问的地址
+// (e.g. http://112.124.18.246:3000)。这样 3000 走反代把 /api/chat/ws
+// 转给内部 127.0.0.1:4102,agent WS 不需要公网 listen。
 export function getAgentWsUrl(): string {
-  return process.env.NEXT_PUBLIC_AGENT_WS_URL ?? 'ws://localhost:4101/ws'
+  // 相对路径:浏览器拼成 ws://<location.host>/api/chat/ws
+  return '/api/chat/ws'
 }

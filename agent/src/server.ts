@@ -99,7 +99,7 @@ async function main() {
 
   await webChannel.start()
   await cronChannel.start()
-  await app.listen({ port: HTTP_PORT, host: '0.0.0.0' })
+  await app.listen({ port: HTTP_PORT, host: '127.0.0.1' })
   app.log.info(`HTTP listening on ${HTTP_PORT}, WS on ${WS_PORT}`)
 
   // 优雅关闭

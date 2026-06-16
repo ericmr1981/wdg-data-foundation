@@ -18,7 +18,7 @@ export class WebChannel implements Channel {
     private port: number,
     private manager: ChannelManager | null,
   ) {
-    this.wss = new WebSocketServer({ port: this.port })
+    this.wss = new WebSocketServer({ port: this.port, host: '127.0.0.1' })
   }
 
   async start(): Promise<void> {
