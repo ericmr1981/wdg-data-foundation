@@ -44,8 +44,16 @@ sudo systemctl disable --now wdg-deploy.timer
 
 ## Notes
 
-- Service runs as `www-data` (matches `wdg-ui.service` and
-  `wdg-agent.service`) so files in `/opt/wdg` retain their owner.
+- Service runs as **root** because only root has the
+  `github_deploy` SSH key with read access to the GitHub repo
+  (`www-data` does not). The `git pull` step runs as root directly.
+  For `npm ci` / `npm run build` the service drops to `www-data`
+  via `sudo -u www-data` so files in `/opt/wdg` keep their owner.
+- The `GIT_SSH_COMMAND` env var forces ssh to use
+  `/root/.ssh/github_deploy` with `IdentitiesOnly=yes` — without it,
+  SSH would try `github_account_ed25519` (bound to github.com in
+  `/root/.ssh/config` for a different repo) and the pull would fail
+  with "repository not found".
 - `git pull --ff-only` is a hard requirement — if main has been
   force-pushed or rewound, the timer will fail with "non-fast-forward
   update" and the operator must intervene.
