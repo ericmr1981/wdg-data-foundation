@@ -5,35 +5,12 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-# Runs as root because only root has the github_deploy SSH key with read
-# access to git@github.com:ericmr1981/wdg-data-foundation. The git working
-# tree at /opt/wdg is owned by www-data; this service runs `sudo -u www-data`
-# for steps that touch the tree so file ownership is preserved.
 User=root
 WorkingDirectory=/opt/wdg
-# IdentitiesOnly=yes prevents ssh from trying other keys loaded into the
-# SSH agent (which on this VPS includes product-m's github_account_ed25519,
-# bound to github.com via /root/.ssh/config). Without IdentitiesOnly, ssh
-# would offer the wrong key first and github would reject with
-# "repository not found".
+# IdentitiesOnly=yes prevents ssh from trying the wrong key in the
+# agent (product-m's github_account_ed25519 is bound to github.com
+# in /root/.ssh/config and would otherwise be offered first).
 Environment=GIT_SSH_COMMAND=ssh -i /root/.ssh/github_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new
-ExecStart=/bin/bash -c '
-  set -e
-  PREV_HEAD=$(git rev-parse HEAD)
-  git pull --ff-only
-  NEW_HEAD=$(git rev-parse HEAD)
-  if [ "$PREV_HEAD" = "$NEW_HEAD" ]; then
-    echo "no new commits, skipping rebuild"
-    exit 0
-  fi
-  sudo -u www-data -E bash -c "
-    set -e
-    cd /opt/wdg/agent && npm ci --no-audit --no-fund && npm run build
-    cd /opt/wdg/ui    && npm ci --no-audit --no-fund
-  "
-  sudo systemctl restart wdg.target
-  sudo systemctl status wdg.target --no-pager || true
-  echo "deployed $NEW_HEAD"
-'
+ExecStart=/opt/wdg/deploy/systemd/wdg-deploy.sh
 StandardOutput=journal
 StandardError=journal

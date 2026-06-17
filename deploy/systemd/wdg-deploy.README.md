@@ -17,16 +17,16 @@ GitHub Actions SSH-based deploy.
 ## Install on VPS
 
 ```bash
-# Copy the unit files
-sudo cp deploy/systemd/wdg-deploy.{service,timer} /etc/systemd/system/
-
-# Reload + enable + start
+# Copy the unit + timer. The deploy logic is in deploy/systemd/wdg-deploy.sh
+# inside the git working tree, so a `git pull` automatically picks up
+# script updates. The unit just points to it via ExecStart.
+sudo cp /opt/wdg/deploy/systemd/wdg-deploy.{service,timer} /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now wdg-deploy.timer
 
 # Verify
 systemctl list-timers wdg-deploy.timer
-journalctl -u wdg-deploy.service -f   # watch the next 2-min run
+journalctl -u wdg-deploy.service -f   # watch the next 5-min run
 ```
 
 ## Manual trigger
