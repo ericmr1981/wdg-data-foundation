@@ -11,10 +11,13 @@
 //   PORT          默认 3000
 //   UI_PORT       默认 3001
 //   AGENT_WS_PORT 默认 4102
+//   ACCESS_LOG    可选,Apache combined log 路径,默认 /var/log/wdg/ws-proxy.access.log
+//   DENY_PREFIXES 逗号分隔,默认 "u,api/chat"  — 这些前缀直接 403,不打 upstream
 //
 // 纯 stdlib + ws (PR #5 已引),不引新依赖。
 
 import http from 'node:http'
+import fs from 'node:fs'
 import type { Duplex } from 'node:stream'
 
 const PORT = parseInt(process.env.PORT ?? '3000', 10)
@@ -22,10 +25,33 @@ const UI_HOST = '127.0.0.1'
 const UI_PORT = parseInt(process.env.UI_PORT ?? '3001', 10)
 const AGENT_WS_HOST = '127.0.0.1'
 const AGENT_WS_PORT = parseInt(process.env.AGENT_WS_PORT ?? '4102', 10)
+const ACCESS_LOG = process.env.ACCESS_LOG ?? '/var/log/wdg/ws-proxy.access.log'
+const DENY_PREFIXES = (process.env.DENY_PREFIXES ?? 'u,api/chat')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean)
 
 const log = (level: string, msg: string, extra?: object) => {
   const line = { level, time: new Date().toISOString(), msg, ...extra }
   console.log(JSON.stringify(line))
+}
+
+// access log stream (combined format for fail2ban)
+let accessLogStream: fs.WriteStream | null = null
+try {
+  // 父目录 /var/log/wdg 由 deploy/systemd/wdg-ws-proxy.service 的 RuntimeDirectory
+  // 或预先 mkdir 创建;这里先尝试打开,失败也不影响主功能
+  accessLogStream = fs.createWriteStream(ACCESS_LOG, { flags: 'a' })
+  accessLogStream.on('error', (err) => {
+    log('warn', 'access log write error', { err: err.message })
+    accessLogStream = null
+  })
+} catch (err) {
+  log('warn', 'access log open failed', { err: (err as Error).message })
+}
+
+const writeAccessLog = (entry: string) => {
+  if (accessLogStream) accessLogStream.write(entry + '\n')
 }
 
 // 1) HTTP 反代: 把请求转发到 next dev (UI_PORT)
@@ -40,13 +66,45 @@ const proxyHttp = (clientReq: http.IncomingMessage, clientRes: http.ServerRespon
   upstream.on('response', (upRes) => {
     clientRes.writeHead(upRes.statusCode ?? 502, upRes.headers)
     upRes.pipe(clientRes)
+    writeAccessLog(formatAccessLine(clientReq, upRes.statusCode ?? 502, clientRes.getHeader('content-length') as string | undefined))
   })
   upstream.on('error', (err) => {
     log('error', 'http upstream error', { err: err.message, url: clientReq.url })
     clientRes.writeHead(502, { 'Content-Type': 'text/plain' })
     clientRes.end('bad gateway: ui upstream error\n')
+    writeAccessLog(formatAccessLine(clientReq, 502, '0'))
   })
   clientReq.pipe(upstream)
+}
+
+// Apache combined log 格式 (CLF date: [17/Jun/2026:20:00:00 +0000]):
+//   <ip> - <user> [<time>] "<method> <path> HTTP/1.1" <status> <size> "<referer>" "<ua>"
+// 选 CLF 而不是 toUTCString() 是为了 fail2ban 自带 datepattern 兼容
+// (nginx/apache 标准, 各类 log 工具都认)。
+const formatAccessLine = (
+  req: http.IncomingMessage,
+  status: number,
+  size: string | undefined,
+): string => {
+  const ip = (req.socket.remoteAddress ?? '-').replace(/^::ffff:/, '')
+  const user = '-' // 无 auth
+  const time = (() => {
+    const d = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const day = pad(d.getUTCDate())
+    const mon = d.toLocaleString('en', { month: 'short', timeZone: 'UTC' })
+    const year = d.getUTCFullYear()
+    const hh = pad(d.getUTCHours())
+    const mm = pad(d.getUTCMinutes())
+    const ss = pad(d.getUTCSeconds())
+    return `${day}/${mon}/${year}:${hh}:${mm}:${ss} +0000`
+  })()
+  const method = req.method ?? 'GET'
+  const url = req.url ?? '-'
+  const proto = 'HTTP/1.1'
+  const referer = req.headers['referer'] ?? '-'
+  const ua = req.headers['user-agent'] ?? '-'
+  return `${ip} - ${user} [${time}] "${method} ${url} ${proto}" ${status} ${size ?? '-'} "${referer}" "${ua}"`
 }
 
 // 2) WS upgrade 反代:
@@ -90,6 +148,7 @@ const proxyWs = (clientReq: http.IncomingMessage, clientSocket: Duplex, head: Bu
     upSocket.pipe(clientSocket)
     clientSocket.pipe(upSocket)
     log('info', 'ws upgraded', { url: clientReq.url, headers: Object.keys(upRes.headers) })
+    writeAccessLog(formatAccessLine(clientReq, 101, '0'))
   })
   upstream.on('error', (err) => {
     log('error', 'ws upstream error', { err: err.message, url: clientReq.url })
@@ -102,8 +161,32 @@ const proxyWs = (clientReq: http.IncomingMessage, clientSocket: Duplex, head: Bu
   upstream.end()
 }
 
+// path 黑名单: 这些前缀路径是 WDG 内部路由,不应被外部未登录用户访问到
+// (之前被 180.159.38.63 等扫描器打挂,SSR worker 被 hang 死,/login 卡 30s)
+const isDenied = (url: string | undefined): string | null => {
+  if (!url) return null
+  // 跳过 query string
+  const path = url.split('?')[0] ?? ''
+  // 必须以 / 开头
+  if (!path.startsWith('/')) return null
+  for (const prefix of DENY_PREFIXES) {
+    if (path === `/${prefix}` || path.startsWith(`/${prefix}/`)) {
+      return prefix
+    }
+  }
+  return null
+}
+
 // 3) 主 server
 const server = http.createServer((req, res) => {
+  const deniedPrefix = isDenied(req.url)
+  if (deniedPrefix) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' })
+    res.end(`forbidden: /${deniedPrefix}/* is not accessible from public entry\n`)
+    log('warn', 'denied path', { prefix: deniedPrefix, url: req.url, ip: req.socket.remoteAddress })
+    writeAccessLog(formatAccessLine(req, 403, '0'))
+    return
+  }
   proxyHttp(req, res)
 })
 
@@ -118,13 +201,22 @@ server.on('upgrade', (req, socket, head) => {
 })
 
 server.listen(PORT, '0.0.0.0', () => {
-  log('info', 'wdg-ws-proxy listening', { port: PORT, ui: `${UI_HOST}:${UI_PORT}`, agentWs: `${AGENT_WS_HOST}:${AGENT_WS_PORT}` })
+  log('info', 'wdg-ws-proxy listening', {
+    port: PORT,
+    ui: `${UI_HOST}:${UI_PORT}`,
+    agentWs: `${AGENT_WS_HOST}:${AGENT_WS_PORT}`,
+    accessLog: ACCESS_LOG,
+    denyPrefixes: DENY_PREFIXES,
+  })
 })
 
 // 优雅关闭
 const shutdown = (sig: string) => {
   log('info', 'shutting down', { sig })
-  server.close(() => process.exit(0))
+  server.close(() => {
+    if (accessLogStream) accessLogStream.end()
+    process.exit(0)
+  })
   setTimeout(() => process.exit(1), 5000).unref()
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'))
