@@ -21,7 +21,24 @@ const CONTROL_CHARS_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
 
 /** Strip spaces between CJK characters inserted by the tokenizer. */
 function stripCjkSpaces(t: string): string {
-  return t.replace(/(?<=\p{Script=Han}) (?=\p{Script=Han})/gu, '');
+  // Match CJK Unified Ideographs (U+4E00–U+9FFF, U+3400–U+4DBF, U+F900–U+FAFF)
+  // followed by whitespace followed by another CJK char.
+  let out = '', i = 0;
+  while (i < t.length) {
+    const cp = t.charCodeAt(i);
+    const isCjk = (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0x3400 && cp <= 0x4DBF) || (cp >= 0xF900 && cp <= 0xFAFF);
+    if (isCjk && i + 1 < t.length && (t[i + 1] === ' ' || t[i + 1] === '　')) {
+      const cp2 = t.charCodeAt(i + 2);
+      const isCjk2 = (cp2 >= 0x4E00 && cp2 <= 0x9FFF) || (cp2 >= 0x3400 && cp2 <= 0x4DBF) || (cp2 >= 0xF900 && cp2 <= 0xFAFF);
+      if (isCjk2) {
+        out += t[i]; i++;
+        i++; // skip the space
+        continue;
+      }
+    }
+    out += t[i]; i++;
+  }
+  return out;
 }
 
 export async function processStream(

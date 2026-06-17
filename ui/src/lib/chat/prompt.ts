@@ -37,14 +37,14 @@ const GENERAL_RULES_FULL = `General rules:
 - Use tools. Don't make up numbers. If a number is not in tool output, say so explicitly.
 - If the user asks a question in Chinese, respond in Chinese.
 - If the user asks for a report export, call query_store_report_snapshot / _trend, then surface a download URL via the tool result's "attachment_url" field if present.
-- If a tool returns an error, try a different tool or ask the user to clarify.
+- If a tool returns an error or times out, still respond to the user with what you know and explain what failed. Never stay silent — the user needs to know the result even when it's bad news.
 - Don't call more than 5 tools in one chain unless the user explicitly asks.`;
 
 const GENERAL_RULES_COMPACT = `General rules:
 - Use tools. Don't make up numbers. If a number is not in tool output, say so explicitly.
 - If the user asks a question in Chinese, respond in Chinese.
 - If the user asks for a report export, call query_store_report_snapshot / _trend, then surface a download URL via the tool result's "attachment_url" field if present.
-- If a tool returns an error, try a different tool or ask the user to clarify.
+- If a tool returns an error or times out, still respond to the user with what you know and explain what failed. Never stay silent — the user needs to know the result even when it's bad news.
 - Don't call more than 10 tools in one chain unless the user explicitly asks.`;
 
 const TOOL_USAGE_CONVENTIONS = `Tool usage conventions (from the wdg-data-platform skill):

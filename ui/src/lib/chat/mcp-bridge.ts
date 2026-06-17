@@ -54,6 +54,7 @@ export function parseMcpResult(body: unknown): McpResult {
 /**
  * POST a JSON-RPC request to the local /api/mcp endpoint.
  * Caller passes cookies for auth (forwarded from chat request).
+ * 30-second timeout to prevent tool calls from hanging forever.
  */
 export async function callMcp(
   request: JsonRpcRequest,
@@ -63,16 +64,23 @@ export async function callMcp(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (cookieHeader) headers['Cookie'] = cookieHeader;
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+
   let res: Response;
   try {
     res = await fetch(`${baseUrl}/api/mcp`, {
       method: 'POST',
       headers,
       body: JSON.stringify(request),
+      signal: controller.signal,
     });
   } catch (e) {
-    return new McpCallError(-32603, `fetch failed: ${(e as Error).message}`);
+    clearTimeout(timer);
+    const msg = (e as Error).name === 'AbortError' ? '工具调用超时(30s)' : `fetch failed: ${(e as Error).message}`;
+    return new McpCallError(-32603, msg);
   }
+  clearTimeout(timer);
 
   if (!res.ok) {
     return new McpCallError(res.status, `MCP HTTP ${res.status}`);
