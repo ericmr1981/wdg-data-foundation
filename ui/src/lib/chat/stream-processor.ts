@@ -19,6 +19,11 @@ export interface ProcessStreamResult {
 // control bytes. We strip them before parsing.
 const CONTROL_CHARS_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
 
+/** Strip spaces between CJK characters inserted by the tokenizer. */
+function stripCjkSpaces(t: string): string {
+  return t.replace(/(?<=\p{Script=Han}) (?=\p{Script=Han})/gu, '');
+}
+
 export async function processStream(
   stream: AsyncIterable<Anthropic.MessageStreamEvent>,
   send: (evt: Record<string, unknown>) => void,
@@ -48,7 +53,7 @@ export async function processStream(
       const blk = blocks.get(event.index);
       if (!blk) continue;
       if (event.delta.type === 'text_delta' && blk.type === 'text') {
-        const t = event.delta.text;
+        const t = stripCjkSpaces(event.delta.text);
         send({ type: 'text_delta', text: t });
         assistantTextParts.push(t);
         onTextDelta(t);
