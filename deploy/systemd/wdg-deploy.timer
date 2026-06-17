@@ -1,0 +1,15 @@
+[Unit]
+Description=Check for new git commits every 2 minutes and deploy
+Requires=wdg-deploy.service
+
+[Timer]
+# Run 2 minutes after boot, then every 2 minutes
+OnBootSec=2min
+OnUnitActiveSec=2min
+# Run missed jobs after boot if system was off
+Persistent=true
+# Use UTC; cron jobs use local time. git pulls are timezone-agnostic.
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

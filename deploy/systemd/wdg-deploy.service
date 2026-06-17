@@ -1,0 +1,28 @@
+[Unit]
+Description=WDG auto-deploy: pull latest main + rebuild agent + restart services
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=www-data
+WorkingDirectory=/opt/wdg
+# Pull, then build agent (UI is `npm run dev`, no build step), then restart.
+# If nothing new to pull, `git pull --ff-only` exits 0 silently; `git pull` itself
+# prints "Already up to date." — we treat that as no-op.
+ExecStart=/bin/bash -c '\
+  set -e; \
+  PREV_HEAD=$(git rev-parse HEAD); \
+  git pull --ff-only; \
+  NEW_HEAD=$(git rev-parse HEAD); \
+  if [ "$PREV_HEAD" = "$NEW_HEAD" ]; then \
+    echo "no new commits, skipping rebuild"; \
+    exit 0; \
+  fi; \
+  cd /opt/wdg/agent && npm ci --no-audit --no-fund && npm run build; \
+  cd /opt/wdg/ui    && npm ci --no-audit --no-fund; \
+  sudo systemctl restart wdg.target; \
+  sudo systemctl status wdg.target --no-pager || true; \
+  echo "deployed $NEW_HEAD"'
+StandardOutput=journal
+StandardError=journal
