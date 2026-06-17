@@ -193,6 +193,7 @@ export function ChatWidget() {
           method: 'POST',
           body: form,
           signal: controller.signal,
+          redirect: 'error',
         });
       } else {
         res = await fetch('/api/chat', {
@@ -200,6 +201,7 @@ export function ChatWidget() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text }),
           signal: controller.signal,
+          redirect: 'error',
         });
       }
       if (!res.ok || !res.body) {
