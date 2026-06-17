@@ -242,12 +242,19 @@ export function ChatWidget() {
         parseSseStream(buf, (raw) => {
           const evt = raw as SseIncoming;
           if (evt.type === 'text_block' && typeof evt.text === 'string') {
-            // Per-sentence chunk from server's splitSentences. Each block is a
-            // complete sentence; push as a new assistant_text message so
-            // MessageList's FadeInBlock animates it. text_delta events for
-            // the same text also arrive (server emits both for compat) but
-            // are deliberately NOT rendered — see the text_delta branch.
-            setMessages(m => [...m, { type: 'assistant_text', content: evt.text, ts: Date.now() }]);
+            // Append to the last 'assistant_text' block, or create one.
+            // This merges all sentences from the same assistant turn into a
+            // single bubble instead of one bubble per sentence.
+            setMessages(m => {
+              const copy = m.slice();
+              const last = copy[copy.length - 1];
+              if (last && last.type === 'assistant_text') {
+                copy[copy.length - 1] = { ...last, content: last.content + evt.text };
+              } else {
+                copy.push({ type: 'assistant_text', content: evt.text, ts: Date.now() });
+              }
+              return copy;
+            });
             // Reset the legacy buffer state so a future text_delta doesn't
             // leave a half-populated buffer around.
             assistantBufferRef.current = '';
