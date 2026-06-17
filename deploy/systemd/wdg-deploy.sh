@@ -31,7 +31,7 @@ fi
 sudo -u www-data -E bash <<'WWW_DATA_NPM'
 set -euo pipefail
 cd /opt/wdg/agent && npm ci --no-audit --no-fund && npm run build
-cd /opt/wdg/ui    && npm ci --no-audit --no-fund
+cd /opt/wdg/ui    && npm ci --no-audit --no-fund && npm run build
 WWW_DATA_NPM
 
 # Restart all 5 application units via wdg.target. Runs as root since

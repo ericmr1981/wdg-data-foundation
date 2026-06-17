@@ -59,7 +59,7 @@ cp -r /tmp/wdg-migrate-*/ ~/Documents/wdg-backups/
 | 服务 | 端口 | 绑定 |
 |---|---|---|
 | wdg-ws-proxy (公网入口) | 3000 | 0.0.0.0 |
-| wdg-ui (next dev) | 3001 | 127.0.0.1 |
+| wdg-ui (next start, production) | 3001 | 127.0.0.1 |
 | wdg-agent (HTTP/admin) | 4101 | 127.0.0.1 |
 | wdg-agent (WebChannel WS) | 4102 | 127.0.0.1 |
 | wdg-scheduler | 4711 | 127.0.0.1 |
@@ -68,7 +68,7 @@ cp -r /tmp/wdg-migrate-*/ ~/Documents/wdg-backups/
 
 **外部访问 (用户视角)**: ECS 安全组**只放行 3000**。浏览器连 `http://112.124.18.246:3000`,所有内部端口 (3001/4101/4102/5432/5433/4711) 都不暴露公网 — `wdg-ws-proxy` 在 3000 入口根据路径分流:
 
-- 普通 HTTP 请求 → 127.0.0.1:3001 (next dev)
+- 普通 HTTP 请求 → 127.0.0.1:3001 (next start, production)
 - `Upgrade: websocket` 且路径 `/api/chat/ws` → 127.0.0.1:4102 (agent WebChannel)
 - 其他 WS upgrade 拒绝
 
