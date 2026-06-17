@@ -6,7 +6,7 @@ GitHub Actions SSH-based deploy.
 
 ## Mechanism
 
-`wdg-deploy.timer` triggers `wdg-deploy.service` every 2 minutes:
+`wdg-deploy.timer` triggers `wdg-deploy.service` every 5 minutes:
 
 1. `git pull --ff-only` from origin/main
 2. If HEAD changed, rebuild agent (`npm ci` + `npm run build`)
@@ -51,6 +51,6 @@ sudo systemctl disable --now wdg-deploy.timer
   update" and the operator must intervene.
 - Agent rebuild is the slowest step (~30-60s for `npm ci` + `tsc`).
   Other steps are sub-second.
-- Delay from `git push` to deploy is **2 minutes + drift** (worst
-  case ~2.5 min). For urgent deploys use `systemctl start wdg-deploy.service`
+- Delay from `git push` to deploy is **5 minutes + drift** (worst
+  case ~5.5 min). For urgent deploys use `systemctl start wdg-deploy.service`
   manually.
