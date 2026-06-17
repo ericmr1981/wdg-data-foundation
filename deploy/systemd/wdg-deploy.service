@@ -10,7 +10,7 @@ WorkingDirectory=/opt/wdg
 # IdentitiesOnly=yes prevents ssh from trying the wrong key in the
 # agent (product-m's github_account_ed25519 is bound to github.com
 # in /root/.ssh/config and would otherwise be offered first).
-Environment=GIT_SSH_COMMAND=ssh -i /root/.ssh/github_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new
+Environment="GIT_SSH_COMMAND=ssh -i /root/.ssh/github_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
 ExecStart=/opt/wdg/deploy/systemd/wdg-deploy.sh
 StandardOutput=journal
 StandardError=journal
