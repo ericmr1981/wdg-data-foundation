@@ -12,7 +12,7 @@
 //   UI_PORT       默认 3001
 //   AGENT_WS_PORT 默认 4102
 //   ACCESS_LOG    可选,Apache combined log 路径,默认 /var/log/wdg/ws-proxy.access.log
-//   DENY_PREFIXES 逗号分隔,默认 "u,api/chat"  — 这些前缀直接 403,不打 upstream
+//   DENY_PREFIXES 逗号分隔,默认空 — 什么路径都不在代理层 403 (UI /u/* 是合法路径)
 //
 // 纯 stdlib + ws (PR #5 已引),不引新依赖。
 
@@ -26,7 +26,7 @@ const UI_PORT = parseInt(process.env.UI_PORT ?? '3001', 10)
 const AGENT_WS_HOST = '127.0.0.1'
 const AGENT_WS_PORT = parseInt(process.env.AGENT_WS_PORT ?? '4102', 10)
 const ACCESS_LOG = process.env.ACCESS_LOG ?? '/var/log/wdg/ws-proxy.access.log'
-const DENY_PREFIXES = (process.env.DENY_PREFIXES ?? 'u,api/chat')
+const DENY_PREFIXES = (process.env.DENY_PREFIXES ?? '')
   .split(',')
   .map(s => s.trim())
   .filter(Boolean)
