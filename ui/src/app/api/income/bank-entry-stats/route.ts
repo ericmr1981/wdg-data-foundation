@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     const period = searchParams.get('period');
     const span = searchParams.get('span') || 'month';
     const store = searchParams.get('store') || '';
+    const channel = searchParams.get('channel') || '';
 
     if (!brandParam) {
       return NextResponse.json({ success: false, error: 'brand required' }, { status: 400 });
@@ -43,6 +44,14 @@ export async function GET(request: NextRequest) {
 
     // 动态构建 CASE WHEN 语句（避免 PG 16 GROUP BY 限制）
     const channelCase = await getChannelCaseSql(cfgSchema);
+
+    // channel filter fragments (must be declared before first query that uses them)
+    const esc = (s: string) => s.replace(/'/g, "''");
+    const chEscaped = channel ? esc(channel) : '';
+    const channelFilterQimai = channel && channel !== 'all'
+      ? `AND ${channelCase} = '${chEscaped}'` : '';
+    const channelFilterBank = channel && channel !== 'all'
+      ? `AND c.lvl2_code = '${chEscaped}'` : '';
 
     const hasPeriod = period && period !== 'all';
     let dateClause = '';
@@ -94,7 +103,7 @@ export async function GET(request: NextRequest) {
       FROM ${incomeOds}.income_detail
       WHERE NOT is_refund
         AND NOT is_member_payment
-        ${dateClause} ${storeClause}
+        ${dateClause} ${storeClause} ${channelFilterQimai}
       GROUP BY 1
       ORDER BY 1
     `, params);
@@ -110,7 +119,7 @@ export async function GET(request: NextRequest) {
         AND c.lvl1_code = 'REV_BIZ'
         AND c.lvl2_code NOT IN ('OTHER_CH', 'REFUND_IN')
         AND COALESCE(t.in_amt, 0) > 0
-        ${bankDateClause} ${bankStoreClause}
+        ${bankDateClause} ${bankStoreClause} ${channelFilterBank}
       GROUP BY c.lvl2_code
     `, params);
 
@@ -128,7 +137,7 @@ export async function GET(request: NextRequest) {
             AND c.lvl1_code = 'REV_BIZ'
             AND c.lvl2_code NOT IN ('OTHER_CH', 'REFUND_IN')
             AND COALESCE(t.in_amt, 0) > 0
-            ${currMonthBankDateClause}
+            ${currMonthBankDateClause} ${channelFilterBank}
           GROUP BY c.lvl2_code
         `, currParams),
         pool.query(`
@@ -137,7 +146,7 @@ export async function GET(request: NextRequest) {
             COALESCE(SUM(net_amt), 0) AS qimai_net_amt
           FROM ${incomeOds}.income_detail
           WHERE NOT is_refund AND NOT is_member_payment
-            ${currMonthDateClause}
+            ${currMonthDateClause} ${channelFilterQimai}
           GROUP BY 1
         `, currParams)
       ]);
@@ -151,9 +160,11 @@ export async function GET(request: NextRequest) {
 
     // --- monthlyTrend ---
     let trendDateClause = '';
+    let bankTrendDateClause = '';
     if (hasPeriod) {
       const [ps, pe] = parsePeriod(period, span)!;
       trendDateClause = `AND biz_date < '${pe}'::DATE`;
+      bankTrendDateClause = `AND t.txn_time < '${pe}'::DATE`;
     }
 
     const st = store ? store.replace(/'/g, "''") : '';
@@ -162,7 +173,7 @@ export async function GET(request: NextRequest) {
       WITH qimai_monthly AS (
         SELECT to_char(biz_date, 'YYYY-MM') AS month, SUM(net_amt) AS qimai_net_amt
         FROM ${incomeOds}.income_detail
-        WHERE NOT is_refund AND NOT is_member_payment ${trendDateClause} ${trendStore}
+        WHERE NOT is_refund AND NOT is_member_payment ${trendDateClause} ${trendStore} ${channelFilterQimai}
         GROUP BY 1
       ),
       bank_monthly AS (
@@ -173,6 +184,7 @@ export async function GET(request: NextRequest) {
           AND c.lvl1_code = 'REV_BIZ'
           AND c.lvl2_code NOT IN ('OTHER_CH', 'REFUND_IN')
           AND COALESCE(t.in_amt, 0) > 0
+          ${bankTrendDateClause} ${trendStore} ${channelFilterBank}
         GROUP BY 1
       )
       SELECT COALESCE(q.month, b.month) AS month,
@@ -193,7 +205,7 @@ export async function GET(request: NextRequest) {
       WHERE third_party_txn_no IS NULL
         AND NOT is_refund
         AND NOT is_member_payment
-        ${unmatchedDateClause} ${storeClause}
+        ${unmatchedDateClause} ${storeClause} ${channelFilterQimai}
       GROUP BY month, 2
       ORDER BY month DESC, channel
     `, umParams);

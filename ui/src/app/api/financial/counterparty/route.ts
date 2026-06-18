@@ -15,6 +15,7 @@ export async function GET(request: Request) {
   const store = searchParams.get('store') || 'all';
   const counterparty = searchParams.get('counterparty') || '';
   const direction = searchParams.get('direction') || 'out';
+  const lvl2Code = searchParams.get('lvl2_code') || '';
   try {
     assertRole(user, ['admin', 'operator']);
 
@@ -43,6 +44,11 @@ export async function GET(request: Request) {
       const params: (string | number)[] = [];
       let storeClause = '';
       let dateClause = '';
+      let channelClause = '';
+      if (lvl2Code) {
+        channelClause = 'AND c.lvl2_code = $' + (params.length + 1);
+        params.push(lvl2Code);
+      }
       if (store !== 'all') {
         storeClause = 'AND t.store_code = $' + (params.length + 1);
         params.push(store);
@@ -77,6 +83,7 @@ export async function GET(request: Request) {
           AND coalesce(t.${amountField}, 0) > 0
           ${dateClause}
           ${storeClause}
+          ${channelClause}
         GROUP BY CASE
                    WHEN t.counterparty_name IS NOT NULL AND t.counterparty_name != '' THEN t.counterparty_name
                    WHEN t.purpose IS NOT NULL AND t.purpose != '' AND t.purpose != 'NaN' THEN t.purpose
@@ -105,6 +112,11 @@ export async function GET(request: Request) {
     const params: (string | number)[] = [counterparty];
     let storeClause = '';
     let dateClause = '';
+    let channelClause = '';
+    if (lvl2Code) {
+      channelClause = 'AND c.lvl2_code = $' + (params.length + 1);
+      params.push(lvl2Code);
+    }
     if (store !== 'all') {
       storeClause = 'AND t.store_code = $' + (params.length + 1);
       params.push(store);
@@ -125,6 +137,7 @@ export async function GET(request: Request) {
         AND coalesce(t.${amountField}, 0) > 0
         ${dateClause}
         ${storeClause}
+        ${channelClause}
     `;
 
     const detailQuery = `

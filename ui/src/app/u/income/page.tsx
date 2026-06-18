@@ -59,6 +59,7 @@ export default function PaymentPage() {
   const [period, setPeriod] = useState('all');
   const [store, setStore] = useState('all');
   const [stores, setStores] = useState<{ code: string; name: string }[]>([]);
+  const [selectedChannel, setSelectedChannel] = useState<string>('');
   const [search, setSearch] = useState('');
 
   const urlParamsLoadedRef = useRef(false);
@@ -124,6 +125,7 @@ export default function PaymentPage() {
         if (period !== 'all') params.set('period', period);
         if (span) params.set('span', span);
         if (store !== 'all') params.set('store', store);
+        if (selectedChannel) params.set('lvl2_code', selectedChannel);
         const res = await fetch(`/api/financial/counterparty?${params}`);
         const json = await res.json();
         if (json.success) setCounterparties(json.data.counterparties || []);
@@ -135,7 +137,7 @@ export default function PaymentPage() {
       }
     }
     fetchList();
-  }, [brand, period, span, store]);
+  }, [brand, period, span, store, selectedChannel]);
 
   // Fetch detail when counterparty selected
   useEffect(() => {
@@ -144,7 +146,7 @@ export default function PaymentPage() {
       setDetailLoading(true);
       try {
         const res = await fetch(
-          `/api/financial/counterparty?brand=${brand}&direction=in&counterparty=${encodeURIComponent(selected)}&period=${period}&span=${span}&store=${store}`
+          `/api/financial/counterparty?brand=${brand}&direction=in&counterparty=${encodeURIComponent(selected)}&period=${period}&span=${span}&store=${store}${selectedChannel ? `&lvl2_code=${selectedChannel}` : ''}`
         );
         const json = await res.json();
         if (json.success) {
@@ -159,7 +161,7 @@ export default function PaymentPage() {
       }
     }
     fetchDetail();
-  }, [brand, selected, period, span, store]);
+  }, [brand, selected, period, span, store, selectedChannel]);
 
   const filtered = useMemo(() => {
     if (!search) return counterparties;
@@ -261,7 +263,8 @@ export default function PaymentPage() {
       {brand && (
         <div className="mt-8 pt-8 border-t">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">银行入账率</h2>
-          <BankEntryRateSection brand={brand} span={span} period={period} store={store} />
+          <BankEntryRateSection brand={brand} span={span} period={period} store={store}
+            channel={selectedChannel} onChannelChange={setSelectedChannel} />
         </div>
       )}
 
@@ -415,8 +418,9 @@ interface BankEntryData {
   unmatched_orders: { month: string; channel: string; order_count: number; unentered_amt: number }[];
 }
 
-function BankEntryRateSection({ brand, span, period, store }: {
+function BankEntryRateSection({ brand, span, period, store, channel, onChannelChange }: {
   brand: string; span: string; period: string; store: string;
+  channel: string; onChannelChange: (ch: string) => void;
 }) {
   const [data, setData] = useState<BankEntryData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -427,7 +431,8 @@ function BankEntryRateSection({ brand, span, period, store }: {
     setError(null);
     const storeParam = store && store !== 'all' ? `&store=${encodeURIComponent(store)}` : '';
     const periodParam = period && period !== 'all' ? `&period=${period}` : '';
-    fetch(`/api/income/bank-entry-stats?brand=${brand}&span=${span}${periodParam}${storeParam}`)
+    const channelParam = channel ? `&channel=${encodeURIComponent(channel)}` : '';
+    fetch(`/api/income/bank-entry-stats?brand=${brand}&span=${span}${periodParam}${storeParam}${channelParam}`)
       .then(r => r.json())
       .then(json => {
         if (json.success && json.data) {
@@ -461,7 +466,7 @@ function BankEntryRateSection({ brand, span, period, store }: {
       })
       .catch((err: unknown) => setError(getErrorMessage(err)))
       .finally(() => setLoading(false));
-  }, [brand, span, period, store]);
+  }, [brand, span, period, store, channel, onChannelChange]);
 
   if (loading) return (
     <div className="grid grid-cols-4 gap-4">
@@ -487,7 +492,13 @@ function BankEntryRateSection({ brand, span, period, store }: {
             ? 'bg-yellow-50 border-yellow-200 text-yellow-800'
             : 'bg-red-50 border-red-200 text-red-800';
           return (
-            <div key={ch.channel} className={`border rounded-lg p-4 ${colorClass}`}>
+            <div
+              key={ch.channel}
+              onClick={() => onChannelChange(ch.channel === channel ? '' : ch.channel)}
+              className={`border rounded-lg p-4 cursor-pointer transition-all ${colorClass} ${
+                ch.channel === channel ? 'ring-2 ring-blue-500 shadow-md' : 'hover:shadow-sm'
+              }`}
+            >
               <div className="text-sm font-medium mb-2">{CHANNEL_LABELS[ch.channel] ?? ch.channel}</div>
               <div className="text-xs opacity-70 mb-1">
                 企迈实收 {ch.qimai_net_amt.toLocaleString('zh-CN', { minimumFractionDigits: 2 })} 元
