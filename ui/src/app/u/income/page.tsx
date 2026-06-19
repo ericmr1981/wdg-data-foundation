@@ -497,9 +497,9 @@ function BankEntryRateSection({ brand, span, period, store, channel, onChannelCh
               onClick={() => onChannelChange(ch.channel === channel ? '' : ch.channel)}
               className={`border rounded-lg p-4 cursor-pointer transition-all ${colorClass} ${
                 ch.channel === channel
-                  ? 'ring-2 ring-blue-500 shadow-md scale-105'
+                  ? 'ring-2 ring-blue-500 shadow-lg scale-105 z-10'
                   : channel
-                    ? 'opacity-50 hover:opacity-100'
+                    ? 'opacity-25 hover:opacity-90'
                     : 'hover:shadow-sm'
               }`}
             >
