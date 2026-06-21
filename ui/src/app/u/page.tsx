@@ -32,6 +32,36 @@ interface DataSourceStore {
   gap_dates: string[];
 }
 
+interface InventoryStore {
+  brand_code: string;
+  store_code: string;
+  store_name: string;
+  period_count: number;
+  sku_count: number;
+  total_inventory_amt: number | null;
+  min_period: string | null;
+  max_period: string | null;
+  gap_months: string[];
+}
+
+
+function findPeriodGaps(periods: string[]): string[] {
+  const gaps: string[] = [];
+  for (let i = 0; i < periods.length - 1; i++) {
+    const [y1, m1] = periods[i].split('-').map(Number);
+    const [y2, m2] = periods[i + 1].split('-').map(Number);
+    const cur = y1 * 12 + m1;
+    const next = y2 * 12 + m2;
+    if (next - cur > 1) {
+      for (let m = cur + 1; m < next; m++) {
+        const gy = Math.floor(m / 12);
+        const gm = m % 12;
+        gaps.push(`${gy}-${String(gm).padStart(2, '0')}`);
+      }
+    }
+  }
+  return gaps;
+}
 
 const TABLE_LABELS: Record<string, string> = {
   income_detail: '收入明细',
@@ -179,10 +209,56 @@ export default async function HomePage() {
     }
   }
 
+  // Inventory tracking (tamkoko only, monthly snapshots)
+  const inventoryStores: InventoryStore[] = [];
+  for (const brand of brands) {
+    try {
+      const odsSchema = `${brand.schema_prefix}_ods`;
+      // Per-store summary: latest period, sku count, total amount
+      const invRes = await pool.query(`
+        SELECT
+          store_code,
+          COALESCE(store_name, store_code) as store_name,
+          COUNT(DISTINCT period)::int AS period_count,
+          COUNT(DISTINCT sku)::int AS sku_count,
+          SUM(amount) AS total_inventory_amt,
+          MIN(period) AS min_period,
+          MAX(period) AS max_period
+        FROM ${sanitizeSchema(odsSchema)}.inventory_month_end
+        GROUP BY store_code, store_name
+        ORDER BY store_name
+      `);
+      for (const row of invRes.rows as any[]) {
+        // Get sorted periods for gap detection
+        const gapRes = await pool.query(`
+          SELECT DISTINCT period
+          FROM ${sanitizeSchema(odsSchema)}.inventory_month_end
+          WHERE store_code = $1
+          ORDER BY period
+        `, [row.store_code]);
+        const periods: string[] = (gapRes.rows as { period: string }[]).map(r => r.period);
+        inventoryStores.push({
+          brand_code: brand.brand_code,
+          store_code: row.store_code,
+          store_name: row.store_name,
+          period_count: row.period_count,
+          sku_count: row.sku_count,
+          total_inventory_amt: row.total_inventory_amt,
+          min_period: row.min_period,
+          max_period: row.max_period,
+          gap_months: findPeriodGaps(periods),
+        });
+      }
+    } catch {
+      // table doesn't exist or no data
+    }
+  }
+
   const grouped = brands.map(brand => ({
     ...brand,
     stores: stores.filter(s => s.brand_code === brand.brand_code),
     sources: allSources.filter(s => s.brand_code === brand.brand_code),
+    inventory: inventoryStores.filter(s => s.brand_code === brand.brand_code),
   }));
 
   return (
@@ -304,6 +380,68 @@ export default async function HomePage() {
                     </table>
                   </div>
                 ));
+              })()}
+            </div>
+          )}
+
+          {/* 库存盘点 — tamkoko 特有 */}
+          {brand.inventory.length > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center mb-2">
+                <h3 className="text-sm font-medium text-gray-700">库存盘点</h3>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-gray-500">
+                    <th className="py-2 font-medium">门店</th>
+                    <th className="py-2 font-medium">SKU 数</th>
+                    <th className="py-2 font-medium">盘点点数</th>
+                    <th className="py-2 font-medium">数据范围</th>
+                    <th className="py-2 font-medium">完整性</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {brand.inventory.map(inv => {
+                    const hasGaps = inv.gap_months.length > 0;
+                    return (
+                      <tr key={inv.store_code} className="border-b last:border-0">
+                        <td className="py-2.5">{inv.store_name}</td>
+                        <td className="py-2.5 text-gray-600">
+                          {inv.sku_count > 0 ? `${inv.sku_count.toLocaleString()} 种` : '暂无'}
+                        </td>
+                        <td className="py-2.5 text-gray-600">{inv.period_count} 个月</td>
+                        <td className="py-2.5 text-gray-600">
+                          {inv.min_period && inv.max_period
+                            ? `${inv.min_period} ~ ${inv.max_period}`
+                            : '暂无数据'}
+                        </td>
+                        <td className="py-2.5">
+                          {hasGaps ? (
+                            <span className="text-amber-600 text-xs">缺 {inv.gap_months.length} 个月</span>
+                          ) : (
+                            <span className="text-green-600 text-xs">连续</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {(() => {
+                const storesWithGaps = brand.inventory.filter(s => s.gap_months.length > 0);
+                return storesWithGaps.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {storesWithGaps.map(s => (
+                      <div key={s.store_code} className="text-xs text-amber-600">
+                        {s.store_name} 缺失:
+                        {s.gap_months.slice(-10).reverse().map(m => (
+                          <span key={m} className="ml-1.5 inline-block bg-amber-50 px-1 rounded">{m}</span>
+                        ))}
+                        {s.gap_months.length > 10 && <span className="ml-1 text-gray-400">... 共 {s.gap_months.length} 个月</span>}
+                      </div>
+                    ))}
+                  </div>
+                );
               })()}
             </div>
           )}
