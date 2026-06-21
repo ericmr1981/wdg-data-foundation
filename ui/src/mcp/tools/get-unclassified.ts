@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetUnclassifiedInput = z.object({
-  brand:          z.string().describe('Brand code: yufeng | gelatomiiix | bonjur').optional().default('yufeng'),
+  brand:          z.string().describe('Brand code: yufeng | gelatomiiix | bonjur | tamkoko').optional().default('yufeng'),
   source_file_id:  z.number().int().positive().optional().describe('Filter to a specific upload batch (source_file_id from upload response)'),
   month:          z.string().describe('Period in YYYY-MM or YYYY-MM-01 format').optional(),
   page:           z.number().int().positive().optional().default(1),

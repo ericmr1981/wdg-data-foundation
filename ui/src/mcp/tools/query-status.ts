@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 
 const QueryStatusInput = z.object({
-  brand:    z.string().describe('Brand code: yufeng | gelatomiiix | bonjur').optional().default('yufeng'),
+  brand:    z.string().describe('Brand code: yufeng | gelatomiiix | bonjur | tamkoko').optional().default('yufeng'),
   batch_id: z.string().optional().describe('Batch ID to filter by'),
 });
 

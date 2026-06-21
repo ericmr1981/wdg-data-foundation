@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 
 const UploadBankTxnInput = z.object({
-  brand:     z.string().describe('Brand code: yufeng | gelatomiiix | bonjur'),
+  brand:     z.string().describe('Brand code: yufeng | gelatomiiix | bonjur | tamkoko'),
   store:     z.string().describe("Store code. REQUIRED: call get_brand_stores(brand=<brand>) FIRST to list the exact store_code values for this brand, then pick the correct one from its output. Never guess from Chinese store name."),
   file_path: z.string().describe('Absolute path to the bank statement Excel file (.xlsx)'),
 });

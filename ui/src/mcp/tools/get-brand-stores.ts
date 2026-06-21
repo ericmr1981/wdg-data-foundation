@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetBrandStoresInput = z.object({
-  brand: z.string().describe('Brand code: yufeng | gelatomiiix | bonjur').optional(),
+  brand: z.string().describe('Brand code: yufeng | gelatomiiix | bonjur | tamkoko').optional(),
 });
 
 export const getBrandStoresTool = {

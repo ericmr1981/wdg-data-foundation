@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetCandidatesInput = z.object({
-  brand:       z.string().describe('Brand code: yufeng | gelatomiiix | bonjur').optional().default('yufeng'),
+  brand:       z.string().describe('Brand code: yufeng | gelatomiiix | bonjur | tamkoko').optional().default('yufeng'),
   bank_txn_id: z.number().int().positive().describe('Bank transaction ID'),
 });
 

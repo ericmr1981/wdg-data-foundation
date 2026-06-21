@@ -20,7 +20,7 @@ const RecordSchema = z.object({
 
 const SubmitProposalInput = z.object({
   source_file_id: z.number().int().positive().describe('Source file ID from upload response'),
-  brand:         z.string().describe('Brand code: yufeng | gelatomiiix | bonjur'),
+  brand:         z.string().describe('Brand code: yufeng | gelatomiiix | bonjur | tamkoko'),
   records:       z.array(RecordSchema).min(1).describe('Array of proposal records'),
 });
 
