@@ -149,6 +149,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
   }
 
+  // Validate store_code against ops.stores whitelist
+  const storeCheck = await pool.query(
+    `SELECT 1 FROM ops.stores WHERE brand_code = $1 AND store_code = $2 AND enabled = true`,
+    [brand, store]
+  );
+  if (!storeCheck.rows.length) {
+    const validStores = await pool.query(
+      `SELECT store_code, store_name FROM ops.stores WHERE brand_code = $1 AND enabled = true ORDER BY store_code`,
+      [brand]
+    );
+    const suggestions = validStores.rows
+      .map(r => `  · ${r.store_code} (${r.store_name})`)
+      .join('\n');
+    return NextResponse.json({
+      success: false,
+      error: `store_code '${store}' is not a valid enabled store for brand '${brand}'.\nValid stores:\n${suggestions}`
+    }, { status: 400 });
+  }
+
   const uploadDir = path.join(process.cwd(), '..', 'inputs', brand, store, source, yyyyMM);
   if (!existsSync(uploadDir)) {
     await mkdir(uploadDir, { recursive: true });

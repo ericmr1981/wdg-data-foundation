@@ -416,6 +416,26 @@ def assert_brand_exists(conn, brand_code: str):
             raise ValueError(f"未知或未启用的品牌 brand_code: {brand_code}")
 
 
+def assert_store_exists(conn, brand_code: str, store_code: str):
+    """Ensure store exists in ops.stores, is enabled, and belongs to the given brand."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM ops.stores WHERE brand_code=%s AND store_code=%s AND enabled=true LIMIT 1",
+            (brand_code, store_code),
+        )
+        if cur.fetchone() is None:
+            # Fetch valid stores for the error message
+            cur.execute(
+                "SELECT store_code, store_name FROM ops.stores WHERE brand_code=%s AND enabled=true ORDER BY store_code",
+                (brand_code,),
+            )
+            valid = ", ".join(f"{r[0]}({r[1]})" for r in cur.fetchall())
+            raise ValueError(
+                f"store_code '{store_code}' is not a valid enabled store for brand '{brand_code}'. "
+                f"Valid stores: {valid}"
+            )
+
+
 def delete_existing_data(brand_code: str, source_file_id: int, conn):
     """删除当次导入的旧数据（幂等核心）"""
     brand_code = _validate_brand(brand_code)
@@ -647,6 +667,8 @@ def do_import(file_path: str) -> dict:
 
     # 品牌必须存在（否则直接失败，避免写入奇怪 schema）
     assert_brand_exists(conn, meta["brand_code"])
+    # 门店必须在 ops.stores 白名单中（否则银行流水错挂门店）
+    assert_store_exists(conn, meta["brand_code"], meta["store_code"])
 
     # 步骤顺序
     STEP_ORDER = {

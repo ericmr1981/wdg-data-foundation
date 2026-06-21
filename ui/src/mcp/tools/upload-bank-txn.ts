@@ -3,13 +3,18 @@ import { mcpFetch } from '@/lib/mcp-fetch';
 
 const UploadBankTxnInput = z.object({
   brand:     z.string().describe('Brand code: yufeng | gelatomiiix | bonjur'),
-  store:     z.string().describe('Store code (e.g. wz_wxc for 温州万象城, wz_ra for 瑞安吾悦广场)'),
+  store:     z.string().describe("Store code. REQUIRED: call get_brand_stores(brand=<brand>) FIRST to list the exact store_code values for this brand, then pick the correct one from its output. Never guess from Chinese store name."),
   file_path: z.string().describe('Absolute path to the bank statement Excel file (.xlsx)'),
 });
 
 export const uploadBankTxnTool = {
   name: 'upload_bank_txn_file',
   description: `Upload a bank statement Excel file, trigger import pipeline, and return coverage stats.
+
+**IMPORTANT — store_code validation (do NOT skip)**:
+Call get_brand_stores(brand=<brand>) FIRST to list valid store_code values for this brand.
+Do NOT guess store_code from filename or Chinese store name — use the exact store_code returned by get_brand_stores.
+Passing a wrong store_code will silently corrupt data (bank txns land under wrong store with no error).
 
 **Workflow after upload**:
 1. Upload the file → get back sourceFileId
