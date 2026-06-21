@@ -217,17 +217,18 @@ export default async function HomePage() {
       // Per-store summary: latest period, sku count, total amount
       const invRes = await pool.query(`
         SELECT
-          store_code,
-          COALESCE(store_name, store_code) as store_name,
-          COUNT(DISTINCT period)::int AS period_count,
-          COUNT(DISTINCT sku)::int AS sku_count,
-          SUM(amount) AS total_inventory_amt,
-          MIN(period) AS min_period,
-          MAX(period) AS max_period
-        FROM ${sanitizeSchema(odsSchema)}.inventory_month_end
-        GROUP BY store_code, store_name
-        ORDER BY store_name
-      `);
+          i.store_code,
+          COALESCE(s.store_name, i.store_code) AS store_name,
+          COUNT(DISTINCT i.period)::int AS period_count,
+          COUNT(DISTINCT i.sku)::int AS sku_count,
+          SUM(i.amount) AS total_inventory_amt,
+          MIN(i.period) AS min_period,
+          MAX(i.period) AS max_period
+        FROM ${sanitizeSchema(odsSchema)}.inventory_month_end i
+        LEFT JOIN ops.stores s ON s.store_code = i.store_code AND s.brand_code = $1
+        GROUP BY i.store_code, s.store_name
+        ORDER BY i.store_code
+      `, [brand.brand_code]);
       for (const row of invRes.rows as any[]) {
         // Get sorted periods for gap detection
         const gapRes = await pool.query(`
