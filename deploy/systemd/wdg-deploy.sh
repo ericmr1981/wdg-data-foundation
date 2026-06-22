@@ -22,8 +22,17 @@ git pull --ff-only
 NEW_HEAD=$(git rev-parse HEAD)
 
 if [ "$PREV_HEAD" = "$NEW_HEAD" ]; then
-  echo "no new commits, skipping rebuild"
-  exit 0
+  # Self-heal: if a prior npm ci failure wiped node_modules but HEAD
+  # hasn't moved since, the deploy timer would otherwise skip the
+  # rebuild forever (dead-lock — process keeps running from RAM,
+  # next /login hits MODULE_NOT_FOUND, /api/mcp 500s). Detect the
+  # incomplete install and fall through to npm ci + build.
+  if [ ! -x /opt/wdg/ui/node_modules/.bin/next ] || [ ! -d /opt/wdg/agent/node_modules ]; then
+    echo "node_modules incomplete, running npm ci + build anyway"
+  else
+    echo "no new commits, skipping rebuild"
+    exit 0
+  fi
 fi
 
 # npm ci + tsc build run as www-data so files in /opt/wdg keep
