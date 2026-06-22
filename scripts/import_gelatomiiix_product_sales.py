@@ -6,7 +6,7 @@
 Path convention: inputs/{brand_code}/{store_code}/product_sales/{YYYY-MM}/{filename}.csv
 """
 
-import argparse, hashlib, os, re
+import argparse, hashlib, os, re, sys
 from datetime import datetime, date
 from pathlib import Path
 from typing import Optional
@@ -14,6 +14,11 @@ from typing import Optional
 import pandas as pd
 import psycopg2
 from psycopg2.extras import execute_values
+
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+from _store_guard import load_valid_stores  # noqa: E402
 
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
@@ -244,8 +249,24 @@ def main():
     conn = psycopg2.connect(**DB_CONFIG)
     try:
         ensure_table_exists(conn)
+        # 预先按 brand 加载合法 store 缓存，避免逐文件打 DB
+        valid_stores_cache: dict[str, set[str]] = {}
         for fp in sorted(files):
             meta = parse_path(fp)
+            brand = meta["brand_code"]
+            if brand not in valid_stores_cache:
+                valid_stores_cache[brand] = load_valid_stores(brand, conn)
+            valid = valid_stores_cache[brand]
+            if not valid:
+                raise SystemExit(
+                    f"FATAL: ops.stores 中没有 brand={brand!r} 的 enabled 门店"
+                )
+            if meta["store_code"] not in valid:
+                # 历史教训：跨品牌错写会把脏数据灌入 *_ods 表
+                raise SystemExit(
+                    f"FATAL: 文件 {fp} 路径推得 store_code={meta['store_code']!r}，"
+                    f"不属于 brand={brand!r} 合法集合 {sorted(valid)}。"
+                )
             file_hash = calculate_sha256(fp)
             file_size = os.path.getsize(fp)
             existing = check_ingest_file(file_hash, conn)

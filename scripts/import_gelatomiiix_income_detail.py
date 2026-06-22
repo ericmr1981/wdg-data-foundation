@@ -17,12 +17,23 @@ import argparse
 import csv
 import hashlib
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 import psycopg2
 from psycopg2.extras import execute_values
+
+# 让脚本既能直接跑也能被 import；路径用绝对路径避免 cwd 依赖。
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+from _store_guard import (  # noqa: E402
+    CrossBrandStoreError,
+    load_valid_stores,
+    safe_resolve_store,
+)
 
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
@@ -115,8 +126,17 @@ def parse_date(s: str) -> Optional[datetime]:
         return None
 
 
-def transform_row(r: dict, source_file: str, store_code_override: str = "", store_name_override: str = "") -> Optional[dict]:
-    """将 CSV 行转换为数据库记录"""
+def transform_row(r: dict, source_file: str, store_code_override: str = "",
+                   store_name_override: str = "",
+                   valid_stores: Optional[set[str]] = None,
+                   stats: Optional[dict] = None) -> Optional[dict]:
+    """将 CSV 行转换为数据库记录
+
+    valid_stores: 该 brand 在 ops.stores 里的合法 store_code 集合。
+    传入时，CSV 内的「门店编码」列若不在该集合内，本行返回 None 并在 stats
+    里累计 skipped_cross_brand（防止 2026-06 那种 TK00132 错写 gelato 表
+    的历史 bug 复发）。
+    """
     order_no_raw = r.get("订单号", "").strip()
     order_no = strip_backtick(order_no_raw)
     if not order_no:
@@ -178,8 +198,31 @@ def transform_row(r: dict, source_file: str, store_code_override: str = "", stor
 
     csv_store_code = r.get("门店编码", "").strip().strip("`")
     csv_store_name = r.get("门店名称", "").strip()
+
+    # store_code 解析：override > CSV 内的「门店编码」> STORE_CODE 兜底。
+    # 任何候选都必须落在 brand 合法集合里；不合法则跳过该行（计入 stats）。
+    if store_code_override:
+        resolved_store_code = store_code_override
+    elif csv_store_code:
+        if valid_stores is not None and csv_store_code not in valid_stores:
+            if stats is not None:
+                stats["skipped_cross_brand"] = stats.get("skipped_cross_brand", 0) + 1
+                stats.setdefault("cross_brand_samples", []).append({
+                    "order_no": order_no,
+                    "csv_store_code": csv_store_code,
+                })
+            return None
+        resolved_store_code = csv_store_code
+    else:
+        # 兜底 STORE_CODE；同样要校验合法性
+        if valid_stores is not None and STORE_CODE not in valid_stores:
+            if stats is not None:
+                stats["skipped_cross_brand"] = stats.get("skipped_cross_brand", 0) + 1
+            return None
+        resolved_store_code = STORE_CODE
+
     return {
-        "store_code": store_code_override or csv_store_code or STORE_CODE,
+        "store_code": resolved_store_code,
         "store_name": store_name_override or csv_store_name,
         "biz_date": biz_date.date() if biz_date else None,
         "order_no": order_no_raw,
@@ -356,7 +399,8 @@ def insert_rows(records: list[dict], source_file_id: int, conn, target_table: st
     return len(values)
 
 
-def process_file(fp: str, conn, dry_run: bool, store_code: str = "", store_name: str = "") -> dict:
+def process_file(fp: str, conn, dry_run: bool, store_code: str = "", store_name: str = "",
+                  valid_stores: Optional[set[str]] = None) -> dict:
     file_hash = calculate_sha256(fp)
     file_size = os.path.getsize(fp)
     source_file = str(Path(fp).resolve())
@@ -370,23 +414,35 @@ def process_file(fp: str, conn, dry_run: bool, store_code: str = "", store_name:
     source_file_id = existing["id"] if existing else create_ingest_file(source_file, file_hash, file_size, conn)
     conn.commit()
 
+    stats: dict = {"skipped_cross_brand": 0, "cross_brand_samples": []}
     rows = []
     with open(fp, encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for r in reader:
-            row = transform_row(r, source_file, store_code, store_name)
+            row = transform_row(r, source_file, store_code, store_name, valid_stores, stats)
             if row:
                 rows.append(row)
+
+    # 行级校验摘要（dry-run 也输出）
+    if stats["skipped_cross_brand"]:
+        samples = stats["cross_brand_samples"][:3]
+        sample_str = ", ".join(
+            f"{s['order_no']}@{s['csv_store_code']}" for s in samples
+        )
+        print(
+            f"  ⚠️  skipped_cross_brand: {stats['skipped_cross_brand']} 行 "
+            f"(CSV 里的「门店编码」不属于 brand={BRAND_CODE} 合法集合); 样本: {sample_str}"
+        )
 
     if dry_run:
         print(f"  DRY-RUN: {Path(fp).name} -> {len(rows)} records")
         update_ingest_file(source_file_id, len(rows), conn, "pending")
-        return {"name": Path(fp).name, "records": len(rows)}
+        return {"name": Path(fp).name, "records": len(rows), **stats}
 
     inserted = insert_rows(rows, source_file_id, conn, target_table)
     update_ingest_file(source_file_id, inserted, conn)
     print(f"  INSERTED: {Path(fp).name} -> {inserted} records (from {len(rows)} parsed, {len(rows) - inserted} duplicates)")
-    return {"name": Path(fp).name, "total": len(rows), "inserted": inserted}
+    return {"name": Path(fp).name, "total": len(rows), "inserted": inserted, **stats}
 
 
 def main():
@@ -394,29 +450,14 @@ def main():
     ap.add_argument("input", help="CSV file or directory containing CSV files")
     ap.add_argument("--dry-run", action="store_true", help="Parse and report without inserting")
     ap.add_argument("--brand", default=os.getenv("INCOME_BRAND_CODE", "gelatomiiix"), help="Brand code")
-    ap.add_argument("--store-code", default=os.getenv("INCOME_STORE_CODE", ""), help="Store code")
+    ap.add_argument("--store-code", default=os.getenv("INCOME_STORE_CODE", ""), help="Store code (must belong to --brand)")
     args = ap.parse_args()
 
-    global STORE_CODE, BRAND_CODE
-    STORE_CODE = args.store_code or STORE_CODE
     BRAND_CODE = args.brand
-
-    # Look up store name from ops.stores if not set
-    global STORE_NAME
-    if not STORE_NAME:
-        try:
-            conn_lookup = psycopg2.connect(**DB_CONFIG)
-            cur = conn_lookup.cursor()
-            cur.execute("SELECT store_name FROM ops.stores WHERE store_code = %s AND enabled = true LIMIT 1", (STORE_CODE,))
-            row = cur.fetchone()
-            if row:
-                STORE_NAME = row[0]
-            conn_lookup.close()
-        except Exception:
-            STORE_NAME = STORE_CODE
-
-    target_table = get_target_table(BRAND_CODE)
-    print(f"Brand: {BRAND_CODE}, Store: {STORE_CODE} ({STORE_NAME}), Table: {target_table}")
+    # 仅当 CLI/env 显式传了 --store-code 才视为 override；否则 process_file
+    # 不传 override，让 transform_row 从 CSV 内的「门店编码」列读取。
+    explicit_store_code = bool(args.store_code)
+    STORE_CODE = args.store_code  # 透传到 create_ingest_file 用
 
     in_path = Path(args.input)
     if in_path.is_dir():
@@ -428,10 +469,56 @@ def main():
         raise SystemExit(f"No 收入明细表 CSV files found in: {in_path}")
 
     print(f"Found {len(files)} CSV file(s)")
+
     conn = psycopg2.connect(**DB_CONFIG)
     try:
+        # 启动期加载 brand 合法 store 集合
+        valid_stores = load_valid_stores(BRAND_CODE, conn)
+        print(f"Brand: {BRAND_CODE}, valid stores: {sorted(valid_stores)}")
+
+        # Look up store name from ops.stores if explicit override
+        store_name = ""
+        if explicit_store_code:
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT store_name FROM ops.stores WHERE store_code = %s AND enabled = true LIMIT 1",
+                    (STORE_CODE,),
+                )
+                row = cur.fetchone()
+                store_name = row[0] if row else STORE_CODE
+                cur.close()
+            except Exception:
+                store_name = STORE_CODE
+        else:
+            store_name = ""
+
+        # 显式 override 必须落在合法集合里
+        if explicit_store_code and STORE_CODE not in valid_stores:
+            raise SystemExit(
+                f"FATAL: --store-code {STORE_CODE!r} 不属于 brand={BRAND_CODE!r} 的合法门店 "
+                f"(合法集合: {sorted(valid_stores)})。\n"
+                f"这是为了防止 2026-06 那种跨品牌错写的事故。\n"
+                f"如果想导入多个门店的 CSV，请去掉 --store-code 让脚本从 CSV 内的「门店编码」列读取。"
+            )
+
+        if not valid_stores:
+            raise SystemExit(f"FATAL: ops.stores 中没有 brand={BRAND_CODE!r} 的 enabled 门店")
+
+        target_table = get_target_table(BRAND_CODE)
+        if explicit_store_code:
+            print(f"Target table: {target_table}, Store override: {STORE_CODE}")
+        else:
+            print(f"Target table: {target_table}, Store: 读 CSV 内的「门店编码」列")
+
         for fp in files:
-            process_file(fp, conn, args.dry_run, STORE_CODE, STORE_NAME)
+            # 关键：仅当 explicit override 时才传 store_code；否则传空让 transform_row
+            # 从 CSV 内读取并按合法集合校验
+            process_file(
+                fp, conn, args.dry_run,
+                STORE_CODE if explicit_store_code else "",
+                store_name, valid_stores,
+            )
     finally:
         conn.close()
     print("Done.")
