@@ -13,6 +13,13 @@ import { submitProposalTool } from './tools/submit-proposal';
 import { queryStatusTool } from './tools/query-status';
 import { getBrandStoresTool } from './tools/get-brand-stores';
 import { getQimaiEntryRateTool } from './tools/get-qimai-entry-rate';
+import { getUnmatchedOrdersTool } from './tools/get-unmatched-orders';
+import { getSettlementCycleReconTool } from './tools/get-settlement-cycle-recon';
+import { getTaobaoReconTool } from './tools/get-taobao-recon';
+import { getMeituanReconTool } from './tools/get-meituan-recon';
+import { getDouyinReconTool } from './tools/get-douyin-recon';
+import { getGelatoWechatReconTool } from './tools/get-gelato-wechat-recon';
+import { getGelatoAlipayReconTool } from './tools/get-gelato-alipay-recon';
 import { queryBonjurQimaiSalesTool } from './tools/query-bonjur-qimai-sales';
 import { queryGelatomiiixIncomeTool } from './tools/query-gelatomiiix-income';
 import { uploadBonjurIncomeDetailTool } from './tools/upload-bonjur-income-detail';
@@ -73,6 +80,13 @@ const TOOLS: Record<string, ToolModule> = {
   get_candidates:         getCandidatesTool,
   get_existing_rules:     getRulesTool,
   get_qimai_entry_rate:   getQimaiEntryRateTool,
+  get_unmatched_orders:   getUnmatchedOrdersTool,
+  get_settlement_cycle_recon: getSettlementCycleReconTool,
+  get_taobao_recon: getTaobaoReconTool,
+  get_meituan_recon: getMeituanReconTool,
+  get_douyin_recon: getDouyinReconTool,
+  get_gelato_wechat_recon: getGelatoWechatReconTool,
+  get_gelato_alipay_recon: getGelatoAlipayReconTool,
   submit_approval_proposal: submitProposalTool,
   query_approval_status:   queryStatusTool,
   query_bonjur_qimai_sales: queryBonjurQimaiSalesTool,
@@ -249,7 +263,7 @@ export async function handleJsonRpcRequest(
       result: {
         protocolVersion: '2024-11-05',
         capabilities: {},
-        serverInfo: { name: 'wdg-bank-agent', version: '1.0.0' },
+        serverInfo: { name: 'wdg-bank-agent', version: '1.1.0' },
       },
     };
   }

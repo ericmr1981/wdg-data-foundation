@@ -6,7 +6,10 @@ import { parsePeriod } from '@/app/api/financial/period-utils';
 
 export const dynamic = 'force-dynamic';
 
-async function getChannelCaseSql(cfgSchema: string): Promise<string> {
+const UNSUPPORTED_BRANDS = ['yufeng'];
+const NOT_DEPLOYED_BRANDS = ['xintiandi'];
+
+async function getChannelCaseSql(cfgSchema: string, brand?: string): Promise<string> {
   const res = await pool.query(
     `SELECT payment_method, channel_code FROM ${cfgSchema}.channel_mapping ORDER BY sort_order`
   );
@@ -15,7 +18,32 @@ async function getChannelCaseSql(cfgSchema: string): Promise<string> {
   const whens = rows.map(r =>
     `WHEN '${esc(r.payment_method)}' = ANY(payment_methods) THEN '${esc(r.channel_code)}'`
   ).join('\n            ');
+  // For tamkoko, split MEITUAN into MEITUAN_TUANGOU for 团购 orders
+  if (brand === 'tamkoko') {
+    // Insert tuangou check before the generic MEITUAN mapping
+    const customWhens = rows.map(r => {
+      if (r.channel_code === 'MEITUAN') {
+        return `WHEN '${esc(r.payment_method)}' = ANY(payment_methods) AND coupon_fee > 0 THEN 'MEITUAN_TUANGOU'\n            WHEN '${esc(r.payment_method)}' = ANY(payment_methods) THEN '${esc(r.channel_code)}'`;
+      }
+      return `WHEN '${esc(r.payment_method)}' = ANY(payment_methods) THEN '${esc(r.channel_code)}'`;
+    }).join('\n            ');
+    return `CASE ${customWhens} ELSE 'OTHER' END`;
+  }
   return `CASE ${whens} ELSE 'OTHER' END`;
+}
+
+async function getBankChannelCaseSql(brand: string): Promise<string> {
+  // Bank-side channel logic uses lvl2_code from classified snapshot.
+  // For tamkoko, split MEITUAN into MEITUAN_TUANGOU when bank summary contains 团购.
+  if (brand === 'tamkoko') {
+    return `
+      CASE
+        WHEN c.lvl2_code = 'MEITUAN' AND t.summary LIKE '%团购%' THEN 'MEITUAN_TUANGOU'
+        ELSE c.lvl2_code
+      END
+    `;
+  }
+  return 'c.lvl2_code';
 }
 
 // GET /api/income/bank-entry-stats?brand=gelatomiiix&period=2026-04&span=month
@@ -37,13 +65,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
     }
 
+    if (UNSUPPORTED_BRANDS.includes(brand) || NOT_DEPLOYED_BRANDS.includes(brand)) {
+      return NextResponse.json({ success: false, error: 'brand not supported for bank entry stats' }, { status: 400 });
+    }
+
     const odsSchema = getOdsSchema(brand);
     const dmSchema = getDmSchema(brand);
     const incomeOds = brand === 'gelatomiiix' ? 'gelatomiiix_ods' : odsSchema;
     const cfgSchema = getCfgSchema(brand);
 
     // 动态构建 CASE WHEN 语句（避免 PG 16 GROUP BY 限制）
-    const channelCase = await getChannelCaseSql(cfgSchema);
+    const channelCase = await getChannelCaseSql(cfgSchema, brand);
+    const bankChannelCase = await getBankChannelCaseSql(brand);
 
     // channel filter fragments (must be declared before first query that uses them)
     const esc = (s: string) => s.replace(/'/g, "''");
@@ -51,7 +84,7 @@ export async function GET(request: NextRequest) {
     const channelFilterQimai = channel && channel !== 'all'
       ? `AND ${channelCase} = '${chEscaped}'` : '';
     const channelFilterBank = channel && channel !== 'all'
-      ? `AND c.lvl2_code = '${chEscaped}'` : '';
+      ? `AND ${bankChannelCase} = '${chEscaped}'` : '';
 
     const hasPeriod = period && period !== 'all';
     let dateClause = '';
@@ -111,7 +144,7 @@ export async function GET(request: NextRequest) {
     // --- bank entry by channel (使用预分类快照) ---
     const bankEntryResult = await pool.query(`
       SELECT
-        c.lvl2_code AS channel,
+        ${bankChannelCase} AS channel,
         COALESCE(SUM(COALESCE(t.in_amt, 0)), 0) AS bank_entry_amt
       FROM ${odsSchema}.bank_txn t
       JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
@@ -120,7 +153,7 @@ export async function GET(request: NextRequest) {
         AND c.lvl2_code NOT IN ('OTHER_CH', 'REFUND_IN')
         AND COALESCE(t.in_amt, 0) > 0
         ${bankDateClause} ${bankStoreClause} ${channelFilterBank}
-      GROUP BY c.lvl2_code
+      GROUP BY ${bankChannelCase}
     `, params);
 
     // --- current month channel data ---
@@ -129,7 +162,7 @@ export async function GET(request: NextRequest) {
     if (hasPeriod) {
       const [currBankRes, currQimaiRes] = await Promise.all([
         pool.query(`
-          SELECT c.lvl2_code AS channel,
+          SELECT ${bankChannelCase} AS channel,
                  COALESCE(SUM(COALESCE(t.in_amt, 0)), 0) AS bank_entry_amt
           FROM ${odsSchema}.bank_txn t
           JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
@@ -138,7 +171,7 @@ export async function GET(request: NextRequest) {
             AND c.lvl2_code NOT IN ('OTHER_CH', 'REFUND_IN')
             AND COALESCE(t.in_amt, 0) > 0
             ${currMonthBankDateClause} ${channelFilterBank}
-          GROUP BY c.lvl2_code
+          GROUP BY ${bankChannelCase}
         `, currParams),
         pool.query(`
           SELECT
@@ -158,7 +191,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // --- monthlyTrend ---
+    // --- monthlyTrend (grouped by month AND channel) ---
     let trendDateClause = '';
     let bankTrendDateClause = '';
     if (hasPeriod) {
@@ -171,13 +204,17 @@ export async function GET(request: NextRequest) {
     const trendStore = store && store !== 'all' ? `AND store_code = '${st}'` : '';
     const monthlyTrendResult = await pool.query(`
       WITH qimai_monthly AS (
-        SELECT to_char(biz_date, 'YYYY-MM') AS month, SUM(net_amt) AS qimai_net_amt
+        SELECT to_char(biz_date, 'YYYY-MM') AS month,
+               ${channelCase} AS channel,
+               SUM(net_amt) AS qimai_net_amt
         FROM ${incomeOds}.income_detail
         WHERE NOT is_refund AND NOT is_member_payment ${trendDateClause} ${trendStore} ${channelFilterQimai}
-        GROUP BY 1
+        GROUP BY 1, 2
       ),
       bank_monthly AS (
-        SELECT to_char(t.txn_time, 'YYYY-MM') AS month, SUM(COALESCE(t.in_amt, 0)) AS bank_entry_amt
+        SELECT to_char(t.txn_time, 'YYYY-MM') AS month,
+               ${bankChannelCase} AS channel,
+               SUM(COALESCE(t.in_amt, 0)) AS bank_entry_amt
         FROM ${odsSchema}.bank_txn t
         JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
         WHERE c.classified_source IN ('rule', 'override')
@@ -185,13 +222,15 @@ export async function GET(request: NextRequest) {
           AND c.lvl2_code NOT IN ('OTHER_CH', 'REFUND_IN')
           AND COALESCE(t.in_amt, 0) > 0
           ${bankTrendDateClause} ${trendStore} ${channelFilterBank}
-        GROUP BY 1
+        GROUP BY 1, 2
       )
       SELECT COALESCE(q.month, b.month) AS month,
+             COALESCE(q.channel, b.channel) AS channel,
              COALESCE(q.qimai_net_amt, 0) AS qimai_net_amt,
              COALESCE(b.bank_entry_amt, 0) AS bank_entry_amt
-      FROM qimai_monthly q FULL OUTER JOIN bank_monthly b ON q.month = b.month
-      ORDER BY 1
+      FROM qimai_monthly q FULL OUTER JOIN bank_monthly b
+        ON q.month = b.month AND q.channel = b.channel
+      ORDER BY 1, 2
     `);
 
     // --- unmatchedOrders ---
@@ -255,9 +294,10 @@ export async function GET(request: NextRequest) {
       month_bank_amt: totalCurrBank.toFixed(2),
     });
 
-    const monthlyTrend = (monthlyTrendResult.rows as { month: string; qimai_net_amt: string; bank_entry_amt: string }[])
+    const monthlyTrend = (monthlyTrendResult.rows as { month: string; channel: string; qimai_net_amt: string; bank_entry_amt: string }[])
       .map(r => ({
         month: r.month,
+        channel: r.channel,
         qimai_net_amt: parseFloat(r.qimai_net_amt).toFixed(2),
         bank_entry_amt: parseFloat(r.bank_entry_amt).toFixed(2),
       }));

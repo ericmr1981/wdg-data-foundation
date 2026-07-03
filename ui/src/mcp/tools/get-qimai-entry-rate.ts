@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetQimaiEntryRateInput = z.object({
+  brand: z.enum(['gelatomiiix', 'bonjur', 'tamkoko', 'yufeng', 'xintiandi'])
+    .describe('Brand code'),
   period: z.string().describe('Period in YYYY-MM format'),
   span: z.enum(['month', 'quarter', 'year']).optional().default('month')
     .describe('Time span: month, quarter, or year'),
@@ -10,23 +12,29 @@ const GetQimaiEntryRateInput = z.object({
 
 export const getQimaiEntryRateTool = {
   name: 'get_qimai_entry_rate',
-  description: `Analyze Qimai-to-bank entry rate for Gelatomiiix. Compares Qimai income detail (net_amt) against bank transaction entries.
+  description: `Analyze Qimai-to-bank entry rate for any supported brand. Compares Qimai income detail (net_amt) against bank transaction entries classified as REV_BIZ.
 
-**Note**: Gelatomiiix-only. The underlying API reads from gelatomiiix_ods.income_detail (hard-coded).
+**Note**: Only brands with both income_detail ODS and bank_txn_classified_snapshot are supported.
+
+**Tamkoko special**: WECHAT and ALIPAY channels are merged into a single \`WECHAT_ALIPAY\` row. Tamkoko's WeChat/Alipay orders are settled via parent-company (苏州泰柯) bank transfers, not direct merchant settlement — the merged card reflects the parent-company transfer health rather than the actual WeChat/Alipay merchant entries. Other brands keep WECHAT and ALIPAY as separate rows.
 
 **Parameters**:
+- brand (required): gelatomiiix | bonjur | tamkoko | yufeng | xintiandi
+  - gelatomiiix, bonjur, tamkoko: supported
+  - yufeng: not_supported (no income_detail DDL)
+  - xintiandi: not_deployed (template only)
 - period (required): YYYY-MM format
 - span (optional): month (default), quarter, or year
 - store (optional): filter by store
 
-**Response**: channel-level entry rates, monthly trend, unmatched orders`,
+**Response**: channel-level entry rates, monthly trend, unmatched order aggregates`,
   inputSchema: GetQimaiEntryRateInput,
   async execute(params: z.infer<typeof GetQimaiEntryRateInput>) {
-    const { period, span = 'month', store } = params;
-    const qs = new URLSearchParams({ brand: 'gelatomiiix', period, span });
+    const { brand, period, span = 'month', store } = params;
+    const qs = new URLSearchParams({ brand, period, span });
     if (store) qs.set('store', store);
 
-    const res = await mcpFetch(`/api/gelatomiiix/income/bank-entry-stats?${qs}`, {
+    const res = await mcpFetch(`/api/income/bank-entry-stats?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
 

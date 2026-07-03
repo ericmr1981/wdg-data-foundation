@@ -1,0 +1,47 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Next.js UI (dev)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 4100,
+      "cwd": "ui"
+    },
+    {
+      "name": "Agent (Fastify dev)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 4101,
+      "cwd": "agent"
+    },
+    {
+      "name": "PostgreSQL (local Docker)",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["scripts/dev.sh", "up"],
+      "port": 5432,
+      "cwd": "."
+    },
+    {
+      "name": "Agent test DB (Docker)",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "-d", "agent-test-db"],
+      "port": 5433,
+      "cwd": "."
+    },
+    {
+      "name": "Full stack (Docker Compose)",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "-d"],
+      "port": 3002,
+      "cwd": "."
+    },
+    {
+      "name": "ETL Pipeline (dry run)",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["scripts/run_pipeline_oneclick.py", "--brand", "all", "--dry-run"],
+      "port": 0,
+      "cwd": "."
+    }
+  ]
+}

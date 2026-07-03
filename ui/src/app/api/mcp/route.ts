@@ -28,8 +28,8 @@ export async function GET() {
     jsonrpc: '2.0',
     result: {
       name:        'wdg-bank-agent',
-      version:    '1.0.0',
-      description: 'MCP server for WDG data platform — 7 modules: bank-classification, store-report, financial-statements, income/sales (gelatomiiix/bonjur), pipeline, tamkoko inventory, admin metadata.',
+      version:    '1.1.0',
+      description: 'MCP server for WDG data platform - 7 modules: bank-classification, store-report, financial-statements, income/sales (gelatomiiix/bonjur), pipeline, tamkoko inventory, admin metadata. v1.1 adds cross-brand reconciliation tools (get_unmatched_orders, get_settlement_cycle_recon, etc.) for per-channel Qimai-to-bank matching.',
       methods: [
         'initialize',
         'ping',

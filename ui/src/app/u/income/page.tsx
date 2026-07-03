@@ -45,6 +45,47 @@ interface IncomeLvl2 {
   amount: number;
 }
 
+// LAG-based per-bank-entry row for parent-company (苏州泰柯) settlement
+type CycleRow = {
+  bank_date: string;
+  bank_date_str: string;
+  bank_amt: number;
+  window_days: number;
+  qimai_count: number;
+  qimai_amt: number;
+  diff: number;
+  entry_rate: number;
+}
+
+interface TaobaoRow {
+  bank_date: string;
+  bank_amt: number;
+  summary: string;
+  qimai_window: string;
+  window_days: number;
+  qimai_count: number;
+  qimai_total: number;
+  diff: number;
+  entry_rate: number;
+}
+
+interface MeituanRow {
+  bank_date: string;
+  bank_date_str: string;
+  store_code?: string;
+  bank_count?: number;
+  bank_amt: number;
+  qimai_count: number;
+  qimai_amt: number;
+  diff: number;
+  entry_rate: number;
+  window_days?: number;
+}
+
+interface MeituanData {
+  rows: MeituanRow[];
+}
+
 export default function PaymentPage() {
   const { brand } = useBrand();
   const [counterparties, setCounterparties] = useState<CounterpartySummary[]>([]);
@@ -186,6 +227,8 @@ export default function PaymentPage() {
 
   const formatAmt = (v: number) => v.toLocaleString('zh-CN', { minimumFractionDigits: 2 });
 
+  const fmt = (v: number) => v.toLocaleString('zh-CN', { minimumFractionDigits: 2 });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -265,6 +308,49 @@ export default function PaymentPage() {
           <h2 className="text-lg font-semibold text-gray-800 mb-4">银行入账率</h2>
           <BankEntryRateSection brand={brand} span={span} period={period} store={store}
             channel={selectedChannel} onChannelChange={setSelectedChannel} />
+        </div>
+      )}
+
+      {/* ===== 对账区块 ===== */}
+      {brand && (
+        <div className="mt-8 pt-8 border-t space-y-4">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">渠道对账</h2>
+          {brand === 'tamkoko' && (
+            <>
+              <details className="border rounded-lg bg-white">
+                <summary className="px-4 py-3 font-medium text-sm cursor-pointer hover:bg-gray-50">周期性结算对账</summary>
+                <div className="p-4"><SettlementCycleSection brand={brand} period={period} span={span} store={store} /></div>
+              </details>
+              <details className="border rounded-lg bg-white">
+                <summary className="px-4 py-3 font-medium text-sm cursor-pointer hover:bg-gray-50">淘宝闪购对账</summary>
+                <div className="p-4"><TaobaoReconSection brand={brand} period={period} span={span} store={store} /></div>
+              </details>
+              <details className="border rounded-lg bg-white">
+                <summary className="px-4 py-3 font-medium text-sm cursor-pointer hover:bg-gray-50">美团外卖对账</summary>
+                <div className="p-4"><MeituanReconSection brand={brand} period={period} span={span} store={store} /></div>
+              </details>
+              <details className="border rounded-lg bg-white">
+                <summary className="px-4 py-3 font-medium text-sm cursor-pointer hover:bg-gray-50">美团团购券对账</summary>
+                <div className="p-4"><MeituanTuangouSection brand={brand} period={period} span={span} store={store} /></div>
+              </details>
+              <details className="border rounded-lg bg-white">
+                <summary className="px-4 py-3 font-medium text-sm cursor-pointer hover:bg-gray-50">抖音团购券对账</summary>
+                <div className="p-4"><DouyinReconSection brand={brand} period={period} span={span} store={store} /></div>
+              </details>
+            </>
+          )}
+          {brand === 'gelatomiiix' && (
+            <>
+              <details className="border rounded-lg bg-white">
+                <summary className="px-4 py-3 font-medium text-sm cursor-pointer hover:bg-gray-50">微信对账</summary>
+                <div className="p-4"><GelatoWechatSection brand={brand} period={period} span={span} store={store} /></div>
+              </details>
+              <details className="border rounded-lg bg-white">
+                <summary className="px-4 py-3 font-medium text-sm cursor-pointer hover:bg-gray-50">支付宝对账</summary>
+                <div className="p-4"><GelatoAlipaySection brand={brand} period={period} span={span} store={store} /></div>
+              </details>
+            </>
+          )}
         </div>
       )}
 
@@ -385,23 +471,27 @@ const CHANNEL_COLORS: Record<string, string> = {
   WECHAT: 'bg-green-50 border-green-200 text-green-800',
   ALIPAY: 'bg-blue-50 border-blue-200 text-blue-800',
   MEITUAN: 'bg-orange-50 border-orange-200 text-orange-800',
+  MEITUAN_TUANGOU: 'bg-amber-50 border-amber-200 text-amber-800',
   CLOUD_PAY: 'bg-gray-50 border-gray-200 text-gray-800',
   UNIONPAY: 'bg-gray-50 border-gray-200 text-gray-800',
   DOUYIN: 'bg-pink-50 border-pink-200 text-pink-800',
   ELEME: 'bg-yellow-50 border-yellow-200 text-yellow-800',
   JD: 'bg-red-50 border-red-200 text-red-800',
   TAOBAO: 'bg-purple-50 border-purple-200 text-purple-800',
+  WECHAT_ALIPAY: 'bg-teal-50 border-teal-200 text-teal-800',
 };
 const CHANNEL_LABELS: Record<string, string> = {
   WECHAT: '微信支付',
   ALIPAY: '支付宝',
   MEITUAN: '美团/蜜可诗',
+  MEITUAN_TUANGOU: '美团团购券',
   CLOUD_PAY: '云闪付',
   UNIONPAY: '云闪付',
   DOUYIN: '抖音团购券',
   ELEME: '饿了么',
   JD: '京东',
   TAOBAO: '淘宝闪购',
+  WECHAT_ALIPAY: '微信+支付宝',
 };
 
 interface BankEntryChannel {
@@ -512,7 +602,7 @@ function BankEntryRateSection({ brand, span, period, store, channel, onChannelCh
                 银行入账 {ch.bank_entry_amt.toLocaleString('zh-CN', { minimumFractionDigits: 2 })} 元
                 {ch.month_bank_amt > 0 && <span className="ml-1 opacity-50">({ch.month_bank_amt.toLocaleString('zh-CN', { minimumFractionDigits: 2 })})</span>}
               </div>
-              <div className="text-2xl font-bold font-mono">{ch.entry_rate.toFixed(1)}%</div>
+              <div className="text-2xl font-bold font-mono">{Number(ch.entry_rate).toFixed(1)}%</div>
             </div>
           );
         })}
@@ -533,6 +623,667 @@ function BankEntryRateSection({ brand, span, period, store, channel, onChannelCh
         </ResponsiveContainer>
       )}
 
+    </div>
+  );
+}
+
+function CollapsibleTableRows({ rows, maxVisible = 5, children }: {
+  rows: any[];
+  maxVisible?: number;
+  children: (row: any, idx: number) => React.ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? rows : rows.slice(0, maxVisible);
+  return (
+    <>
+      {visible.map((row, idx) => children(row, idx))}
+      {rows.length > maxVisible && !expanded && (
+        <tr>
+          <td colSpan={99} className="text-center py-2">
+            <button onClick={() => setExpanded(true)} className="text-xs text-blue-600 hover:underline">
+              ... 还有 {rows.length - maxVisible} 行，点击展开
+            </button>
+          </td>
+        </tr>
+      )}
+      {expanded && rows.length > maxVisible && (
+        <tr>
+          <td colSpan={99} className="text-center py-2">
+            <button onClick={() => setExpanded(false)} className="text-xs text-blue-600 hover:underline">
+              收起
+            </button>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+// ============================
+// 周期性结算对账 (Tamkoko)
+// ============================
+function SettlementCycleSection({ brand, period, span, store }: {
+  brand: string; period: string; span: string; store: string;
+}) {
+  const [data, setData] = useState<{ rows: CycleRow[] } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    const sp = new URLSearchParams({ brand, period, span });
+    if (store && store !== 'all') sp.set('store', store);
+    fetch(`/api/income/cycle-recon?${sp}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data) setData(json.data);
+        else setError(json.error ?? '\u52a0\u8f7d\u5931\u8d25');
+      })
+      .catch((err: unknown) => setError(getErrorMessage(err)))
+      .finally(() => setLoading(false));
+  }, [brand, period, span, store]);
+
+  if (loading) return <div className="text-sm text-gray-500">\u52a0\u8f7d\u4e2d...</div>;
+  if (error) return <div className="text-red-600 text-sm">{error}</div>;
+  if (!data || !data.rows.length) return <div className="text-sm text-gray-400">\u65e0\u6570\u636e</div>;
+
+  const fmt = (n: number | string) => Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const tBank = data.rows.reduce((s, r) => s + r.bank_amt, 0);
+  const tQimai = data.rows.reduce((s, r) => s + r.qimai_amt, 0);
+  const tDiff = tBank - tQimai;
+  const tCount = data.rows.reduce((s, r) => s + r.qimai_count, 0);
+  const tRate = tQimai > 0 ? (tBank / tQimai) * 100 : 0;
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200 text-sm">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">\u6253\u6b3e\u65e5\u671f</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u94f6\u884c\u91d1\u989d</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u7a97\u53e3\u5929\u6570</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u4f01\u8fc8\u7b14\u6570</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u4f01\u8fc8\u91d1\u989d</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u5dee\u989d</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u5165\u8d26\u7387</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          <CollapsibleTableRows rows={data.rows} maxVisible={15}>
+            {(r, idx) => (
+              <tr key={idx} className="hover:bg-gray-50">
+                <td className="px-3 py-2 whitespace-nowrap">{r.bank_date_str}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
+                <td className="px-3 py-2 text-right">{r.window_days}</td>
+                <td className="px-3 py-2 text-right">{r.qimai_count}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(r.qimai_amt)}</td>
+                <td className={`px-3 py-2 text-right font-mono ${Number(r.diff) < 0 ? 'text-red-600' : Number(r.diff) > 0 ? 'text-green-600' : ''}`}>
+                  {Number(r.diff) >= 0 ? '+' : ''}{fmt(r.diff)}
+                </td>
+                <td className={`px-3 py-2 text-right font-mono ${
+                  Number(r.entry_rate) >= 80 && Number(r.entry_rate) <= 105 ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  {Number(r.entry_rate).toFixed(1)}%
+                </td>
+              </tr>
+            )}
+          </CollapsibleTableRows>
+        </tbody>
+        <tfoot className="bg-gray-100 font-semibold">
+          <tr>
+            <td className="px-3 py-2 whitespace-nowrap">\u5408\u8ba1({data.rows.length} \u7b14)</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(tBank)}</td>
+            <td className="px-3 py-2" />
+            <td className="px-3 py-2 text-right">{tCount}</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(tQimai)}</td>
+            <td className={`px-3 py-2 text-right font-mono ${tDiff < 0 ? 'text-red-600' : tDiff > 0 ? 'text-green-600' : ''}`}>
+              {tDiff >= 0 ? '+' : ''}{fmt(tDiff)}
+            </td>
+            <td className={`px-3 py-2 text-right font-mono font-bold ${
+              tRate >= 80 && tRate <= 105 ? 'text-green-600' : 'text-red-600'
+            }`}>
+              {tRate.toFixed(1)}%
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+// ============================
+// 淘宝闪购对账 (Tamkoko)// ============================
+// 淘宝闪购对账 (Tamkoko)
+// ============================
+function TaobaoReconSection({ brand, period, span, store }: {
+  brand: string; period: string; span: string; store: string;
+}) {
+  const [data, setData] = useState<{ rows: TaobaoRow[] } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    const sp = new URLSearchParams({ brand, period, span });
+    if (store && store !== 'all') sp.set('store', store);
+    fetch(`/api/income/taobao-recon?${sp}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data) setData(json.data);
+        else setError(json.error ?? '加载失败');
+      })
+      .catch((err: unknown) => setError(getErrorMessage(err)))
+      .finally(() => setLoading(false));
+  }, [brand, period, span, store]);
+
+  if (loading) return <div className="text-sm text-gray-500">加载中...</div>;
+  if (error) return <div className="text-red-600 text-sm">{error}</div>;
+  if (!data || !data.rows.length) return <div className="text-sm text-gray-400">无数据</div>;
+
+  const fmt = (n: number | string) => Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const total: TaobaoRow = data.rows.reduce((acc, r) => ({
+    bank_date: '合计',
+    bank_amt: acc.bank_amt + r.bank_amt,
+    summary: '',
+    qimai_window: '',
+    window_days: acc.window_days + r.window_days,
+    qimai_count: acc.qimai_count + r.qimai_count,
+    qimai_total: acc.qimai_total + r.qimai_total,
+    diff: acc.diff + r.diff,
+    entry_rate: acc.qimai_total + r.qimai_total > 0
+      ? Math.round(((acc.bank_amt + r.bank_amt) / (acc.qimai_total + r.qimai_total)) * 10000) / 100
+      : 0,
+  }), { bank_date: '', bank_amt: 0, summary: '', qimai_window: '', window_days: 0, qimai_count: 0, qimai_total: 0, diff: 0, entry_rate: 0 });
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200 text-sm">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">打款日期</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">银行金额</th>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">匹配窗口</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">窗口天数</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈笔数</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈金额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">差额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">入账率</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          <CollapsibleTableRows rows={data.rows} maxVisible={10}>
+            {(r, idx) => (
+              <tr key={idx} className="hover:bg-gray-50">
+                <td className="px-3 py-2 whitespace-nowrap">{r.bank_date}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-xs">{r.qimai_window}</td>
+                <td className="px-3 py-2 text-right">{r.window_days}</td>
+                <td className="px-3 py-2 text-right">{r.qimai_count}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(r.qimai_total)}</td>
+                <td className={`px-3 py-2 text-right font-mono ${r.diff !== 0 ? 'text-red-600' : ''}`}>{fmt(r.diff)}</td>
+                <td className="px-3 py-2 text-right font-mono">{Number(r.entry_rate).toFixed(1)}%</td>
+              </tr>
+            )}
+          </CollapsibleTableRows>
+        </tbody>
+        <tfoot className="bg-gray-100 font-semibold">
+          <tr>
+            <td className="px-3 py-2 whitespace-nowrap">合计</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(total.bank_amt)}</td>
+            <td className="px-3 py-2" />
+            <td className="px-3 py-2 text-right">{total.window_days}</td>
+            <td className="px-3 py-2 text-right">{total.qimai_count}</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(total.qimai_total)}</td>
+            <td className={`px-3 py-2 text-right font-mono ${total.diff !== 0 ? 'text-red-600' : ''}`}>{fmt(total.diff)}</td>
+            <td className="px-3 py-2 text-right font-mono">{Number(total.entry_rate).toFixed(1)}%</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+// ============================
+// 美团外卖对账 (Tamkoko)
+// ============================
+function MeituanReconSection({ brand, period, span, store }: {
+  brand: string; period: string; span: string; store: string;
+}) {
+  const [data, setData] = useState<MeituanData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    const sp = new URLSearchParams({ brand, period, span });
+    if (store && store !== 'all') sp.set('store', store);
+    fetch(`/api/income/meituan-recon?${sp}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data) setData(json.data);
+        else setError(json.error ?? '加载失败');
+      })
+      .catch((err: unknown) => setError(getErrorMessage(err)))
+      .finally(() => setLoading(false));
+  }, [brand, period, span, store]);
+
+  if (loading) return <div className="text-sm text-gray-500">加载中...</div>;
+  if (error) return <div className="text-red-600 text-sm">{error}</div>;
+  if (!data || !data.rows.length) return <div className="text-sm text-gray-400">无数据</div>;
+
+  const fmt = (n: number | string) => Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const total: MeituanRow = data.rows.reduce((acc, r) => ({
+    bank_date: '合计',
+    bank_date_str: '',
+    bank_amt: acc.bank_amt + r.bank_amt,
+    qimai_count: acc.qimai_count + r.qimai_count,
+    qimai_amt: acc.qimai_amt + r.qimai_amt,
+    diff: acc.diff + r.diff,
+    entry_rate: acc.qimai_amt + r.qimai_amt > 0
+      ? Math.round(((acc.bank_amt + r.bank_amt) / (acc.qimai_amt + r.qimai_amt)) * 10000) / 100
+      : 0,
+  }), { bank_date: '', bank_date_str: '', bank_amt: 0, qimai_count: 0, qimai_amt: 0, diff: 0, entry_rate: 0 });
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200 text-sm">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">日期</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">银行笔数</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">银行金额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈笔数</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈金额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">差额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">入账率</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          <CollapsibleTableRows rows={data.rows} maxVisible={15}>
+            {(r: MeituanRow, idx) => (
+              <tr key={idx} className="hover:bg-gray-50">
+                <td className="px-3 py-2 whitespace-nowrap">{r.bank_date_str || r.bank_date}</td>
+                <td className="px-3 py-2 text-right">{r.bank_count ?? '-'}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
+                <td className="px-3 py-2 text-right">{r.qimai_count}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(r.qimai_amt)}</td>
+                <td className={`px-3 py-2 text-right font-mono ${r.diff !== 0 ? 'text-red-600' : ''}`}>{fmt(r.diff)}</td>
+                <td className="px-3 py-2 text-right font-mono">{Number(r.entry_rate).toFixed(1)}%</td>
+              </tr>
+            )}
+          </CollapsibleTableRows>
+        </tbody>
+        <tfoot className="bg-gray-100 font-semibold">
+          <tr>
+            <td className="px-3 py-2 whitespace-nowrap">合计</td>
+            <td className="px-3 py-2 text-right">{total.bank_count ?? '-'}</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(total.bank_amt)}</td>
+            <td className="px-3 py-2 text-right">{total.qimai_count}</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(total.qimai_amt)}</td>
+            <td className={`px-3 py-2 text-right font-mono ${total.diff !== 0 ? 'text-red-600' : ''}`}>{fmt(total.diff)}</td>
+            <td className="px-3 py-2 text-right font-mono">{Number(total.entry_rate).toFixed(1)}%</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+// ============================
+// 美团团购券对账 (Tamkoko)
+// ============================
+function MeituanTuangouSection({ brand, period, span, store }: {
+  brand: string; period: string; span: string; store: string;
+}) {
+  const [data, setData] = useState<MeituanData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    const sp = new URLSearchParams({ brand, period, span });
+    if (store && store !== 'all') sp.set('store', store);
+    fetch(`/api/income/meituan-tuangou-recon?${sp}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data) setData(json.data);
+        else setError(json.error ?? '加载失败');
+      })
+      .catch((err: unknown) => setError(getErrorMessage(err)))
+      .finally(() => setLoading(false));
+  }, [brand, period, span, store]);
+
+  if (loading) return <div className="text-sm text-gray-500">加载中...</div>;
+  if (error) return <div className="text-red-600 text-sm">{error}</div>;
+  if (!data || !data.rows.length) return <div className="text-sm text-gray-400">无数据</div>;
+
+  const fmt = (n: number | string) => Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const total: MeituanRow = data.rows.reduce((acc, r) => ({
+    bank_date: '合计',
+    bank_date_str: '',
+    bank_amt: acc.bank_amt + r.bank_amt,
+    qimai_count: acc.qimai_count + r.qimai_count,
+    qimai_amt: acc.qimai_amt + r.qimai_amt,
+    diff: acc.diff + r.diff,
+    entry_rate: acc.qimai_amt + r.qimai_amt > 0
+      ? Math.round(((acc.bank_amt + r.bank_amt) / (acc.qimai_amt + r.qimai_amt)) * 10000) / 100
+      : 0,
+    store_code: '',
+    window_days: 0,
+  }), { bank_date: '', bank_date_str: '', bank_amt: 0, qimai_count: 0, qimai_amt: 0, diff: 0, entry_rate: 0, store_code: '', window_days: 0 });
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200 text-sm">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">日期</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">银行金额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">窗口天数</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈笔数</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈金额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">差额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">入账率</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          <CollapsibleTableRows rows={data.rows} maxVisible={15}>
+            {(r: MeituanRow, idx) => (
+              <tr key={idx} className="hover:bg-gray-50">
+                <td className="px-3 py-2 whitespace-nowrap">{r.bank_date_str || r.bank_date}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
+                <td className="px-3 py-2 text-right">{r.window_days ?? '-'}</td>
+                <td className="px-3 py-2 text-right">{r.qimai_count}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(r.qimai_amt)}</td>
+                <td className={`px-3 py-2 text-right font-mono ${r.diff !== 0 ? 'text-red-600' : ''}`}>{fmt(r.diff)}</td>
+                <td className="px-3 py-2 text-right font-mono">{Number(r.entry_rate).toFixed(1)}%</td>
+              </tr>
+            )}
+          </CollapsibleTableRows>
+        </tbody>
+        <tfoot className="bg-gray-100 font-semibold">
+          <tr>
+            <td className="px-3 py-2 whitespace-nowrap">合计</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(total.bank_amt)}</td>
+            <td className="px-3 py-2 text-right">{total.window_days ?? '-'}</td>
+            <td className="px-3 py-2 text-right">{total.qimai_count}</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(total.qimai_amt)}</td>
+            <td className={`px-3 py-2 text-right font-mono ${total.diff !== 0 ? 'text-red-600' : ''}`}>{fmt(total.diff)}</td>
+            <td className="px-3 py-2 text-right font-mono">{Number(total.entry_rate).toFixed(1)}%</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+// ============================
+// 抖音团购券对账 (Tamkoko)
+// ============================
+function DouyinReconSection({ brand, period, span, store }: {
+  brand: string; period: string; span: string; store: string;
+}) {
+  const [data, setData] = useState<MeituanData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    const sp = new URLSearchParams({ brand, period, span });
+    if (store && store !== 'all') sp.set('store', store);
+    fetch(`/api/income/douyin-recon?${sp}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data) setData(json.data);
+        else setError(json.error ?? '加载失败');
+      })
+      .catch((err: unknown) => setError(getErrorMessage(err)))
+      .finally(() => setLoading(false));
+  }, [brand, period, span, store]);
+
+  if (loading) return <div className="text-sm text-gray-500">加载中...</div>;
+  if (error) return <div className="text-red-600 text-sm">{error}</div>;
+  if (!data || !data.rows.length) return <div className="text-sm text-gray-400">无数据</div>;
+
+  const fmt = (n: number | string) => Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const total: MeituanRow = data.rows.reduce((acc, r) => ({
+    bank_date: '合计',
+    bank_date_str: '',
+    bank_amt: acc.bank_amt + r.bank_amt,
+    qimai_count: acc.qimai_count + r.qimai_count,
+    qimai_amt: acc.qimai_amt + r.qimai_amt,
+    diff: acc.diff + r.diff,
+    entry_rate: acc.qimai_amt + r.qimai_amt > 0
+      ? Math.round(((acc.bank_amt + r.bank_amt) / (acc.qimai_amt + r.qimai_amt)) * 10000) / 100
+      : 0,
+  }), { bank_date: '', bank_date_str: '', bank_amt: 0, qimai_count: 0, qimai_amt: 0, diff: 0, entry_rate: 0 });
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200 text-sm">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">日期</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">银行笔数</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">银行金额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈笔数</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈金额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">差额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">入账率</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          <CollapsibleTableRows rows={data.rows} maxVisible={15}>
+            {(r: MeituanRow, idx) => (
+              <tr key={idx} className="hover:bg-gray-50">
+                <td className="px-3 py-2 whitespace-nowrap">{r.bank_date_str || r.bank_date}</td>
+                <td className="px-3 py-2 text-right">{r.bank_count ?? '-'}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
+                <td className="px-3 py-2 text-right">{r.qimai_count}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(r.qimai_amt)}</td>
+                <td className={`px-3 py-2 text-right font-mono ${r.diff !== 0 ? 'text-red-600' : ''}`}>{fmt(r.diff)}</td>
+                <td className="px-3 py-2 text-right font-mono">{Number(r.entry_rate).toFixed(1)}%</td>
+              </tr>
+            )}
+          </CollapsibleTableRows>
+        </tbody>
+        <tfoot className="bg-gray-100 font-semibold">
+          <tr>
+            <td className="px-3 py-2 whitespace-nowrap">合计</td>
+            <td className="px-3 py-2 text-right">{total.bank_count ?? '-'}</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(total.bank_amt)}</td>
+            <td className="px-3 py-2 text-right">{total.qimai_count}</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(total.qimai_amt)}</td>
+            <td className={`px-3 py-2 text-right font-mono ${total.diff !== 0 ? 'text-red-600' : ''}`}>{fmt(total.diff)}</td>
+            <td className="px-3 py-2 text-right font-mono">{Number(total.entry_rate).toFixed(1)}%</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+// ============================
+// 蜜可诗微信对账
+// ============================
+function GelatoWechatSection({ brand, period, span, store }: {
+  brand: string; period: string; span: string; store: string;
+}) {
+  const [data, setData] = useState<MeituanData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    const sp = new URLSearchParams({ brand, period, span });
+    if (store && store !== 'all') sp.set('store', store);
+    fetch(`/api/income/gelato-wechat-recon?${sp}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data) setData(json.data);
+        else setError(json.error ?? '加载失败');
+      })
+      .catch((err: unknown) => setError(getErrorMessage(err)))
+      .finally(() => setLoading(false));
+  }, [brand, period, span, store]);
+
+  if (loading) return <div className="text-sm text-gray-500">加载中...</div>;
+  if (error) return <div className="text-red-600 text-sm">{error}</div>;
+  if (!data || !data.rows.length) return <div className="text-sm text-gray-400">无数据</div>;
+
+  const fmt = (n: number | string) => Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const total: MeituanRow = data.rows.reduce((acc, r) => ({
+    bank_date: '合计',
+    bank_date_str: '',
+    bank_amt: acc.bank_amt + r.bank_amt,
+    qimai_count: acc.qimai_count + r.qimai_count,
+    qimai_amt: acc.qimai_amt + r.qimai_amt,
+    diff: acc.diff + r.diff,
+    entry_rate: acc.qimai_amt + r.qimai_amt > 0
+      ? Math.round(((acc.bank_amt + r.bank_amt) / (acc.qimai_amt + r.qimai_amt)) * 10000) / 100
+      : 0,
+  }), { bank_date: '', bank_date_str: '', bank_amt: 0, qimai_count: 0, qimai_amt: 0, diff: 0, entry_rate: 0 });
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200 text-sm">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">日期</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">银行笔数</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">银行金额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈笔数</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈金额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">差额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">入账率</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          <CollapsibleTableRows rows={data.rows} maxVisible={15}>
+            {(r: MeituanRow, idx) => (
+              <tr key={idx} className="hover:bg-gray-50">
+                <td className="px-3 py-2 whitespace-nowrap">{r.bank_date_str || r.bank_date}</td>
+                <td className="px-3 py-2 text-right">{r.bank_count ?? '-'}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
+                <td className="px-3 py-2 text-right">{r.qimai_count}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(r.qimai_amt)}</td>
+                <td className={`px-3 py-2 text-right font-mono ${r.diff !== 0 ? 'text-red-600' : ''}`}>{fmt(r.diff)}</td>
+                <td className="px-3 py-2 text-right font-mono">{Number(r.entry_rate).toFixed(1)}%</td>
+              </tr>
+            )}
+          </CollapsibleTableRows>
+        </tbody>
+        <tfoot className="bg-gray-100 font-semibold">
+          <tr>
+            <td className="px-3 py-2 whitespace-nowrap">合计</td>
+            <td className="px-3 py-2 text-right">{total.bank_count ?? '-'}</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(total.bank_amt)}</td>
+            <td className="px-3 py-2 text-right">{total.qimai_count}</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(total.qimai_amt)}</td>
+            <td className={`px-3 py-2 text-right font-mono ${total.diff !== 0 ? 'text-red-600' : ''}`}>{fmt(total.diff)}</td>
+            <td className="px-3 py-2 text-right font-mono">{Number(total.entry_rate).toFixed(1)}%</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
+// ============================
+// 蜜可诗支付宝对账
+// ============================
+function GelatoAlipaySection({ brand, period, span, store }: {
+  brand: string; period: string; span: string; store: string;
+}) {
+  const [data, setData] = useState<MeituanData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    const sp = new URLSearchParams({ brand, period, span });
+    if (store && store !== 'all') sp.set('store', store);
+    fetch(`/api/income/gelato-alipay-recon?${sp}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.success && json.data) setData(json.data);
+        else setError(json.error ?? '加载失败');
+      })
+      .catch((err: unknown) => setError(getErrorMessage(err)))
+      .finally(() => setLoading(false));
+  }, [brand, period, span, store]);
+
+  if (loading) return <div className="text-sm text-gray-500">加载中...</div>;
+  if (error) return <div className="text-red-600 text-sm">{error}</div>;
+  if (!data || !data.rows.length) return <div className="text-sm text-gray-400">无数据</div>;
+
+  const fmt = (n: number | string) => Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const total: MeituanRow = data.rows.reduce((acc, r) => ({
+    bank_date: '合计',
+    bank_date_str: '',
+    bank_amt: acc.bank_amt + r.bank_amt,
+    qimai_count: acc.qimai_count + r.qimai_count,
+    qimai_amt: acc.qimai_amt + r.qimai_amt,
+    diff: acc.diff + r.diff,
+    entry_rate: acc.qimai_amt + r.qimai_amt > 0
+      ? Math.round(((acc.bank_amt + r.bank_amt) / (acc.qimai_amt + r.qimai_amt)) * 10000) / 100
+      : 0,
+  }), { bank_date: '', bank_date_str: '', bank_amt: 0, qimai_count: 0, qimai_amt: 0, diff: 0, entry_rate: 0 });
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200 text-sm">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">日期</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">银行金额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">窗口天数</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈笔数</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈金额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">差额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">入账率</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          <CollapsibleTableRows rows={data.rows} maxVisible={15}>
+            {(r: MeituanRow, idx) => (
+              <tr key={idx} className="hover:bg-gray-50">
+                <td className="px-3 py-2 whitespace-nowrap">{r.bank_date_str || r.bank_date}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
+                <td className="px-3 py-2 text-right">{r.window_days ?? '-'}</td>
+                <td className="px-3 py-2 text-right">{r.qimai_count}</td>
+                <td className="px-3 py-2 text-right font-mono">{fmt(r.qimai_amt)}</td>
+                <td className={`px-3 py-2 text-right font-mono ${r.diff !== 0 ? 'text-red-600' : ''}`}>{fmt(r.diff)}</td>
+                <td className="px-3 py-2 text-right font-mono">{Number(r.entry_rate).toFixed(1)}%</td>
+              </tr>
+            )}
+          </CollapsibleTableRows>
+        </tbody>
+        <tfoot className="bg-gray-100 font-semibold">
+          <tr>
+            <td className="px-3 py-2 whitespace-nowrap">合计</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(total.bank_amt)}</td>
+            <td className="px-3 py-2 text-right">{total.window_days ?? '-'}</td>
+            <td className="px-3 py-2 text-right">{total.qimai_count}</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(total.qimai_amt)}</td>
+            <td className={`px-3 py-2 text-right font-mono ${total.diff !== 0 ? 'text-red-600' : ''}`}>{fmt(total.diff)}</td>
+            <td className="px-3 py-2 text-right font-mono">{Number(total.entry_rate).toFixed(1)}%</td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
   );
 }

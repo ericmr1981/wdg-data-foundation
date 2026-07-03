@@ -26,9 +26,15 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api/gelatomiiix/income/qimai-detail') ||
     pathname.startsWith('/api/gelatomiiix/income/upload-qimai') ||
     pathname.startsWith('/api/income/bank-entry-stats') ||
-	    pathname.startsWith('/api/gelatomiiix/income/bank-entry-stats') ||
+    pathname.startsWith('/api/income/unmatched-orders') ||
+    pathname.startsWith('/api/income/cycle-recon') ||
+    pathname.startsWith('/api/income/taobao-recon') ||
+    pathname.startsWith('/api/income/meituan-recon') ||
+    pathname.startsWith('/api/income/meituan-tuangou-recon') ||
+    pathname.startsWith('/api/income/douyin-recon') ||
+    pathname.startsWith('/api/income/gelato-wechat-recon') ||
+    pathname.startsWith('/api/income/gelato-alipay-recon') ||
     pathname.startsWith('/api/bonjur/income/upload-qimai') ||
-    pathname.startsWith('/api/bonjur/income/bank-entry-stats') ||
     pathname.startsWith('/api/bonjur/sales/upload-product') ||
     pathname.startsWith('/api/bonjur/sales/qimai-pos') ||
     pathname.startsWith('/api/bonjur/sales/upload-self-service') ||
@@ -55,5 +61,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };
