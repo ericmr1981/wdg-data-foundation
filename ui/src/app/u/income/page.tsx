@@ -55,6 +55,7 @@ type CycleRow = {
   qimai_amt: number;
   diff: number;
   entry_rate: number;
+  ref_period: string | null;  // "2026年4月" when parsed from summary
 }
 
 interface TaobaoRow {
@@ -318,7 +319,7 @@ export default function PaymentPage() {
           {brand === 'tamkoko' && (
             <>
               <details className="border rounded-lg bg-white">
-                <summary className="px-4 py-3 font-medium text-sm cursor-pointer hover:bg-gray-50">周期性结算对账</summary>
+                <summary className="px-4 py-3 font-medium text-sm cursor-pointer hover:bg-gray-50">支付宝+微信对账</summary>
                 <div className="p-4"><SettlementCycleSection brand={brand} period={period} span={span} store={store} /></div>
               </details>
               <details className="border rounded-lg bg-white">
@@ -660,7 +661,7 @@ function CollapsibleTableRows({ rows, maxVisible = 5, children }: {
 }
 
 // ============================
-// 周期性结算对账 (Tamkoko)
+// 支付宝+微信对账 (Tamkoko) — 苏州泰柯总公司转账 vs 企迈微信/支付宝订单
 // ============================
 function SettlementCycleSection({ brand, period, span, store }: {
   brand: string; period: string; span: string; store: string;
@@ -700,11 +701,12 @@ function SettlementCycleSection({ brand, period, span, store }: {
       <table className="min-w-full divide-y divide-gray-200 text-sm">
         <thead className="bg-gray-50">
           <tr>
-            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">\u6253\u6b3e\u65e5\u671f</th>
-            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u94f6\u884c\u91d1\u989d</th>
-            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u7a97\u53e3\u5929\u6570</th>
-            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u4f01\u8fc8\u7b14\u6570</th>
-            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u4f01\u8fc8\u91d1\u989d</th>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">\u8f6c\u8d26\u65e5\u671f</th>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">\u5bf9\u5e94\u6708\u4efd</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u8f6c\u8d26\u91d1\u989d</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u8986\u76d6\u5929\u6570</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u8ba2\u5355\u7b14\u6570</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u8ba2\u5355\u91d1\u989d</th>
             <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u5dee\u989d</th>
             <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u5165\u8d26\u7387</th>
           </tr>
@@ -714,6 +716,7 @@ function SettlementCycleSection({ brand, period, span, store }: {
             {(r, idx) => (
               <tr key={idx} className="hover:bg-gray-50">
                 <td className="px-3 py-2 whitespace-nowrap">{r.bank_date_str}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">{r.ref_period || '-'}</td>
                 <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
                 <td className="px-3 py-2 text-right">{r.window_days}</td>
                 <td className="px-3 py-2 text-right">{r.qimai_count}</td>
@@ -733,6 +736,7 @@ function SettlementCycleSection({ brand, period, span, store }: {
         <tfoot className="bg-gray-100 font-semibold">
           <tr>
             <td className="px-3 py-2 whitespace-nowrap">\u5408\u8ba1({data.rows.length} \u7b14)</td>
+            <td className="px-3 py-2" />
             <td className="px-3 py-2 text-right font-mono">{fmt(tBank)}</td>
             <td className="px-3 py-2" />
             <td className="px-3 py-2 text-right">{tCount}</td>

@@ -8,8 +8,8 @@ import { buildCycleReconQuery, CYCLE_RECON_SUPPORTED_BRANDS } from '@/lib/cycle-
 export const dynamic = 'force-dynamic';
 
 // GET /api/income/cycle-recon?brand=tamkoko&period=2026-04&span=month&store=hz_fuyang&t_offset=3
-// Returns per-bank-entry reconciliation for Tamkoko 苏州泰柯 parent-company
-// settlement cycles (WeChat + Alipay). Uses LAG-based window.
+// Returns per-bank-entry 支付宝+微信对账 for Tamkoko 苏州泰柯 parent-company
+// transfers. Uses LAG-based window to match Qimai WeChat+Alipay orders.
 export async function GET(request: NextRequest) {
   try {
     const sp = new URL(request.url).searchParams;

@@ -11,7 +11,7 @@ const GetSettlementCycleReconInput = z.object({
 
 export const getSettlementCycleReconTool = {
   name: 'get_settlement_cycle_recon',
-  description: `Settlement-cycle reconciliation for Tamkoko (泰柯茶园). Compares Qimai income detail against bank entries grouped by settlement cycle (weekly/monthly) for parent-company 苏州泰柯 transfers.
+  description: `支付宝+微信对账 for Tamkoko (泰柯茶园). Matches parent-company "苏州泰柯" bank transfers against Qimai WECHAT+ALIPAY orders using LAG-based windowing. Returns per-bank-entry rows with bank amount, order count, order amount, and entry rate.
 
 **Parameters**:
 - brand (required): tamkoko only
@@ -19,7 +19,7 @@ export const getSettlementCycleReconTool = {
 - span (optional): month (default), quarter, or year
 - store (optional): filter by store code
 
-**Returns**: { brand, period, span, store, rows: [{ month, qimai_total, order_count, monthly_bank_amt, weekly_bank_amt, monthly_count, weekly_count }] }
+**Returns**: { brand, period, span, store, rows: [{ bank_date, bank_amt, window_days, qimai_count, qimai_amt, diff, entry_rate }] }
 
 **Caveats**:
 - Tamkoko's WECHAT + ALIPAY are NOT direct merchant settlement — they go through parent-company 苏州泰柯 bank transfer. This tool matches Qimai totals against the parent-company transfer entries rather than individual payment processor settlement.
