@@ -15,9 +15,10 @@
 //
 //  ┌─ monthly top-up  "X月月结" ─────────────────────────────────┐
 //  │   pattern: (YYYY年)? X 月 月结                              │
-//  │   → fixed window: 该月月末最后 5 天 (经验拟合, 12月实证      │
-//  │     对账误差 1-8%).                                          │
-//  │   "月结"对应的是该月月末几天, 不是未结的尾巴                  │
+//  │   → declared range [X月1日, X月末].                         │
+//  │   → subtract dates already covered by an EARLIER weekly row │
+//  │     in the same store + same year-month (txn_time < current)│
+//  │   "月结就是上个月周结没顾到的尾部几天"。                      │
 //  └────────────────────────────────────────────────────────────┘
 //
 // Notes:
@@ -131,36 +132,59 @@ export function buildCycleReconQuery(opts: BuildCycleQueryOpts): [string, unknow
                ) AS gs
         FROM bank WHERE kind = 'weekly'
         UNION ALL
-        -- monthly (固定窗口: 月结 = 该月月末 5 天)
-        -- 跨月结算延时让月初 1-3 天的订单也归到这里结算,
-        -- 邻近月末的 5 天窗口是经验最佳拟合 (tested against prod data).
+        -- monthly: declared range = 该月全月 [X.1, X末日]
+        -- 之后 covered/effective CTEs 会减去同店同月份内、txn_time 更早的
+        -- weekly 覆盖 — "月结就是补齐周结没顾到的部分"。
         SELECT bank_txn_id, txn_date, store_code, in_amt, s, kind, ref_year, prev_txn_date,
                GENERATE_SERIES(
-                 (MAKE_DATE(ref_year, m_month, 1) + INTERVAL '1 month' - INTERVAL '5 days')::DATE,
+                 MAKE_DATE(ref_year, m_month, 1),
                  (MAKE_DATE(ref_year, m_month, 1) + INTERVAL '1 month' - INTERVAL '1 day')::DATE,
                  INTERVAL '1 day'
                ) AS gs
         FROM bank WHERE kind = 'monthly'
       ) src
     ),
+    -- For MONTHLY rows, drop dates already covered by an earlier weekly row
+    -- in the same store + same year-month (txn_time strictly earlier).
+    -- "上个月周结没覆盖的尾部几天" — covers the gap that weekly 周结 missed
+    -- inside the same month.
+    covered AS (
+      SELECT DISTINCT cur.bank_txn_id, cur.biz_date
+      FROM expanded cur
+      JOIN bank earlier
+        ON earlier.kind = 'weekly'
+       AND earlier.store_code = cur.store_code
+       AND earlier.txn_date < cur.txn_date
+       AND EXTRACT(YEAR  FROM earlier.txn_date) = EXTRACT(YEAR  FROM cur.biz_date)
+       AND EXTRACT(MONTH FROM earlier.txn_date) = EXTRACT(MONTH FROM cur.biz_date)
+       AND cur.biz_date >= MAKE_DATE(earlier.ref_year, earlier.w_mm1, earlier.w_dd1)
+       AND cur.biz_date <= MAKE_DATE(earlier.ref_year, earlier.w_mm1, earlier.w_dd2)
+      WHERE cur.kind = 'monthly'
+    ),
+    effective AS (
+      SELECT e.bank_txn_id, e.txn_date AS bank_date, e.store_code, e.in_amt AS bank_amt,
+             e.s AS summary, e.kind, e.ref_year, e.prev_txn_date, e.biz_date
+      FROM expanded e
+      LEFT JOIN covered c
+        ON c.bank_txn_id = e.bank_txn_id AND c.biz_date = e.biz_date
+      WHERE c.biz_date IS NULL
+    ),
     declared_qimai AS (
       -- Qimai join for declared kinds (weekly + monthly). One row per
-      -- (bank_txn_id, biz_date). For monthly rows the window is a fixed
-      -- "last 5 days of the referenced month" — there is no subtraction
-      -- against earlier weekly rows.
+      -- (bank_txn_id, biz_date) after subtracting earlier weekly coverage.
       SELECT
         e.bank_txn_id,
-        e.txn_date AS bank_date,
+        e.bank_date,
         e.store_code,
-        e.in_amt AS bank_amt,
-        e.s AS summary,
+        e.bank_amt,
+        e.summary,
         e.kind,
         e.ref_year,
         e.prev_txn_date,
         e.biz_date,
         COUNT(*)::int              AS qimai_count,
         SUM(i.net_amt)::numeric    AS qimai_total
-      FROM expanded e
+      FROM effective e
       LEFT JOIN ${odsSchema}.income_detail i
         ON i.store_code = e.store_code
        AND i.biz_date = e.biz_date
@@ -168,8 +192,8 @@ export function buildCycleReconQuery(opts: BuildCycleQueryOpts): [string, unknow
        AND NOT i.is_member_payment
        AND (i.payment_methods @> ARRAY['微信支付']::text[]
             OR i.payment_methods @> ARRAY['支付宝支付']::text[])
-      GROUP BY e.bank_txn_id, e.txn_date, e.store_code, e.in_amt,
-               e.s, e.kind, e.ref_year, e.prev_txn_date, e.biz_date
+      GROUP BY e.bank_txn_id, e.bank_date, e.store_code, e.bank_amt,
+               e.summary, e.kind, e.ref_year, e.prev_txn_date, e.biz_date
     ),
     -- Roll up to one row per bank_txn_id. Since declared_qimai already
     -- carries biz_date per row, SUM(q.qimai_count) over (txn_id) gives the
