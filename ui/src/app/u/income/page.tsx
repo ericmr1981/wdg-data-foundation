@@ -692,12 +692,16 @@ function SettlementCycleSection({ brand, period, span, store }: {
   if (error) return <div className="text-red-600 text-sm">{error}</div>;
   if (!data || !data.rows.length) return <div className="text-sm text-gray-400">无数据</div>;
 
-  const fmt = (n: number | string) => Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const tBank = data.rows.reduce((s, r) => s + r.bank_amt, 0);
-  const tQimai = data.rows.reduce((s, r) => s + r.qimai_amt, 0);
+  const safeNum = (n: unknown): number => {
+    const v = Number(n ?? 0);
+    return Number.isFinite(v) ? v : 0;
+  };
+  const fmt = (n: unknown) => safeNum(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const tBank = safeNum(data.rows.reduce((s, r) => s + safeNum(r.bank_amt), 0));
+  const tQimai = safeNum(data.rows.reduce((s, r) => s + safeNum(r.qimai_amt), 0));
   const tDiff = tBank - tQimai;
-  const tCount = data.rows.reduce((s, r) => s + r.qimai_count, 0);
-  const tEffDays = data.rows.reduce((s, r) => s + (r.window_days ?? 0), 0);
+  const tCount = data.rows.reduce((s, r) => s + safeNum(r.qimai_count), 0);
+  const tEffDays = data.rows.reduce((s, r) => s + safeNum(r.window_days), 0);
   const tRate = tQimai > 0 ? (tBank / tQimai) * 100 : 0;
 
   return (
@@ -739,16 +743,16 @@ function SettlementCycleSection({ brand, period, span, store }: {
                     : '-'}
                 </td>
                 <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
-                <td className="px-3 py-2 text-right">{r.window_days ?? '-'}</td>
-                <td className="px-3 py-2 text-right">{r.qimai_count}</td>
+                <td className="px-3 py-2 text-right">{safeNum(r.window_days)}</td>
+                <td className="px-3 py-2 text-right">{safeNum(r.qimai_count)}</td>
                 <td className="px-3 py-2 text-right font-mono">{fmt(r.qimai_amt)}</td>
-                <td className={`px-3 py-2 text-right font-mono ${Number(r.diff) < 0 ? 'text-red-600' : Number(r.diff) > 0 ? 'text-green-600' : ''}`}>
-                  {Number(r.diff) >= 0 ? '+' : ''}{fmt(r.diff)}
+                <td className={`px-3 py-2 text-right font-mono ${safeNum(r.diff) < 0 ? 'text-red-600' : safeNum(r.diff) > 0 ? 'text-green-600' : ''}`}>
+                  {safeNum(r.diff) >= 0 ? '+' : ''}{fmt(r.diff)}
                 </td>
                 <td className={`px-3 py-2 text-right font-mono ${
-                  Number(r.entry_rate) >= 80 && Number(r.entry_rate) <= 105 ? 'text-green-600' : 'text-red-600'
+                  safeNum(r.entry_rate) >= 80 && safeNum(r.entry_rate) <= 105 ? 'text-green-600' : 'text-red-600'
                 }`}>
-                  {Number(r.entry_rate).toFixed(1)}%
+                  {safeNum(r.entry_rate).toFixed(1)}%
                 </td>
               </tr>
             )}
