@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 // GET /api/income/cycle-recon?brand=tamkoko&period=2026-04&span=month&store=hz_fuyang&t_offset=3
 // Returns per-bank-entry 支付宝+微信对账 for Tamkoko 苏州泰柯 parent-company
-// transfers. Uses LAG-based window to match Qimai WeChat+Alipay orders.
+// transfers. Window derived from bank summary month, with LAG fallback.
 export async function GET(request: NextRequest) {
   try {
     const sp = new URL(request.url).searchParams;
@@ -36,7 +36,6 @@ export async function GET(request: NextRequest) {
 
     const odsSchema = getOdsSchema(brand);
     const dmSchema = getDmSchema(brand);
-    const incomeOds = odsSchema;
 
     let periodEnd: string | null = null;
     if (period !== 'all') {
@@ -48,7 +47,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [sql, params] = buildCycleReconQuery({
-      odsSchema, dmSchema, incomeOds, store, periodEnd, tOffset,
+      odsSchema, dmSchema, store, periodEnd, tOffset,
     });
     const result = await pool.query(sql, params);
 

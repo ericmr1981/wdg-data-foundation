@@ -47,7 +47,6 @@ interface IncomeLvl2 {
 
 // LAG-based per-bank-entry row for parent-company (苏州泰柯) settlement
 type CycleRow = {
-  bank_date: string;
   bank_date_str: string;
   bank_amt: number;
   window_days: number;

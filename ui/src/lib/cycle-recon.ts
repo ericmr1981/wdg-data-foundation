@@ -9,23 +9,22 @@
 // Algorithm: **摘要月份窗口法**
 //
 // 每笔银行流水的 summary（摘要）字段标注了对应的结算期间，如 "4月月结"
-// 或 "2024年4月月结"。如果摘要包含月份信息，则窗口为该月月末最后 7 天
-// （月结通常在月末批量划转）；如果摘要无月份信息（如 "周结" 或其他摘要），
-// 则回退到 LAG-based 窗口（与前一笔 txn_time 间距推算）。
+// 或 "2024年4月月结"。摘要中匹配 "X月结" / "X月结算" 时，提取月份 X，
+// 窗口为该月月末最后 7 天（月结通常在月末批量划转）。无月份信息的摘要
+// （如 "周结"）回退到 LAG-based 窗口（按前一笔 txn_time 间距推算）。
 //
-//   summary 含月份 → window_end   = 该月最后一天（月末）
-//                     window_start = 该月最后 7 天（月末-6 天）
-//                     （如 "4月月结" → 窗口为 4月24日~4月30日）
-//   summary 无月份 → window_end   = current_txn - (tOffset + 1) days
-//                     window_start = prev_txn    - tOffset days
-//                     first entry  → fallback: current_txn - 10 days
+//   summary 含 X月(月结|月结算) → window_end   = 该月最后一天（月末）
+//                                window_start = 该月最后 7 天（月末-6 天）
+//                                （如 "4月月结" → 窗口为 4月24日~4月30日）
+//   summary 无结算期间          → window_end   = current_txn - (tOffset + 1) days
+//                                window_start = prev_txn    - tOffset days
+//                                first entry  → fallback: current_txn - 10 days
 //
 // tOffset default 3 (same as Meituan). Tune via query param.
 
 export interface BuildCycleQueryOpts {
   odsSchema: string;
   dmSchema: string;
-  incomeOds: string;
   store?: string;
   periodEnd?: string | null;
   tOffset: number;
@@ -37,24 +36,31 @@ export interface BuildCycleQueryOpts {
  * - If summary has "X月" → month-end window (last 7 days of referenced month)
  * - Otherwise → LAG-based window (fallback)
  * Returns rows like:
- *   { bank_date, bank_amt, window_days, qimai_count, qimai_amt, diff, entry_rate, ref_period }
+ *   { bank_date_str, bank_amt, window_days, qimai_count, qimai_amt, diff, entry_rate, ref_period }
  */
 export function buildCycleReconQuery(opts: BuildCycleQueryOpts): [string, unknown[]] {
-  const { odsSchema, dmSchema, incomeOds, store, periodEnd, tOffset } = opts;
+  const { odsSchema, dmSchema, store, periodEnd, tOffset } = opts;
   const params: unknown[] = [];
   const filterClauses: string[] = [];
 
+  // Push params in the same order as they appear in SQL: tOffset first, then store, then periodEnd.
   params.push(tOffset);
+  const tOffsetIdx = 1;
+  let storeIdx: number | null = null;
   if (store && store !== 'all') {
     params.push(store);
-    filterClauses.push(`AND t.store_code = $${params.length}`);
+    storeIdx = params.length; // dynamic — survives future param insertions
+    filterClauses.push(`AND t.store_code = $${storeIdx}`);
   }
   if (periodEnd) {
     params.push(periodEnd);
-    filterClauses.push(`AND t.txn_time < $${params.length}::DATE + INTERVAL '2 months'`);
-    filterClauses.push(`AND t.txn_time >= $${params.length}::DATE - INTERVAL '3 months'`);
+    const periodIdx = params.length;
+    filterClauses.push(`AND t.txn_time < $${periodIdx}::DATE + INTERVAL '2 months'`);
+    filterClauses.push(`AND t.txn_time >= $${periodIdx}::DATE - INTERVAL '3 months'`);
   }
-  const storeParamRef = (store && store !== 'all') ? `$${2}` : `t.store_code`;
+  // store filter applied on the bank_txn side; Qimai is joined by the same store
+  // (carried down from txs → windows → w.store_code)
+  const storeExpr = storeIdx !== null ? `$${storeIdx}` : `w.store_code`;
 
   const sql = `
     WITH txs AS (
@@ -65,11 +71,14 @@ export function buildCycleReconQuery(opts: BuildCycleQueryOpts): [string, unknow
         t.store_code,
         t.summary,
         LAG(t.txn_time) OVER (PARTITION BY t.store_code ORDER BY t.txn_time) AS prev_txn_time,
-        -- Parse referenced month from summary (e.g. "4月月结" → 4)
+        -- Parse referenced month from summary (e.g. "4月月结" → 4).
+        -- Only count when summary clearly marks the entry as a settlement
+        -- (X月结 / X月结算 / X月度结算). Random mentions like "4月订单" or
+        -- "采购4月物料" do NOT match — those don't carry settlement semantics.
         CASE
-          WHEN t.summary ~ '_(\d+)月'     THEN SUBSTRING(t.summary FROM '_(\d+)月')::int
-          WHEN t.summary ~ '(\d{1,2})月月结' THEN SUBSTRING(t.summary FROM '(\d{1,2})月月结')::int
-          WHEN t.summary ~ '(\d{1,2})月'    THEN SUBSTRING(t.summary FROM '(\d{1,2})月')::int
+          WHEN t.summary ~ '(\d{1,2})月结'      THEN SUBSTRING(t.summary FROM '(\d{1,2})月')::int
+          WHEN t.summary ~ '(\d{1,2})月结算'    THEN SUBSTRING(t.summary FROM '(\d{1,2})月')::int
+          WHEN t.summary ~ '(\d{1,2})月度结算' THEN SUBSTRING(t.summary FROM '(\d{1,2})月')::int
           ELSE NULL
         END AS ref_month,
         -- Parse year from summary (e.g. "2024年4月" → 2024), fallback to txn_time year
@@ -91,21 +100,23 @@ export function buildCycleReconQuery(opts: BuildCycleQueryOpts): [string, unknow
         bank_txn_id,
         txn_time,
         in_amt,
+        store_code,
         summary,
         ref_month,
+        ref_year,
         CASE
-          -- 摘要含月份 → 使用该月月末窗口
+          -- 摘要含月份 → 该月月末窗口
           WHEN ref_month IS NOT NULL THEN
             (MAKE_DATE(ref_year, ref_month, 1) + INTERVAL '1 month' - INTERVAL '1 day')::DATE
-          -- 无月份信息 → 回退 LAG-based
+          -- 无结算期间 → 回退 LAG-based
           ELSE
-            (txn_time - ($1::int + 1) * INTERVAL '1 day')::DATE
+            (txn_time - ($${tOffsetIdx}::int + 1) * INTERVAL '1 day')::DATE
         END AS window_end,
         CASE
           WHEN ref_month IS NOT NULL THEN
             (MAKE_DATE(ref_year, ref_month, 1) + INTERVAL '1 month' - INTERVAL '7 days')::DATE
           ELSE
-            (COALESCE(prev_txn_time, txn_time - INTERVAL '10 days')::DATE - $1::int * INTERVAL '1 day')::DATE
+            (COALESCE(prev_txn_time, txn_time - INTERVAL '10 days')::DATE - $${tOffsetIdx}::int * INTERVAL '1 day')::DATE
         END AS window_start
       FROM txs
     ),
@@ -117,21 +128,21 @@ export function buildCycleReconQuery(opts: BuildCycleQueryOpts): [string, unknow
         w.window_start,
         w.window_end,
         w.ref_month,
+        w.ref_year,
         COUNT(i.*)::int AS qimai_count,
         COALESCE(SUM(i.net_amt), 0)::numeric AS qimai_total
       FROM windows w
-      LEFT JOIN ${incomeOds}.income_detail i
-        ON i.store_code = ${storeParamRef}
+      LEFT JOIN ${odsSchema}.income_detail i
+        ON i.store_code = ${storeExpr}
         AND NOT i.is_refund
         AND NOT i.is_member_payment
         AND (i.payment_methods @> ARRAY['微信支付']::text[]
              OR i.payment_methods @> ARRAY['支付宝支付']::text[])
         AND i.biz_date >= w.window_start
         AND i.biz_date <= w.window_end
-      GROUP BY w.bank_txn_id, w.txn_time, w.in_amt, w.window_start, w.window_end, w.ref_month
+      GROUP BY w.bank_txn_id, w.txn_time, w.in_amt, w.window_start, w.window_end, w.ref_month, w.ref_year
     )
     SELECT
-      to_char(txn_time, 'YYYY-MM-DD') AS bank_date,
       to_char(txn_time, 'YYYY-MM-DD') AS bank_date_str,
       bank_amt::numeric AS bank_amt,
       (window_end - window_start + 1)::int AS window_days,
