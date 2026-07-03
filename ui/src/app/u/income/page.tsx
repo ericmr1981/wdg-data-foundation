@@ -62,7 +62,7 @@ type CycleRow = {
 }
 
 interface TaobaoRow {
-  bank_date: string;
+  bank_date_str: string;
   bank_amt: number;
   summary: string;
   qimai_window: string;
@@ -809,21 +809,18 @@ function TaobaoReconSection({ brand, period, span, store }: {
   if (error) return <div className="text-red-600 text-sm">{error}</div>;
   if (!data || !data.rows.length) return <div className="text-sm text-gray-400">无数据</div>;
 
-  const fmt = (n: number | string) => Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const safeNum = (n: unknown): number => {
+    const v = Number(n ?? 0);
+    return Number.isFinite(v) ? v : 0;
+  };
+  const fmt = (n: unknown) => safeNum(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const total: TaobaoRow = data.rows.reduce((acc, r) => ({
-    bank_date: '合计',
-    bank_amt: acc.bank_amt + r.bank_amt,
-    summary: '',
-    qimai_window: '',
-    window_days: acc.window_days + r.window_days,
-    qimai_count: acc.qimai_count + r.qimai_count,
-    qimai_total: acc.qimai_total + r.qimai_total,
-    diff: acc.diff + r.diff,
-    entry_rate: acc.qimai_total + r.qimai_total > 0
-      ? Math.round(((acc.bank_amt + r.bank_amt) / (acc.qimai_total + r.qimai_total)) * 10000) / 100
-      : 0,
-  }), { bank_date: '', bank_amt: 0, summary: '', qimai_window: '', window_days: 0, qimai_count: 0, qimai_total: 0, diff: 0, entry_rate: 0 });
+  const totBank = safeNum(data.rows.reduce((s, r) => s + safeNum(r.bank_amt), 0));
+  const totQimai = safeNum(data.rows.reduce((s, r) => s + safeNum(r.qimai_total), 0));
+  const totCount = safeNum(data.rows.reduce((s, r) => s + safeNum(r.qimai_count), 0));
+  const totDays = safeNum(data.rows.reduce((s, r) => s + safeNum(r.window_days), 0));
+  const totDiff = totBank - totQimai;
+  const totRate = totQimai > 0 ? (totBank / totQimai) * 100 : 0;
 
   return (
     <div className="overflow-x-auto">
@@ -844,14 +841,14 @@ function TaobaoReconSection({ brand, period, span, store }: {
           <CollapsibleTableRows rows={data.rows} maxVisible={10}>
             {(r, idx) => (
               <tr key={idx} className="hover:bg-gray-50">
-                <td className="px-3 py-2 whitespace-nowrap">{r.bank_date}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{r.bank_date_str}</td>
                 <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
-                <td className="px-3 py-2 whitespace-nowrap text-xs">{r.qimai_window}</td>
-                <td className="px-3 py-2 text-right">{r.window_days}</td>
-                <td className="px-3 py-2 text-right">{r.qimai_count}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-xs">{r.qimai_window || '-'}</td>
+                <td className="px-3 py-2 text-right">{safeNum(r.window_days)}</td>
+                <td className="px-3 py-2 text-right">{safeNum(r.qimai_count)}</td>
                 <td className="px-3 py-2 text-right font-mono">{fmt(r.qimai_total)}</td>
-                <td className={`px-3 py-2 text-right font-mono ${r.diff !== 0 ? 'text-red-600' : ''}`}>{fmt(r.diff)}</td>
-                <td className="px-3 py-2 text-right font-mono">{Number(r.entry_rate).toFixed(1)}%</td>
+                <td className={`px-3 py-2 text-right font-mono ${safeNum(r.diff) !== 0 ? 'text-red-600' : ''}`}>{fmt(r.diff)}</td>
+                <td className="px-3 py-2 text-right font-mono">{safeNum(r.entry_rate).toFixed(1)}%</td>
               </tr>
             )}
           </CollapsibleTableRows>
@@ -859,13 +856,13 @@ function TaobaoReconSection({ brand, period, span, store }: {
         <tfoot className="bg-gray-100 font-semibold">
           <tr>
             <td className="px-3 py-2 whitespace-nowrap">合计</td>
-            <td className="px-3 py-2 text-right font-mono">{fmt(total.bank_amt)}</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(totBank)}</td>
             <td className="px-3 py-2" />
-            <td className="px-3 py-2 text-right">{total.window_days}</td>
-            <td className="px-3 py-2 text-right">{total.qimai_count}</td>
-            <td className="px-3 py-2 text-right font-mono">{fmt(total.qimai_total)}</td>
-            <td className={`px-3 py-2 text-right font-mono ${total.diff !== 0 ? 'text-red-600' : ''}`}>{fmt(total.diff)}</td>
-            <td className="px-3 py-2 text-right font-mono">{Number(total.entry_rate).toFixed(1)}%</td>
+            <td className="px-3 py-2 text-right">{totDays}</td>
+            <td className="px-3 py-2 text-right">{totCount}</td>
+            <td className="px-3 py-2 text-right font-mono">{fmt(totQimai)}</td>
+            <td className={`px-3 py-2 text-right font-mono ${totDiff !== 0 ? 'text-red-600' : ''}`}>{fmt(totDiff)}</td>
+            <td className="px-3 py-2 text-right font-mono">{totRate.toFixed(1)}%</td>
           </tr>
         </tfoot>
       </table>

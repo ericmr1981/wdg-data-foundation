@@ -10,12 +10,18 @@ export interface ReconOpts {
   odsSchema: string;
   dmSchema: string;
   incomeOds: string;
-  periodEnd: string;
+  periodEnd: string | null;
 }
 
-export function buildTaobaoReconQuery(opts: ReconOpts): string {
+export function buildTaobaoReconQuery(opts: ReconOpts): [string, unknown[]] {
   const { odsSchema, dmSchema, incomeOds, periodEnd } = opts;
-  return `
+  const params: unknown[] = [];
+  const filterClauses: string[] = [];
+  if (periodEnd) {
+    params.push(periodEnd);
+    filterClauses.push(`AND t.txn_time < $${params.length}::DATE`);
+  }
+  const sql = `
     WITH bank_dedup AS (
       SELECT DISTINCT ON (t.id)
         t.id, t.store_code, t.txn_time, COALESCE(t.in_amt, 0) AS bank_amt
@@ -23,7 +29,7 @@ export function buildTaobaoReconQuery(opts: ReconOpts): string {
       JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
       WHERE c.lvl2_code = 'TAOBAO'
         AND c.classified_source IN ('rule', 'override')
-        AND t.txn_time < '${periodEnd}'::DATE
+        ${filterClauses.join('\n        ')}
     ),
     windows AS (
       SELECT
@@ -40,10 +46,10 @@ export function buildTaobaoReconQuery(opts: ReconOpts): string {
       FROM windows w
     )
     SELECT
-      wf.bank_date,
+      to_char(wf.bank_date, 'YYYY-MM-DD')               AS bank_date_str,
       wf.bank_amt,
-      wf.window_start || ' ~ ' || wf.window_end AS qimai_window,
-      (wf.window_end - wf.window_start) AS window_days,
+      wf.window_start || ' ~ ' || wf.window_end           AS qimai_window,
+      GREATEST(0, wf.window_end - wf.window_start)::int   AS window_days,
       COALESCE(qi.order_count, 0) AS qimai_count,
       COALESCE(qi.total_amt, 0) AS qimai_total,
       wf.bank_amt - COALESCE(qi.total_amt, 0) AS diff,
@@ -62,6 +68,7 @@ export function buildTaobaoReconQuery(opts: ReconOpts): string {
         AND q.biz_date >= wf.window_start
         AND q.biz_date <= wf.window_end
     ) qi ON true
-    ORDER BY wf.bank_date
+    ORDER BY bank_date_str
   `;
+  return [sql, params];
 }

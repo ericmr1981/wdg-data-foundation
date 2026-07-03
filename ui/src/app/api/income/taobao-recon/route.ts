@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     const dmSchema = getDmSchema(brand);
     const incomeOds = odsSchema;  // tamkoko income_detail lives in brand_tamkoko_ods
 
-    let periodEnd: string | undefined = undefined;
+    let periodEnd: string | null = null;
     if (period !== 'all') {
       const range = parsePeriod(period, span);
       if (!range) {
@@ -47,10 +47,10 @@ export async function GET(request: NextRequest) {
       periodEnd = range[1];
     }
 
-    const sql = buildTaobaoReconQuery({
-      odsSchema, dmSchema, incomeOds, periodEnd: periodEnd!,
+    const [sql, params] = buildTaobaoReconQuery({
+      odsSchema, dmSchema, incomeOds, periodEnd,
     });
-    const result = await pool.query(sql);
+    const result = await pool.query(sql, params);
 
     return NextResponse.json({
       success: true,
