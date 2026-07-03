@@ -52,7 +52,7 @@ type CycleRow = {
   window_kind: 'weekly' | 'monthly' | 'fallback';
   ref_year: number;
   summary: string;
-  window_start: string | null;       // effective qimai range start (after subtraction)
+  window_start: string | null;       // YYYY-MM-DD strings (not Date objects → no UTC shift)
   window_end: string | null;
   window_days: number | null;
   qimai_count: number;

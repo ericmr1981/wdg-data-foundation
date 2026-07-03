@@ -169,7 +169,9 @@ export function buildCycleReconQuery(opts: BuildCycleQueryOpts): [string, unknow
       WHERE c.biz_date IS NULL
     ),
     declared_qimai AS (
-      -- Qimai join for declared kinds (weekly + monthly). Per (txn_id, biz_date).
+      -- Qimai join for declared kinds (weekly + monthly). One row per
+      -- (bank_txn_id, biz_date) so the rolled CTE below can SUM without
+      -- cartesian-ing across effective dates.
       SELECT
         ef.bank_txn_id,
         ef.bank_date,
@@ -179,8 +181,9 @@ export function buildCycleReconQuery(opts: BuildCycleQueryOpts): [string, unknow
         ef.kind,
         ef.ref_year,
         ef.prev_txn_date,
-        COUNT(i.*)::int       AS qimai_count,
-        COALESCE(SUM(i.net_amt), 0)::numeric AS qimai_total
+        ef.biz_date,
+        COUNT(*)::int              AS qimai_count,
+        SUM(i.net_amt)::numeric    AS qimai_total
       FROM effective ef
       LEFT JOIN ${odsSchema}.income_detail i
         ON i.store_code = ef.store_code
@@ -190,22 +193,23 @@ export function buildCycleReconQuery(opts: BuildCycleQueryOpts): [string, unknow
        AND (i.payment_methods @> ARRAY['微信支付']::text[]
             OR i.payment_methods @> ARRAY['支付宝支付']::text[])
       GROUP BY ef.bank_txn_id, ef.bank_date, ef.store_code, ef.bank_amt,
-               ef.summary, ef.kind, ef.ref_year, ef.prev_txn_date
+               ef.summary, ef.kind, ef.ref_year, ef.prev_txn_date, ef.biz_date
     ),
-    -- Roll up to one row per bank_txn_id (collapse dates).
+    -- Roll up to one row per bank_txn_id. Since declared_qimai already
+    -- carries biz_date per row, SUM(q.qimai_count) over (txn_id) gives the
+    -- true total without cartesianing.
     rolled AS (
       SELECT
-        q.bank_txn_id, q.bank_date, q.store_code, q.bank_amt,
-        q.summary, q.kind, q.ref_year, q.prev_txn_date,
-        SUM(q.qimai_count)::int              AS qimai_count,
-        SUM(q.qimai_total)::numeric           AS qimai_total,
-        MIN(e.biz_date) AS window_start,
-        MAX(e.biz_date) AS window_end
-      FROM declared_qimai q
-      JOIN effective e
-        ON e.bank_txn_id = q.bank_txn_id AND e.bank_amt = q.bank_amt
-      GROUP BY q.bank_txn_id, q.bank_date, q.store_code, q.bank_amt,
-               q.summary, q.kind, q.ref_year, q.prev_txn_date
+        bank_txn_id, bank_date, store_code, bank_amt,
+        summary, kind, ref_year, prev_txn_date,
+        SUM(qimai_count)::int              AS qimai_count,
+        SUM(qimai_total)::numeric          AS qimai_total,
+        MIN(biz_date) AS window_start,
+        MAX(biz_date) AS window_end,
+        COUNT(*)::int                      AS effective_days
+      FROM declared_qimai
+      GROUP BY bank_txn_id, bank_date, store_code, bank_amt,
+               summary, kind, ref_year, prev_txn_date
     ),
     -- LAG fallback for rows with no parsed range (rare).
     fallback_qimai AS (
@@ -237,7 +241,7 @@ export function buildCycleReconQuery(opts: BuildCycleQueryOpts): [string, unknow
       SELECT
         bank_txn_id, bank_date, store_code, bank_amt,
         summary, kind, ref_year,
-        window_start, window_end,
+        window_start, window_end, effective_days,
         qimai_count, qimai_total
       FROM rolled
       WHERE window_start IS NOT NULL
@@ -249,12 +253,9 @@ export function buildCycleReconQuery(opts: BuildCycleQueryOpts): [string, unknow
       kind                                           AS window_kind,
       ref_year                                       AS ref_year,
       summary                                        AS summary,
-      window_start                                   AS window_start,
-      window_end                                     AS window_end,
-      CASE
-        WHEN window_start IS NULL OR window_end IS NULL THEN NULL
-        ELSE (window_end - window_start + 1)::int
-      END                                            AS window_days,
+      to_char(window_start, 'YYYY-MM-DD')            AS window_start,
+      to_char(window_end, 'YYYY-MM-DD')              AS window_end,
+      effective_days                                 AS window_days,
       COALESCE(qimai_count, 0)::int                  AS qimai_count,
       qimai_total                                    AS qimai_amt,
       (bank_amt - COALESCE(qimai_total, 0))::numeric AS diff,
@@ -269,6 +270,7 @@ export function buildCycleReconQuery(opts: BuildCycleQueryOpts): [string, unknow
         bank_txn_id, bank_date, store_code, bank_amt,
         summary, kind, ref_year,
         fallback_start AS window_start, fallback_end AS window_end,
+        GREATEST(0, (fallback_end - fallback_start + 1))::int AS effective_days,
         qimai_count, qimai_total
       FROM fallback_qimai
       WHERE bank_amt IS NOT NULL
