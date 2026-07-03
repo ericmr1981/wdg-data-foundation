@@ -45,16 +45,20 @@ interface IncomeLvl2 {
   amount: number;
 }
 
-// LAG-based per-bank-entry row for parent-company (苏州泰柯) settlement
+// Tamkoko 支付宝+微信对账 (parent-company 苏州泰柯) — declared-range matching
 type CycleRow = {
   bank_date_str: string;
   bank_amt: number;
-  window_days: number;
+  window_kind: 'weekly' | 'monthly' | 'fallback';
+  ref_year: number;
+  summary: string;
+  window_start: string | null;       // effective qimai range start (after subtraction)
+  window_end: string | null;
+  window_days: number | null;
   qimai_count: number;
   qimai_amt: number;
   diff: number;
   entry_rate: number;
-  ref_period: string | null;  // "2026年4月" when parsed from summary
 }
 
 interface TaobaoRow {
@@ -701,7 +705,9 @@ function SettlementCycleSection({ brand, period, span, store }: {
         <thead className="bg-gray-50">
           <tr>
             <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">转账日期</th>
-            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">对应月份</th>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">类型</th>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">摘要</th>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">窗口</th>
             <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">转账金额</th>
             <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">覆盖天数</th>
             <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">订单笔数</th>
@@ -715,9 +721,24 @@ function SettlementCycleSection({ brand, period, span, store }: {
             {(r, idx) => (
               <tr key={idx} className="hover:bg-gray-50">
                 <td className="px-3 py-2 whitespace-nowrap">{r.bank_date_str}</td>
-                <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">{r.ref_period || '-'}</td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs ${
+                    r.window_kind === 'weekly' ? 'bg-blue-100 text-blue-700' :
+                    r.window_kind === 'monthly' ? 'bg-amber-100 text-amber-700' :
+                    'bg-gray-100 text-gray-600'
+                  }`}>
+                    {r.window_kind === 'weekly' ? '周结' :
+                     r.window_kind === 'monthly' ? '月结' : '回退'}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-xs text-gray-500 max-w-[160px] truncate" title={r.summary}>{r.summary || '-'}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-xs font-mono text-gray-600">
+                  {r.window_start && r.window_end
+                    ? `${r.window_start.slice(5)}~${r.window_end.slice(5)}`
+                    : '-'}
+                </td>
                 <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
-                <td className="px-3 py-2 text-right">{r.window_days}</td>
+                <td className="px-3 py-2 text-right">{r.window_days ?? '-'}</td>
                 <td className="px-3 py-2 text-right">{r.qimai_count}</td>
                 <td className="px-3 py-2 text-right font-mono">{fmt(r.qimai_amt)}</td>
                 <td className={`px-3 py-2 text-right font-mono ${Number(r.diff) < 0 ? 'text-red-600' : Number(r.diff) > 0 ? 'text-green-600' : ''}`}>
@@ -735,6 +756,8 @@ function SettlementCycleSection({ brand, period, span, store }: {
         <tfoot className="bg-gray-100 font-semibold">
           <tr>
             <td className="px-3 py-2 whitespace-nowrap">合计 ({data.rows.length} 笔)</td>
+            <td className="px-3 py-2" />
+            <td className="px-3 py-2" />
             <td className="px-3 py-2" />
             <td className="px-3 py-2 text-right font-mono">{fmt(tBank)}</td>
             <td className="px-3 py-2" />
