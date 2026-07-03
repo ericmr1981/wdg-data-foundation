@@ -678,15 +678,15 @@ function SettlementCycleSection({ brand, period, span, store }: {
       .then(r => r.json())
       .then(json => {
         if (json.success && json.data) setData(json.data);
-        else setError(json.error ?? '\u52a0\u8f7d\u5931\u8d25');
+        else setError(json.error ?? '加载失败');
       })
       .catch((err: unknown) => setError(getErrorMessage(err)))
       .finally(() => setLoading(false));
   }, [brand, period, span, store]);
 
-  if (loading) return <div className="text-sm text-gray-500">\u52a0\u8f7d\u4e2d...</div>;
+  if (loading) return <div className="text-sm text-gray-500">加载中...</div>;
   if (error) return <div className="text-red-600 text-sm">{error}</div>;
-  if (!data || !data.rows.length) return <div className="text-sm text-gray-400">\u65e0\u6570\u636e</div>;
+  if (!data || !data.rows.length) return <div className="text-sm text-gray-400">无数据</div>;
 
   const fmt = (n: number | string) => Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const tBank = data.rows.reduce((s, r) => s + r.bank_amt, 0);
@@ -700,14 +700,14 @@ function SettlementCycleSection({ brand, period, span, store }: {
       <table className="min-w-full divide-y divide-gray-200 text-sm">
         <thead className="bg-gray-50">
           <tr>
-            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">\u8f6c\u8d26\u65e5\u671f</th>
-            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">\u5bf9\u5e94\u6708\u4efd</th>
-            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u8f6c\u8d26\u91d1\u989d</th>
-            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u8986\u76d6\u5929\u6570</th>
-            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u8ba2\u5355\u7b14\u6570</th>
-            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u8ba2\u5355\u91d1\u989d</th>
-            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u5dee\u989d</th>
-            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">\u5165\u8d26\u7387</th>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">转账日期</th>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">对应月份</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">转账金额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">覆盖天数</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">订单笔数</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">订单金额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">差额</th>
+            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">入账率</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200">
@@ -734,7 +734,7 @@ function SettlementCycleSection({ brand, period, span, store }: {
         </tbody>
         <tfoot className="bg-gray-100 font-semibold">
           <tr>
-            <td className="px-3 py-2 whitespace-nowrap">\u5408\u8ba1({data.rows.length} \u7b14)</td>
+            <td className="px-3 py-2 whitespace-nowrap">合计 ({data.rows.length} 笔)</td>
             <td className="px-3 py-2" />
             <td className="px-3 py-2 text-right font-mono">{fmt(tBank)}</td>
             <td className="px-3 py-2" />
