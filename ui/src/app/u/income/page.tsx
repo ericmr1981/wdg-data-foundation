@@ -697,6 +697,7 @@ function SettlementCycleSection({ brand, period, span, store }: {
   const tQimai = data.rows.reduce((s, r) => s + r.qimai_amt, 0);
   const tDiff = tBank - tQimai;
   const tCount = data.rows.reduce((s, r) => s + r.qimai_count, 0);
+  const tEffDays = data.rows.reduce((s, r) => s + (r.window_days ?? 0), 0);
   const tRate = tQimai > 0 ? (tBank / tQimai) * 100 : 0;
 
   return (
@@ -760,17 +761,13 @@ function SettlementCycleSection({ brand, period, span, store }: {
             <td className="px-3 py-2" />
             <td className="px-3 py-2" />
             <td className="px-3 py-2 text-right font-mono">{fmt(tBank)}</td>
-            <td className="px-3 py-2" />
+            <td className="px-3 py-2 text-right">{tEffDays}</td>
             <td className="px-3 py-2 text-right">{tCount}</td>
             <td className="px-3 py-2 text-right font-mono">{fmt(tQimai)}</td>
             <td className={`px-3 py-2 text-right font-mono ${tDiff < 0 ? 'text-red-600' : tDiff > 0 ? 'text-green-600' : ''}`}>
               {tDiff >= 0 ? '+' : ''}{fmt(tDiff)}
             </td>
-            <td className={`px-3 py-2 text-right font-mono font-bold ${
-              tRate >= 80 && tRate <= 105 ? 'text-green-600' : 'text-red-600'
-            }`}>
-              {tRate.toFixed(1)}%
-            </td>
+            <td className="px-3 py-2 text-right font-mono">{tRate.toFixed(1)}%</td>
           </tr>
         </tfoot>
       </table>
