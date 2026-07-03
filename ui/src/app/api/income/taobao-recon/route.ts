@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [sql, params] = buildTaobaoReconQuery({
-      odsSchema, dmSchema, incomeOds, periodEnd,
+      odsSchema, dmSchema, incomeOds, store, periodEnd,
     });
     const result = await pool.query(sql, params);
 
