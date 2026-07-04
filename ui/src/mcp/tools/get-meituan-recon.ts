@@ -27,7 +27,7 @@ export const getMeituanReconTool = {
 **Returns**: { brand, period, span, store, t_offset, rows: [{ biz_date, qimai_amt, qimai_count, bank_amt, bank_count, gap }] }
 
 **Caveats**:
-- 美团 团购 (group-buy) is EXCLUDED — 团购 settles independently via a different bank channel. Use a separate meituan-tuangou-recon tool if needed.
+- 美团 团购 (group-buy) is EXCLUDED — 团购 settles independently via get_meituan_tuangou_recon tool.
 - If entry rate is consistently low, try increasing t_offset (some stores or months have longer settlement delays).
 - Call get_qimai_entry_rate first for the channel-level overview.`,
   inputSchema: GetMeituanReconInput,

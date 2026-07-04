@@ -42,15 +42,25 @@ triggers:
 - 算法: LAG-based 窗口匹配, 每笔银行入账覆盖 [前笔+1天, 当前入账日-3天] 的企迈订单.
 - 返回逐笔银行入账匹配到的企迈订单明细.
 
-### 3. 美团对账 (泰柯)
+### 3. 美团外卖对账 (泰柯)
 
 **工具**: `get_meituan_recon(brand=tamkoko, period?, span?, store?, t_offset=3)`
 
 - 端点: `/api/income/meituan-recon`
 - 适用: 泰柯茶园 钱袋宝 (Rules 665/327)
-- 默认 T+3入账.
-- **排除团购**(美团团购走独立结算).
+- 默认 T+3 入账（校准：293 笔银行入账数据，T+3 覆盖率最优）
+- **排除团购**（美团团购走独立结算，见下文）
 - 返回每日汇总对比: Qimai 订单金额 vs 银行入账.
+
+### 3a. 美团团购对账 (泰柯)
+
+**工具**: `get_meituan_tuangou_recon(brand=tamkoko, period?, span?, store?, t_offset=5)`
+
+- 端点: `/api/income/meituan-tuangou-recon`
+- 适用: 泰柯茶园 美团团购券（独立结算通道）
+- 算法: LAG 连续窗口匹配，每笔银行入账覆盖 [前笔+1天, 当前入账日-1天] 的企迈订单，整体前移 T+5 天
+- 银行入账端通过 `summary LIKE '%团购%'` 识别，与美团外卖分开处理
+- 返回逐笔银行入账及匹配窗口内的企迈订单汇总.
 
 ### 4. 抖音对账 (泰柯)
 
@@ -95,4 +105,6 @@ triggers:
 3. **入账率口径**: 入账率=银行已入账金额/企迈订单金额. 未入账的订单需人工核实.
 4. **上游数据库**: 所有对账工具都读 `bank_txn_classified_snapshot` (预分类快照), 口径统一.
 5. **蜜可诗独家**: WECHAT/ALIPAY 走财付通/支付宝支付科技直接结算, 可逐笔对账. 泰柯的 WECHAT/ALIPAY 走苏州泰柯母公司转账, 走 `get_settlement_cycle_recon` 看月/周汇总.
-6. **团购排除**: 泰柯的美团团购独立结算, 走 `meituan-tuangou-recon` (如有需要). `get_meituan_recon` 默认不包含团购.
+6. **团购排除**: 泰柯的美团团购独立结算, 走 `get_meituan_tuangou_recon`. `get_meituan_recon` 默认不包含团购.
+7. **未入账查询**: `get_unmatched_orders` 只能查 gelatomiiix / bonjur 品牌的月度聚合数据（逐笔订单需在 UI `/u/income` 查看）。
+8. **网商银行 vs 结算周期**: 泰柯有两个支付宝+微信关联渠道——`get_taobao_recon`（淘宝闪购，网商银行打款）和 `get_settlement_cycle_recon`（苏州泰柯母公司周结/月结转账）。前者按入账时间逐笔匹配，后者按摘要解析周月窗口。两个不重复，对应不同银行入账。

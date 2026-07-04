@@ -15,6 +15,7 @@ export { getUnmatchedOrdersTool } from './get-unmatched-orders';
 export { getSettlementCycleReconTool } from './get-settlement-cycle-recon';
 export { getTaobaoReconTool } from './get-taobao-recon';
 export { getMeituanReconTool } from './get-meituan-recon';
+export { getMeituanTuangouReconTool } from './get-meituan-tuangou-recon';
 export { getDouyinReconTool } from './get-douyin-recon';
 export { getGelatoWechatReconTool } from './get-gelato-wechat-recon';
 export { getGelatoAlipayReconTool } from './get-gelato-alipay-recon';

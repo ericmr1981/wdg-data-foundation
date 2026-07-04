@@ -17,6 +17,7 @@ import { getUnmatchedOrdersTool } from './tools/get-unmatched-orders';
 import { getSettlementCycleReconTool } from './tools/get-settlement-cycle-recon';
 import { getTaobaoReconTool } from './tools/get-taobao-recon';
 import { getMeituanReconTool } from './tools/get-meituan-recon';
+import { getMeituanTuangouReconTool } from './tools/get-meituan-tuangou-recon';
 import { getDouyinReconTool } from './tools/get-douyin-recon';
 import { getGelatoWechatReconTool } from './tools/get-gelato-wechat-recon';
 import { getGelatoAlipayReconTool } from './tools/get-gelato-alipay-recon';
@@ -84,6 +85,7 @@ const TOOLS: Record<string, ToolModule> = {
   get_settlement_cycle_recon: getSettlementCycleReconTool,
   get_taobao_recon: getTaobaoReconTool,
   get_meituan_recon: getMeituanReconTool,
+  get_meituan_tuangou_recon: getMeituanTuangouReconTool,
   get_douyin_recon: getDouyinReconTool,
   get_gelato_wechat_recon: getGelatoWechatReconTool,
   get_gelato_alipay_recon: getGelatoAlipayReconTool,
