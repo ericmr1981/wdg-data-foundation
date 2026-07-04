@@ -3,15 +3,15 @@ import pool from '@/lib/db';
 import { normalizeBrand, getOdsSchema, getDmSchema } from '@/lib/brand-server';
 import { getErrorMessage } from '@/lib/query-types';
 import { parsePeriod } from '@/app/api/financial/period-utils';
-import { buildTaobaoReconQuery, TAOBAO_RECON_SUPPORTED_BRANDS } from '@/lib/taobao-recon';
+import { buildTaobaoReconQuery, buildTaobaoDailyQuery, TAOBAO_RECON_SUPPORTED_BRANDS } from '@/lib/taobao-recon';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/income/taobao-recon?brand=tamkoko&period=2026-04&span=month&store=hz_fuyang
-// Returns per-bank-entry TAOBAO settlement reconciliation rows. Each bank
-// entry is matched to Qimai orders in the window
-//   [prev_txn_time - 3 days, current_txn_time - 4 days]
-// so consecutive entries cover a contiguous Qimai range (no gap, no overlap).
+// GET /api/income/taobao-recon?brand=tamkoko&period=2026-04&span=month&store=wz_bjwxc&t_offset=3
+//
+// For 世纪汇店 (wz_bjwxc), pass t_offset to use T+N daily aggregation mode.
+// Default (no t_offset): LAG-based window matching (compatible with 富阳店 网商银行打款).
 export async function GET(request: NextRequest) {
   try {
     const sp = new URL(request.url).searchParams;
@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
     const period = sp.get('period') || 'all';
     const span = sp.get('span') || 'month';
     const store = sp.get('store') || '';
+    const tOffsetRaw = parseInt(sp.get('t_offset') || '', 10);
+    const useDaily = Number.isFinite(tOffsetRaw);
 
     if (!brandParam) {
       return NextResponse.json({ success: false, error: 'brand required' }, { status: 400 });
@@ -47,10 +49,20 @@ export async function GET(request: NextRequest) {
       periodEnd = range[1];
     }
 
-    const [sql, params] = buildTaobaoReconQuery({
-      odsSchema, dmSchema, incomeOds, store, periodEnd,
-    });
-    const result = await pool.query(sql, params);
+    let result;
+    let tOffset: number | undefined;
+    if (useDaily) {
+      tOffset = Number.isFinite(tOffsetRaw) ? Math.max(0, tOffsetRaw) : 3;
+      const [sql, params] = buildTaobaoDailyQuery({
+        odsSchema, dmSchema, incomeOds, store, periodEnd, tOffset,
+      });
+      result = await pool.query(sql, params);
+    } else {
+      const [sql, params] = buildTaobaoReconQuery({
+        odsSchema, dmSchema, incomeOds, store, periodEnd,
+      });
+      result = await pool.query(sql, params);
+    }
 
     return NextResponse.json({
       success: true,
@@ -59,6 +71,8 @@ export async function GET(request: NextRequest) {
         period,
         span,
         store: store || 'all',
+        mode: useDaily ? 'daily' : 'lag',
+        t_offset: tOffset,
         rows: result.rows,
       },
     });

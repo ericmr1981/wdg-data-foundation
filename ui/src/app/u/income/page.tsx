@@ -71,6 +71,11 @@ interface TaobaoRow {
   qimai_total: number;
   diff: number;
   entry_rate: number;
+  // Daily (T+N) mode fields:
+  store_code?: string;
+  qimai_date?: string;
+  qimai_amt?: number;
+  mode?: string;
 }
 
 interface MeituanRow {
@@ -844,7 +849,6 @@ function SettlementCycleSection({ brand, period, span, store }: {
 }
 
 // ============================
-// 淘宝闪购对账 (Tamkoko)// ============================
 // 淘宝闪购对账 (Tamkoko)
 // ============================
 function TaobaoReconSection({ brand, period, span, store }: {
@@ -854,11 +858,14 @@ function TaobaoReconSection({ brand, period, span, store }: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isDaily = store === 'sh_sjh';
+
   useEffect(() => {
     setLoading(true);
     setError(null);
     const sp = new URLSearchParams({ brand, period, span });
     if (store && store !== 'all') sp.set('store', store);
+    if (isDaily) sp.set('t_offset', '3');
     fetch(`/api/income/taobao-recon?${sp}`)
       .then(r => r.json())
       .then(json => {
@@ -867,7 +874,7 @@ function TaobaoReconSection({ brand, period, span, store }: {
       })
       .catch((err: unknown) => setError(getErrorMessage(err)))
       .finally(() => setLoading(false));
-  }, [brand, period, span, store]);
+  }, [brand, period, span, store, isDaily]);
 
   if (loading) return <div className="text-sm text-gray-500">加载中...</div>;
   if (error) return <div className="text-red-600 text-sm">{error}</div>;
@@ -879,12 +886,114 @@ function TaobaoReconSection({ brand, period, span, store }: {
   };
   const fmt = (n: unknown) => safeNum(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const totBank = safeNum(data.rows.reduce((s, r) => s + safeNum(r.bank_amt), 0));
-  const totQimai = safeNum(data.rows.reduce((s, r) => s + safeNum(r.qimai_total), 0));
-  const totCount = safeNum(data.rows.reduce((s, r) => s + safeNum(r.qimai_count), 0));
-  const totDays = safeNum(data.rows.reduce((s, r) => s + safeNum(r.window_days), 0));
-  const totDiff = totBank - totQimai;
-  const totRate = totQimai > 0 ? (totBank / totQimai) * 100 : 0;
+  // T+N 日汇总模式（世纪汇店） — 按月折叠展示
+  if (isDaily) {
+    const getQimaiAmt = (r: TaobaoRow) => safeNum(r.qimai_amt ?? r.qimai_total);
+    const totBank = safeNum(data.rows.reduce((s, r) => s + safeNum(r.bank_amt), 0));
+    const totQimai = safeNum(data.rows.reduce((s, r) => s + getQimaiAmt(r), 0));
+    const totCount = safeNum(data.rows.reduce((s, r) => s + safeNum(r.qimai_count), 0));
+    const totDiff = totBank - totQimai;
+    const totRate = totQimai > 0 ? (totBank / totQimai) * 100 : 0;
+
+    const monthGroups = new Map<string, TaobaoRow[]>();
+    for (const r of data.rows) {
+      const month = (r.bank_date_str || '').substring(0, 7);
+      if (!monthGroups.has(month)) monthGroups.set(month, []);
+      monthGroups.get(month)!.push(r);
+    }
+    const sortedMonths = Array.from(monthGroups.keys()).sort().reverse();
+
+    return (
+      <div className="overflow-x-auto space-y-2">
+        {sortedMonths.map(month => {
+          const monthRows = monthGroups.get(month)!;
+          const mBank  = monthRows.reduce((s, r) => s + safeNum(r.bank_amt), 0);
+          const mQimai = monthRows.reduce((s, r) => s + getQimaiAmt(r), 0);
+          const mCount = monthRows.reduce((s, r) => s + safeNum(r.qimai_count), 0);
+          const mDiff  = mBank - mQimai;
+          const mRate  = mQimai > 0 ? (mBank / mQimai) * 100 : 0;
+          return (
+            <details key={month} className="border rounded bg-white">
+              <summary className="px-3 py-2 cursor-pointer hover:bg-gray-50 flex items-center gap-3 text-sm">
+                <span className="font-medium">{month}</span>
+                <span className="text-xs text-gray-500">({monthRows.length} 笔)</span>
+                <span className="ml-auto text-xs text-gray-600">
+                  银行 {fmt(mBank)} · 企迈 {fmt(mQimai)} ·{' '}
+                  <span className={mRate >= 80 && mRate <= 105 ? 'text-green-700' : 'text-red-700'}>
+                    {mRate.toFixed(1)}%
+                  </span>
+                </span>
+              </summary>
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">打款日期</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">对应企迈日</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">银行金额</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈笔数</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈金额</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">差额</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">入账率</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {monthRows.map((r, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 whitespace-nowrap">{r.bank_date_str}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">{r.qimai_date || '-'}</td>
+                      <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
+                      <td className="px-3 py-2 text-right">{safeNum(r.qimai_count)}</td>
+                      <td className="px-3 py-2 text-right font-mono">{fmt(getQimaiAmt(r))}</td>
+                      <td className={`px-3 py-2 text-right font-mono ${safeNum(r.diff) !== 0 ? 'text-red-600' : ''}`}>{fmt(r.diff)}</td>
+                      <td className={`px-3 py-2 text-right font-mono ${
+                        safeNum(r.entry_rate) >= 80 && safeNum(r.entry_rate) <= 105 ? 'text-green-600' : 'text-red-600'
+                      }`}>{safeNum(r.entry_rate).toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-50 font-medium">
+                  <tr>
+                    <td className="px-3 py-2 text-xs text-gray-600">月小计</td>
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2 text-right font-mono">{fmt(mBank)}</td>
+                    <td className="px-3 py-2 text-right">{mCount}</td>
+                    <td className="px-3 py-2 text-right font-mono">{fmt(mQimai)}</td>
+                    <td className={`px-3 py-2 text-right font-mono ${mDiff !== 0 ? 'text-red-600' : ''}`}>{fmt(mDiff)}</td>
+                    <td className={`px-3 py-2 text-right font-mono ${
+                      mRate >= 80 && mRate <= 105 ? 'text-green-700' : 'text-red-700'
+                    }`}>{mRate.toFixed(1)}%</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </details>
+          );
+        })}
+        <table className="min-w-full divide-y divide-gray-200 text-sm">
+          <tfoot className="bg-gray-100 font-bold">
+            <tr>
+              <td className="px-3 py-2 whitespace-nowrap">总计</td>
+              <td className="px-3 py-2" />
+              <td className="px-3 py-2 text-right font-mono">{fmt(totBank)}</td>
+              <td className="px-3 py-2 text-right">{totCount}</td>
+              <td className="px-3 py-2 text-right font-mono">{fmt(totQimai)}</td>
+              <td className={`px-3 py-2 text-right font-mono ${totDiff !== 0 ? 'text-red-600' : ''}`}>{fmt(totDiff)}</td>
+              <td className={`px-3 py-2 text-right font-mono ${
+                totRate >= 80 && totRate <= 105 ? 'text-green-700' : 'text-red-700'
+              }`}>{totRate.toFixed(1)}%</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    );
+  }
+
+  // LAG 滑动窗口模式（富阳/其他店） — 默认扁平展示
+  const totBank   = safeNum(data.rows.reduce((s, r) => s + safeNum(r.bank_amt), 0));
+  const totQimai  = safeNum(data.rows.reduce((s, r) => s + safeNum(r.qimai_total), 0));
+  const totCount  = safeNum(data.rows.reduce((s, r) => s + safeNum(r.qimai_count), 0));
+  const totDays   = safeNum(data.rows.reduce((s, r) => s + safeNum(r.window_days), 0));
+  const totDiff   = totBank - totQimai;
+  const totRate   = totQimai > 0 ? (totBank / totQimai) * 100 : 0;
 
   return (
     <div className="overflow-x-auto">

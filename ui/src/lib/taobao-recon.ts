@@ -21,6 +21,7 @@ export const TAOBAO_RECON_SUPPORTED_BRANDS = ['tamkoko'] as const;
 
 export const TAOBAO_T_PLUS_X = 3;       // 订单到账延迟 (天)
 export const TAOBAO_INITIAL_LOOKBACK_DAYS = 60;  // 首批数据最多回看天数
+export const TAOBAO_T_DEFAULT = 3;       // T+N 日汇总默认偏移
 
 export interface ReconOpts {
   odsSchema: string;
@@ -103,6 +104,76 @@ export function buildTaobaoReconQuery(opts: ReconOpts): [string, unknown[]] {
              OR q.biz_source = '淘宝闪购')
     ) qi ON true
     ORDER BY w.bank_date
+  `;
+  return [sql, params];
+}
+
+/**
+ * buildTaobaoDailyQuery
+ * 淘宝闪购对账 — T+N 日汇总模式（适用于世纪汇等店）
+ *
+ * 窗口算法: bank_date - T = qimai_biz_date
+ *   即银行入账日 = 企迈订单日 + T 天
+ */
+export function buildTaobaoDailyQuery(opts: ReconOpts & { tOffset: number }): [string, unknown[]] {
+  const { odsSchema, dmSchema, incomeOds, periodEnd, tOffset, store } = opts;
+  const params: unknown[] = [];
+  const filterClauses: string[] = [];
+  params.push(tOffset);
+  const tOffsetIdx = params.length;
+  if (periodEnd) {
+    params.push(periodEnd);
+    filterClauses.push(`AND t.txn_time < $${params.length}::DATE`);
+  }
+  if (store && store !== 'all') {
+    params.push(store);
+    filterClauses.push(`AND t.store_code = $${params.length}`);
+  }
+
+  const sql = `
+    WITH bank_taobao AS (
+      SELECT
+        txn_time::DATE AS bank_date,
+        store_code,
+        SUM(COALESCE(in_amt, 0)) AS bank_amt
+      FROM ${odsSchema}.bank_txn t
+      JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
+      WHERE c.lvl2_code = 'TAOBAO'
+        AND c.classified_source IN ('rule', 'override')
+        ${filterClauses.join('\n        ')}
+      GROUP BY txn_time::DATE, store_code
+    ),
+    qimai_daily AS (
+      SELECT
+        biz_date AS qimai_date,
+        store_code,
+        COUNT(*) AS order_count,
+        COALESCE(SUM(net_amt), 0) AS qimai_amt
+      FROM ${incomeOds}.income_detail
+      WHERE (payment_methods @> ARRAY['淘宝闪购支付']::text[]
+             OR biz_source = '淘宝闪购')
+        AND NOT is_refund
+        AND NOT is_member_payment
+      GROUP BY biz_date, store_code
+    )
+    SELECT
+      to_char(b.bank_date, 'YYYY-MM-DD')            AS bank_date_str,
+      b.bank_amt,
+      b.store_code,
+      to_char(b.bank_date - $${tOffsetIdx}::int * INTERVAL '1 day', 'YYYY-MM-DD')
+        AS qimai_date,
+      COALESCE(q.order_count, 0) AS qimai_count,
+      COALESCE(q.qimai_amt, 0)::numeric AS qimai_amt,
+      b.bank_amt - COALESCE(q.qimai_amt, 0) AS diff,
+      CASE WHEN COALESCE(q.qimai_amt, 0) > 0
+        THEN ROUND((b.bank_amt / q.qimai_amt * 100)::numeric, 2)
+        ELSE 0
+      END AS entry_rate
+    FROM bank_taobao b
+    LEFT JOIN qimai_daily q
+      ON q.qimai_date = b.bank_date - $${tOffsetIdx}::int * INTERVAL '1 day'
+     AND q.store_code = b.store_code
+    ORDER BY b.bank_date
   `;
   return [sql, params];
 }
