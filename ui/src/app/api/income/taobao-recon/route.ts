@@ -3,15 +3,17 @@ import pool from '@/lib/db';
 import { normalizeBrand, getOdsSchema, getDmSchema } from '@/lib/brand-server';
 import { getErrorMessage } from '@/lib/query-types';
 import { parsePeriod } from '@/app/api/financial/period-utils';
-import { buildTaobaoReconQuery, buildTaobaoDailyQuery, TAOBAO_RECON_SUPPORTED_BRANDS } from '@/lib/taobao-recon';
+import { buildTaobaoReconQuery, buildTaobaoDailyQuery, buildTaobaoHybridQuery, TAOBAO_RECON_SUPPORTED_BRANDS } from '@/lib/taobao-recon';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/income/taobao-recon?brand=tamkoko&period=2026-04&span=month&store=hz_fuyang
-// GET /api/income/taobao-recon?brand=tamkoko&period=2026-04&span=month&store=wz_bjwxc&t_offset=3
+// GET /api/income/taobao-recon?brand=tamkoko&period=2026-06&span=month&store=hz_fuyang
+// GET /api/income/taobao-recon?brand=tamkoko&period=2026-06&span=month&store=sh_sjh&t_offset=3
 //
-// For 世纪汇店 (wz_bjwxc), pass t_offset to use T+N daily aggregation mode.
-// Default (no t_offset): LAG-based window matching (compatible with 富阳店 网商银行打款).
+// Three modes:
+//   - LAG (default): sliding window matching for weekly-batch settlements (富阳 old, 滨江)
+//   - DAILY (t_offset=3): T+N daily aggregation (世纪汇 sh_sjh)
+//   - HYBRID (store=hz_fuyang & t_offset=3): LAG for < cutoff, T+N for >= cutoff
 export async function GET(request: NextRequest) {
   try {
     const sp = new URL(request.url).searchParams;
@@ -38,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     const odsSchema = getOdsSchema(brand);
     const dmSchema = getDmSchema(brand);
-    const incomeOds = odsSchema;  // tamkoko income_detail lives in brand_tamkoko_ods
+    const incomeOds = odsSchema;  // tamkogo income_detail lives in brand_tamkoko_ods
 
     let periodEnd: string | null = null;
     if (period !== 'all') {
@@ -49,9 +51,19 @@ export async function GET(request: NextRequest) {
       periodEnd = range[1];
     }
 
+    // Hybrid mode: hz_fuyang with t_offset provided — LAG before 6/16, T+N from 6/16
+    const isHybrid = store === 'hz_fuyang' && useDaily;
+
     let result;
     let tOffset: number | undefined;
-    if (useDaily) {
+    if (isHybrid) {
+      tOffset = Number.isFinite(tOffsetRaw) ? Math.max(0, tOffsetRaw) : 3;
+      const [sql, params] = buildTaobaoHybridQuery({
+        odsSchema, dmSchema, incomeOds, store, periodEnd,
+        tOffset, cutoffDate: '2026-06-16',
+      });
+      result = await pool.query(sql, params);
+    } else if (useDaily) {
       tOffset = Number.isFinite(tOffsetRaw) ? Math.max(0, tOffsetRaw) : 3;
       const [sql, params] = buildTaobaoDailyQuery({
         odsSchema, dmSchema, incomeOds, store, periodEnd, tOffset,
@@ -71,7 +83,7 @@ export async function GET(request: NextRequest) {
         period,
         span,
         store: store || 'all',
-        mode: useDaily ? 'daily' : 'lag',
+        mode: isHybrid ? 'hybrid' : useDaily ? 'daily' : 'lag',
         t_offset: tOffset,
         rows: result.rows,
       },

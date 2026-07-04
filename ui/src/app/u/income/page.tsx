@@ -859,13 +859,14 @@ function TaobaoReconSection({ brand, period, span, store }: {
   const [error, setError] = useState<string | null>(null);
 
   const isDaily = store === 'sh_sjh';
+  const useFolded = isDaily || store === 'hz_fuyang';  // daily-only or hybrid mode
 
   useEffect(() => {
     setLoading(true);
     setError(null);
     const sp = new URLSearchParams({ brand, period, span });
     if (store && store !== 'all') sp.set('store', store);
-    if (isDaily) sp.set('t_offset', '3');
+    if (isDaily || store === 'hz_fuyang') sp.set('t_offset', '3');
     fetch(`/api/income/taobao-recon?${sp}`)
       .then(r => r.json())
       .then(json => {
@@ -886,8 +887,8 @@ function TaobaoReconSection({ brand, period, span, store }: {
   };
   const fmt = (n: unknown) => safeNum(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  // T+N 日汇总模式（世纪汇店） — 按月折叠展示
-  if (isDaily) {
+  // T+N 或混合模式 — 按月折叠展示
+  if (useFolded) {
     const getQimaiAmt = (r: TaobaoRow) => safeNum(r.qimai_amt ?? r.qimai_total);
     const totBank = safeNum(data.rows.reduce((s, r) => s + safeNum(r.bank_amt), 0));
     const totQimai = safeNum(data.rows.reduce((s, r) => s + getQimaiAmt(r), 0));

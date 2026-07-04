@@ -164,16 +164,152 @@ export function buildTaobaoDailyQuery(opts: ReconOpts & { tOffset: number }): [s
         AS qimai_date,
       COALESCE(q.order_count, 0) AS qimai_count,
       COALESCE(q.qimai_amt, 0)::numeric AS qimai_amt,
+      NULL::text AS qimai_window,
+      NULL::int AS window_days,
       b.bank_amt - COALESCE(q.qimai_amt, 0) AS diff,
       CASE WHEN COALESCE(q.qimai_amt, 0) > 0
         THEN ROUND((b.bank_amt / q.qimai_amt * 100)::numeric, 2)
         ELSE 0
-      END AS entry_rate
+      END AS entry_rate,
+      'daily' AS _rmode
     FROM bank_taobao b
     LEFT JOIN qimai_daily q
       ON q.qimai_date = b.bank_date - $${tOffsetIdx}::int * INTERVAL '1 day'
      AND q.store_code = b.store_code
     ORDER BY b.bank_date
+  `;
+  return [sql, params];
+}
+
+/**
+ * buildTaobaoHybridQuery
+ * 淘宝闪购对账 — LAG(旧) + T+N(新) 混合模式
+ *
+ * 适用于富阳店: 6/16 前周结走 LAG 滑动窗口, 6/16 后日结走 T+N.
+ *
+ * 两条子查询 UNION ALL, 结果统一按 bank_date 排序, 每行带 _rmode 标识来源。
+ */
+export function buildTaobaoHybridQuery(opts: ReconOpts & { tOffset: number; cutoffDate: string }): [string, unknown[]] {
+  const { odsSchema, dmSchema, incomeOds, periodEnd, tOffset, store, cutoffDate } = opts;
+  const params: unknown[] = [];
+  const filterClauses: string[] = [];
+
+  if (periodEnd) {
+    params.push(periodEnd);
+    filterClauses.push(`AND t.txn_time < $${params.length}::DATE`);
+  }
+  if (store && store !== 'all') {
+    params.push(store);
+    filterClauses.push(`AND t.store_code = $${params.length}`);
+  }
+
+  params.push(tOffset);
+  const tIdx = params.length;
+  params.push(cutoffDate);
+  const cutoffIdx = params.length;
+
+  const sql = `
+    WITH bank_dedup AS (
+      SELECT DISTINCT ON (t.id)
+        t.id, t.store_code, t.txn_time::DATE AS bank_date, COALESCE(t.in_amt, 0) AS bank_amt
+      FROM ${odsSchema}.bank_txn t
+      JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
+      WHERE c.lvl2_code = 'TAOBAO'
+        AND c.classified_source IN ('rule', 'override')
+        ${filterClauses.join('\n        ')}
+    ),
+    -- 6/16 前: LAG 滑动窗口
+    lag_part AS (
+      SELECT * FROM (
+        SELECT
+          b.bank_date, b.bank_amt, b.store_code,
+          NULL::text AS qimai_date,
+          NULL::int AS window_days_lag,
+          qi.qimai_count, qi.qimai_total AS qimai_amt,
+          b.bank_amt - COALESCE(qi.qimai_total, 0) AS diff,
+          CASE WHEN COALESCE(qi.qimai_total, 0) > 0
+            THEN ROUND((b.bank_amt / qi.qimai_total * 100)::numeric, 2)
+            ELSE 0
+          END AS entry_rate,
+          'lag' AS _rmode
+        FROM (
+          SELECT
+            bank_date, bank_amt, store_code,
+            LAG(bank_date) OVER (PARTITION BY store_code ORDER BY bank_date) AS prev_bank_date
+          FROM bank_dedup
+          WHERE bank_date < $${cutoffIdx}::DATE
+        ) b
+        LEFT JOIN LATERAL (
+          SELECT
+            COUNT(*)::int AS qimai_count,
+            COALESCE(SUM(net_amt), 0) AS qimai_total
+          FROM ${incomeOds}.income_detail q
+          WHERE q.store_code = b.store_code
+            AND q.biz_date BETWEEN
+                COALESCE(b.prev_bank_date, b.bank_date - ${TAOBAO_INITIAL_LOOKBACK_DAYS})::DATE - ${TAOBAO_T_PLUS_X}
+                AND (b.bank_date - 1) - ${TAOBAO_T_PLUS_X}
+            AND NOT q.is_refund
+            AND NOT q.is_member_payment
+            AND (q.payment_methods @> ARRAY['淘宝闪购支付']::text[]
+                 OR q.biz_source = '淘宝闪购')
+        ) qi ON true
+      ) sub
+    ),
+    -- 6/16 起: T+N 日汇总
+    daily_part AS (
+      SELECT
+        b.bank_date,
+        SUM(b.bank_amt) AS bank_amt,
+        b.store_code,
+        to_char(b.bank_date - $${tIdx}::int, 'YYYY-MM-DD') AS qimai_date,
+        COALESCE(q.qimai_count, 0)::int AS qimai_count,
+        COALESCE(q.qimai_amt, 0)::numeric AS qimai_amt,
+        SUM(b.bank_amt) - COALESCE(q.qimai_amt, 0) AS diff,
+        CASE WHEN COALESCE(q.qimai_amt, 0) > 0
+          THEN ROUND((SUM(b.bank_amt) / q.qimai_amt * 100)::numeric, 2)
+          ELSE 0
+        END AS entry_rate,
+        'daily' AS _rmode
+      FROM (
+        SELECT bank_date, store_code, SUM(COALESCE(in_amt, 0)) AS bank_amt
+        FROM ${odsSchema}.bank_txn t
+        JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
+        WHERE c.lvl2_code = 'TAOBAO'
+          AND c.classified_source IN ('rule', 'override')
+          AND t.txn_time::DATE >= $${cutoffIdx}::DATE
+          ${filterClauses.join('\n          ')}
+        GROUP BY txn_time::DATE, store_code
+      ) b
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(*)::int AS qimai_count,
+          COALESCE(SUM(net_amt), 0) AS qimai_amt
+        FROM ${incomeOds}.income_detail q
+        WHERE q.store_code = b.store_code
+          AND q.biz_date = b.bank_date - $${tIdx}::int
+          AND NOT q.is_refund
+          AND NOT q.is_member_payment
+          AND (q.payment_methods @> ARRAY['淘宝闪购支付']::text[]
+               OR q.biz_source = '淘宝闪购')
+      ) q ON true
+      GROUP BY b.bank_date, b.store_code, q.qimai_count, q.qimai_amt
+    )
+    SELECT
+      to_char(bank_date, 'YYYY-MM-DD') AS bank_date_str,
+      bank_amt, store_code,
+      qimai_date,
+      qimai_count, qimai_amt, diff, entry_rate,
+      _rmode
+    FROM lag_part
+    UNION ALL
+    SELECT
+      to_char(bank_date, 'YYYY-MM-DD') AS bank_date_str,
+      bank_amt, store_code,
+      qimai_date,
+      qimai_count, qimai_amt, diff, entry_rate,
+      _rmode
+    FROM daily_part
+    ORDER BY bank_date_str
   `;
   return [sql, params];
 }
