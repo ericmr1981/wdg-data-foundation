@@ -626,20 +626,29 @@ function BankEntryRateSection({ brand, span, period, store, channel, onChannelCh
       <div className="grid grid-cols-3 gap-4">
         {displayChannels.map(ch => {
           const rate = ch.entry_rate;
-          // 4-tier color by entry rate (strict — no per-channel override):
-          //   96-104%  → 深绿
-          //   92-106%  → 浅绿
-          //   90-110%  → 黄色
-          //   其他       → 红色
-          const tier = (rate >= 96 && rate <= 104) ? 'dark-green'
-                     : (rate >= 92 && rate <= 106) ? 'light-green'
-                     : (rate >= 90 && rate <= 110) ? 'yellow'
-                     : 'red';
+
+          // 4-tier entry-rate color spec for BankEntryRateSection cards.
+          // No per-channel hue override — strict tier → color mapping.
+          //
+          //  Tier        | Rate range     | Background   | Border       | Text         | Meaning
+          //  ------------|----------------|--------------|--------------|--------------|----------------------------
+          //  dark-green  | 96% – 104%    | emerald-100  | emerald-300  | emerald-900  | 银行入账与企迈订单金额几乎完全对账
+          //  light-green | 92% – 106%    | emerald-50   | emerald-200  | emerald-700  | 对账金额在合理范围内 (含部分抽佣/退款)
+          //  yellow      | 90% – 110%    | yellow-50    | yellow-300   | yellow-800   | 对账有偏差, 但仍可接受 (可能有跨期订单)
+          //  red         | 其它          | red-50       | red-300      | red-800      | 异常 — 需人工核查 (抽佣/退款/数据缺失)
+          //
+          // Note: tier ranges overlap (96% is both dark-green and light-green,
+          // 104% is dark-green and light-green, etc.). The if-else chain checks
+          // dark-green first so the most precise tier wins.
+          const tier = (rate >= 96 && rate <= 104) ? 'dark-green'   // 最准
+                     : (rate >= 92 && rate <= 106) ? 'light-green'  // 健康
+                     : (rate >= 90 && rate <= 110) ? 'yellow'       // 偏偏差
+                     : 'red';                                      // 异常
           const TIER_COLORS = {
             'dark-green':  'bg-emerald-100 border-emerald-300 text-emerald-900',
             'light-green': 'bg-emerald-50  border-emerald-200 text-emerald-700',
-            'yellow':      'bg-yellow-50  border-yellow-300 text-yellow-800',
-            'red':         'bg-red-50     border-red-300    text-red-800',
+            'yellow':      'bg-yellow-50   border-yellow-300  text-yellow-800',
+            'red':         'bg-red-50      border-red-300     text-red-800',
           } as const;
           const colorClass = TIER_COLORS[tier];
           return (
