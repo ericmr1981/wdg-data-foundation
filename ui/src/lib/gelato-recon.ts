@@ -25,6 +25,9 @@ export function buildGelatoWechatQuery(opts: ReconOpts): [string, unknown[]] {
   const { odsSchema, dmSchema, periodEnd, tOffset, store } = opts;
   const INCOME_ODS = 'gelatomiiix_ods';
   const params: unknown[] = [];
+  // Push tOffset FIRST so $$ for window_end references the right index
+  params.push(tOffset);
+  const tOffsetIdx = params.length;
   const filterClauses: string[] = [];
   if (periodEnd) {
     params.push(periodEnd);
@@ -62,7 +65,7 @@ export function buildGelatoWechatQuery(opts: ReconOpts): [string, unknown[]] {
       to_char(b.bank_date, 'YYYY-MM-DD')        AS bank_date_str,
       b.bank_amt,
       b.store_code,
-      to_char(b.bank_date - $${params.length + 1}::int * INTERVAL '1 day', 'YYYY-MM-DD') AS qimai_date,
+      to_char((b.bank_date - make_interval(days => $${tOffsetIdx}))::DATE, 'YYYY-MM-DD') AS qimai_date,
       COALESCE(q.order_count, 0)::int            AS qimai_count,
       COALESCE(q.qimai_amt, 0)::numeric          AS qimai_amt,
       b.bank_amt - COALESCE(q.qimai_amt, 0)      AS diff,
@@ -72,11 +75,10 @@ export function buildGelatoWechatQuery(opts: ReconOpts): [string, unknown[]] {
       END AS entry_rate
     FROM bank_wechat b
     LEFT JOIN qimai_daily q
-      ON q.qimai_date = b.bank_date - $${params.length + 1}::int * INTERVAL '1 day'
+      ON q.qimai_date = (b.bank_date - make_interval(days => $${tOffsetIdx}))::DATE
      AND q.store_code = b.store_code
     ORDER BY b.bank_date
   `;
-  params.push(tOffset);
   return [sql, params];
 }
 
@@ -89,6 +91,9 @@ export function buildGelatoAlipayQuery(opts: ReconOpts): [string, unknown[]] {
   const { odsSchema, dmSchema, periodEnd, tOffset, store } = opts;
   const INCOME_ODS = 'gelatomiiix_ods';
   const params: unknown[] = [];
+  // Push tOffset FIRST so we can use $$ for the window_end/left_outer places
+  params.push(tOffset);
+  const tOffsetIdx = params.length;
   const filterClauses: string[] = [];
   if (periodEnd) {
     params.push(periodEnd);
@@ -113,14 +118,14 @@ export function buildGelatoAlipayQuery(opts: ReconOpts): [string, unknown[]] {
       SELECT
         b.id, b.store_code, b.txn_time, b.bank_amt,
         LAG(b.txn_time) OVER (PARTITION BY b.store_code ORDER BY b.txn_time) AS prev_txn_time,
-        (b.txn_time - $${params.length + 1}::int * INTERVAL '1 day')::DATE AS window_end
+        ((b.txn_time) - make_interval(days => $${tOffsetIdx}))::DATE AS window_end
       FROM bank_alipay b
     ),
     windows_final AS (
       SELECT
         w.id, w.store_code, w.txn_time::DATE AS bank_date, w.bank_amt,
         w.window_end,
-        COALESCE(w.prev_txn_time::DATE, w.txn_time::DATE - INTERVAL '${GELATO_ALIPAY_LOOKBACK_DAYS} days') AS window_start
+        COALESCE(w.prev_txn_time::DATE, (w.txn_time::DATE - INTERVAL '${GELATO_ALIPAY_LOOKBACK_DAYS} days')::DATE) AS window_start
       FROM windows w
     )
     SELECT
@@ -149,6 +154,5 @@ export function buildGelatoAlipayQuery(opts: ReconOpts): [string, unknown[]] {
     ) qi ON true
     ORDER BY wf.bank_date
   `;
-  params.push(tOffset);
   return [sql, params];
 }
