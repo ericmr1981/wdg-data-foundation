@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
-import { normalizeBrand, getOdsSchema, getDmSchema } from '@/lib/brand-server';
+import { normalizeBrand, getOdsSchema } from '@/lib/brand-server';
 import { getErrorMessage } from '@/lib/query-types';
 import { parsePeriod } from '@/app/api/financial/period-utils';
 
@@ -19,7 +19,6 @@ export async function GET(request: NextRequest) {
     const period = sp.get('period') || 'all';
     const span = sp.get('span') || 'month';
     const store = sp.get('store') || '';
-    const channel = sp.get('channel') || '';
 
     if (!brandParam) {
       return NextResponse.json({ success: false, error: 'brand required' }, { status: 400 });
@@ -38,7 +37,6 @@ export async function GET(request: NextRequest) {
     }
 
     const odsSchema = getOdsSchema(brand);
-    const dmSchema = getDmSchema(brand);
     const incomeOds = brand === 'gelatomiiix' ? 'gelatomiiix_ods' : odsSchema;
 
     let periodStart: string | null = null;
@@ -64,15 +62,10 @@ export async function GET(request: NextRequest) {
       params.push(periodEnd);
       clauses.push(`AND biz_date < $${params.length}::DATE`);
     }
-    if (channel && channel !== 'all') {
-      params.push(channel);
-      clauses.push(`AND channel = $${params.length}`);
-    }
 
     const sql = `
       SELECT
         to_char(biz_date, 'YYYY-MM') AS month,
-        'OTHER' AS channel,
         COUNT(*) AS order_count,
         COALESCE(SUM(net_amt), 0) AS unentered_amt
       FROM ${incomeOds}.income_detail
@@ -86,10 +79,9 @@ export async function GET(request: NextRequest) {
 
     const result = await pool.query(sql, params);
 
-    const rows = (result.rows as { month: string; channel: string; order_count: string; unentered_amt: string }[])
+    const rows = (result.rows as { month: string; order_count: string; unentered_amt: string }[])
       .map(r => ({
         month: r.month,
-        channel: r.channel,
         order_count: parseInt(r.order_count) || 0,
         unentered_amt: parseFloat(r.unentered_amt) || 0,
       }));

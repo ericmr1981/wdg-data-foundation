@@ -2,7 +2,23 @@
  * Sample bank + qimai for MEITUAN to find best T+n offset
  */
 import { Pool } from 'pg';
-const pool = new Pool({ connectionString: 'postgresql://admin_jlin13:Souledge1981@112.124.18.246:9742/dataplatform' });
+
+// Read DB password from env like the rest of the codebase
+const DB_USER = process.env['DB_USER'] || 'admin_jlin13';
+const DB_PASSWORD = process.env['DB_PASSWORD'];
+const DB_HOST = process.env['DB_HOST'] || '112.124.18.246';
+const DB_PORT = process.env['DB_PORT'] || '9742';
+const DB_NAME = process.env['DB_NAME'] || 'dataplatform';
+
+if (!DB_PASSWORD) {
+  console.error('ERROR: DB_PASSWORD environment variable required');
+  console.error('Usage: DB_PASSWORD=... npx ts-node scripts/find-best-tn.ts');
+  process.exit(1);
+}
+
+const pool = new Pool({
+  connectionString: `postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}`,
+});
 
 interface Result {
   n: number;

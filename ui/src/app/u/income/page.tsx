@@ -262,8 +262,6 @@ export default function PaymentPage() {
 
   const formatAmt = (v: number) => v.toLocaleString('zh-CN', { minimumFractionDigits: 2 });
 
-  const fmt = (v: number) => v.toLocaleString('zh-CN', { minimumFractionDigits: 2 });
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -909,12 +907,18 @@ function TaobaoReconSection({ brand, period, span, store }: {
               <tr key={idx} className="hover:bg-gray-50">
                 <td className="px-3 py-2 whitespace-nowrap">{r.bank_date_str}</td>
                 <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
-                <td className="px-3 py-2 whitespace-nowrap text-xs">{r.qimai_window || '-'}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-xs font-mono text-gray-600">{r.qimai_window || '-'}</td>
                 <td className="px-3 py-2 text-right">{safeNum(r.window_days)}</td>
                 <td className="px-3 py-2 text-right">{safeNum(r.qimai_count)}</td>
                 <td className="px-3 py-2 text-right font-mono">{fmt(r.qimai_total)}</td>
-                <td className={`px-3 py-2 text-right font-mono ${safeNum(r.diff) !== 0 ? 'text-red-600' : ''}`}>{fmt(r.diff)}</td>
-                <td className="px-3 py-2 text-right font-mono">{safeNum(r.entry_rate).toFixed(1)}%</td>
+                <td className={`px-3 py-2 text-right font-mono ${safeNum(r.diff) < 0 ? 'text-red-600' : safeNum(r.diff) > 0 ? 'text-green-600' : ''}`}>
+                  {safeNum(r.diff) >= 0 ? '+' : ''}{fmt(r.diff)}
+                </td>
+                <td className={`px-3 py-2 text-right font-mono ${
+                  safeNum(r.entry_rate) >= 80 && safeNum(r.entry_rate) <= 105 ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  {safeNum(r.entry_rate).toFixed(1)}%
+                </td>
               </tr>
             )}
           </CollapsibleTableRows>
@@ -927,8 +931,14 @@ function TaobaoReconSection({ brand, period, span, store }: {
             <td className="px-3 py-2 text-right">{totDays}</td>
             <td className="px-3 py-2 text-right">{totCount}</td>
             <td className="px-3 py-2 text-right font-mono">{fmt(totQimai)}</td>
-            <td className={`px-3 py-2 text-right font-mono ${totDiff !== 0 ? 'text-red-600' : ''}`}>{fmt(totDiff)}</td>
-            <td className="px-3 py-2 text-right font-mono">{totRate.toFixed(1)}%</td>
+            <td className={`px-3 py-2 text-right font-mono ${totDiff < 0 ? 'text-red-600' : totDiff > 0 ? 'text-green-600' : ''}`}>
+              {totDiff >= 0 ? '+' : ''}{fmt(totDiff)}
+            </td>
+            <td className={`px-3 py-2 text-right font-mono ${
+              totRate >= 80 && totRate <= 105 ? 'text-green-600' : 'text-red-600'
+            }`}>
+              {totRate.toFixed(1)}%
+            </td>
           </tr>
         </tfoot>
       </table>

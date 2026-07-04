@@ -26,6 +26,9 @@ export function buildDouyinDailyQuery(opts: ReconOpts): [string, unknown[]] {
   const { odsSchema, dmSchema, incomeOds, periodEnd, tOffset, store } = opts;
   const params: unknown[] = [];
   const filterClauses: string[] = [];
+  // Push tOffset FIRST so $$ references are stable
+  params.push(tOffset);
+  const tOffsetIdx = params.length;
   if (periodEnd) {
     params.push(periodEnd);
     filterClauses.push(`AND t.txn_time < $${params.length}::DATE`);
@@ -64,7 +67,7 @@ export function buildDouyinDailyQuery(opts: ReconOpts): [string, unknown[]] {
       to_char(b.bank_date, 'YYYY-MM-DD')       AS bank_date_str,
       b.bank_amt,
       b.store_code,
-      to_char(b.bank_date - $${params.length + 1}::int * INTERVAL '1 day', 'YYYY-MM-DD') AS qimai_date,
+      to_char(b.bank_date - $${tOffsetIdx}::int * INTERVAL '1 day', 'YYYY-MM-DD') AS qimai_date,
       COALESCE(q.order_count, 0)::int            AS qimai_count,
       COALESCE(q.qimai_amt, 0)::numeric          AS qimai_amt,
       b.bank_amt - COALESCE(q.qimai_amt, 0)      AS diff,
@@ -74,11 +77,10 @@ export function buildDouyinDailyQuery(opts: ReconOpts): [string, unknown[]] {
       END AS entry_rate
     FROM bank_douyin b
     LEFT JOIN qimai_daily q
-      ON q.qimai_date = b.bank_date - $${params.length + 1}::int * INTERVAL '1 day'
+      ON q.qimai_date = b.bank_date - $${tOffsetIdx}::int * INTERVAL '1 day'
      AND q.store_code = b.store_code
     ORDER BY b.bank_date
   `;
-  // Push tOffset as last param
-  params.push(tOffset);
+  // No extra push — tOffset already in params[0]
   return [sql, params];
 }

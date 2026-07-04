@@ -98,8 +98,8 @@ export function buildCycleReconQuery(opts: BuildCycleQueryOpts): [string, unknow
           AS w_mm1,
         SUBSTRING(COALESCE(t.summary, t.purpose, '') FROM '\\d{1,2}\\.(\\d{1,2})-')::int
           AS w_dd1,
-        SUBSTRING(COALESCE(t.summary, t.purpose, '') FROM '-\\d{1,2}\\.(\\d{1,2})')::int
-          AS w_dd2pre,
+        SUBSTRING(COALESCE(t.summary, t.purpose, '') FROM '-(\\d{1,2})\\.\\d{1,2}(周结|周)')::int
+          AS w_mm2,
         SUBSTRING(COALESCE(t.summary, t.purpose, '') FROM '\\d{1,2}\\.\\d{1,2}-\\d{1,2}\\.(\\d{1,2})')::int
           AS w_dd2,
         -- monthly bound (X 月月结 → X)
@@ -127,7 +127,7 @@ export function buildCycleReconQuery(opts: BuildCycleQueryOpts): [string, unknow
         SELECT bank_txn_id, txn_date, store_code, in_amt, s, kind, ref_year, prev_txn_date,
                GENERATE_SERIES(
                  MAKE_DATE(ref_year, w_mm1, w_dd1),
-                 MAKE_DATE(ref_year, w_mm1, w_dd2),
+                 MAKE_DATE(ref_year, COALESCE(w_mm2, w_mm1), w_dd2),
                  INTERVAL '1 day'
                ) AS gs
         FROM bank WHERE kind = 'weekly'
@@ -158,7 +158,7 @@ export function buildCycleReconQuery(opts: BuildCycleQueryOpts): [string, unknow
        AND EXTRACT(YEAR  FROM earlier.txn_date) = EXTRACT(YEAR  FROM cur.biz_date)
        AND EXTRACT(MONTH FROM earlier.txn_date) = EXTRACT(MONTH FROM cur.biz_date)
        AND cur.biz_date >= MAKE_DATE(earlier.ref_year, earlier.w_mm1, earlier.w_dd1)
-       AND cur.biz_date <= MAKE_DATE(earlier.ref_year, earlier.w_mm1, earlier.w_dd2)
+       AND cur.biz_date <= MAKE_DATE(earlier.ref_year, COALESCE(earlier.w_mm2, earlier.w_mm1), earlier.w_dd2)
       WHERE cur.kind = 'monthly'
     ),
     effective AS (

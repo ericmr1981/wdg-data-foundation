@@ -28,6 +28,9 @@ export function buildMeituanTuangouQuery(opts: TuangouOpts): [string, unknown[]]
   const { odsSchema, dmSchema, incomeOds, periodEnd, tOffset, store } = opts;
   const params: unknown[] = [];
   const filterClauses: string[] = [];
+  // Push tOffset FIRST so $$ references are stable
+  params.push(tOffset);
+  const tOffsetIdx = params.length;
   if (periodEnd) {
     params.push(periodEnd);
     filterClauses.push(`AND t.txn_time < $${params.length}::DATE`);
@@ -59,8 +62,8 @@ export function buildMeituanTuangouQuery(opts: TuangouOpts): [string, unknown[]]
     qimai_window AS (
       SELECT
         id, store_code, bank_date, bank_amt, prev_date, w_end_raw, w_start_raw,
-        (w_end_raw   - $${params.length + 1}::int) AS qimai_end,
-        (w_start_raw - $${params.length + 1}::int) AS qimai_start
+        (w_end_raw   - $${tOffsetIdx}::int) AS qimai_end,
+        (w_start_raw - $${tOffsetIdx}::int) AS qimai_start
       FROM raw_window
     )
     SELECT
@@ -90,7 +93,5 @@ export function buildMeituanTuangouQuery(opts: TuangouOpts): [string, unknown[]]
     ) qi ON true
     ORDER BY qw.bank_date
   `;
-  // Push tOffset as the last param (used in qimai_start/end shift)
-  params.push(tOffset);
   return [sql, params];
 }
