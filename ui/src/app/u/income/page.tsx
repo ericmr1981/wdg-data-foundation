@@ -102,12 +102,21 @@ export default function PaymentPage() {
   const [error, setError] = useState<string | null>(null);
   const [span, setSpan] = useState<'month' | 'quarter' | 'year'>('month');
   const [period, setPeriod] = useState('all');
-  const [store, setStore] = useState('all');
-  const [stores, setStores] = useState<{ code: string; name: string }[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<string>('');
   const [search, setSearch] = useState('');
 
-  const urlParamsLoadedRef = useRef(false);
+  // Read store from URL synchronously so initial child render uses the right
+  // value (avoids 1st useEffect firing with store='all' before URL effect runs).
+  const [store, setStore] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const s = new URLSearchParams(window.location.search).get('store');
+      return s || 'all';
+    }
+    return 'all';
+  });
+  const [stores, setStores] = useState<{ code: string; name: string }[]>([]);
+
+  const urlParamsLoadedRef = useRef(true);
 
   // 从 URL 参数继承筛选条件（仅在首次加载时）
   useEffect(() => {
@@ -118,7 +127,6 @@ export default function PaymentPage() {
     if (s && ['month', 'quarter', 'year'].includes(s)) setSpan(s as any);
     if (p) setPeriod(p);
     if (st) setStore(st);
-    urlParamsLoadedRef.current = true;
   }, []);
 
   // Income metrics
