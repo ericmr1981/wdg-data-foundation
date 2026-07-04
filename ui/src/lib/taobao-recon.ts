@@ -1,21 +1,26 @@
 /**
  * taobao-recon.ts
- * 淘宝闪购对账 — 定期自动转账窗口匹配
+ * 淘宝闪购对账 — 连续滑动窗口
  *
- * 淘宝闪购平台把门店订单金额按周/双周自动转账到门店账户，定期打款而非逐笔。
- * 因此窗口算法 = gap-split: 上一笔打款的后一天 ~ 当前打款的前一天，
- * 但限制最长 14 天回看（防止长时间空窗导致窗口无限大）。
+ * 步骤 1: 基于银行入账时间计算原始窗口
+ *         w_end_raw = bank_date - 1
+ *         w_start_raw = prev_bank_date (or bank_date - 60 for first entry)
+ *   这样多个相邻窗口首尾衔接 (无重叠, 无间隙), 覆盖整个打款周期。
  *
- *   w_end   = bank_date - 1 (前一天完成订单的结算)
- *   w_start = MAX(prev_bank_date + 1, bank_date - 14 days)
+ * 步骤 2: 窗口往前平移 T_PLUS_X 天, 得到 qimai 订单日期范围。
+ *   因为订单要先到母公司 (T+x 天延迟), 然后母公司打款到门店。
+ *   qimai_start = w_start_raw - T_PLUS_X
+ *   qimai_end   = w_end_raw   - T_PLUS_X
  *
- * Tested against 12 笔 hz_fuyang 淘宝闪购打款：avg rate 91-92%（含
- * 淘宝平台 6-15% 抽佣）。逐笔差额来自平台费率和退款时差。
+ * 步骤 3: 在该 qimai 范围内统计 该门店 的 淘宝闪购订单 (net_amt sum).
+ *
+ * T_PLUS_X 硬编码 3 天 (淘宝商户日结典型 T+1~T+5 范围中位).
  */
 
 export const TAOBAO_RECON_SUPPORTED_BRANDS = ['tamkoko'] as const;
 
-export const TAOBAO_MAX_LOOKBACK_DAYS = 14;
+export const TAOBAO_T_PLUS_X = 3;       // 订单到账延迟 (天)
+export const TAOBAO_INITIAL_LOOKBACK_DAYS = 60;  // 首批数据最多回看天数
 
 export interface ReconOpts {
   odsSchema: string;
@@ -41,55 +46,63 @@ export function buildTaobaoReconQuery(opts: ReconOpts): [string, unknown[]] {
   const sql = `
     WITH bank_dedup AS (
       SELECT DISTINCT ON (t.id)
-        t.id, t.store_code, t.txn_time, COALESCE(t.in_amt, 0) AS bank_amt
+        t.id, t.store_code, t.txn_time::DATE AS bank_date, COALESCE(t.in_amt, 0) AS bank_amt
       FROM ${odsSchema}.bank_txn t
       JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
       WHERE c.lvl2_code = 'TAOBAO'
         AND c.classified_source IN ('rule', 'override')
         ${filterClauses.join('\n        ')}
     ),
-    laggy AS (
+    -- Sorted per store; LAG gives previous bank_date in same store
+    bank_ordered AS (
       SELECT
-        id, store_code, txn_time, bank_amt,
-        LAG(txn_time::DATE) OVER (PARTITION BY store_code ORDER BY txn_time) AS prev_date
+        id, store_code, bank_date, bank_amt,
+        LAG(bank_date) OVER (PARTITION BY store_code ORDER BY bank_date) AS prev_bank_date
       FROM bank_dedup
     ),
-    windows AS (
+    -- Step 1: 连续的"结算周期窗口 (银行入账维度)"
+    raw_window AS (
       SELECT
-        id, store_code, txn_time, bank_amt, prev_date,
-        (txn_time::DATE - 1)                                                                  AS w_end,
-        GREATEST(
-          COALESCE(prev_date, txn_time::DATE - INTERVAL '${TAOBAO_MAX_LOOKBACK_DAYS} days') + INTERVAL '1 day',
-          txn_time::DATE - INTERVAL '${TAOBAO_MAX_LOOKBACK_DAYS} days'
-        )::DATE                                                                                AS w_start
-      FROM laggy
+        id, store_code, bank_date, bank_amt, prev_bank_date,
+        (bank_date - 1)                                     AS w_end_raw,
+        COALESCE(prev_bank_date, bank_date - ${TAOBAO_INITIAL_LOOKBACK_DAYS})::DATE  AS w_start_raw
+      FROM bank_ordered
+    ),
+    -- Step 2: 窗口整体向前平移 T_PLUS_X 天, 得到实际的企迈订单日期范围
+    qimai_window AS (
+      SELECT
+        id, store_code, bank_date, bank_amt, prev_bank_date, w_end_raw, w_start_raw,
+        (w_end_raw   - ${TAOBAO_T_PLUS_X})::DATE                       AS qimai_end,
+        (w_start_raw - ${TAOBAO_T_PLUS_X})::DATE                       AS qimai_start
+      FROM raw_window
     )
     SELECT
-      to_char(w.txn_time::DATE, 'YYYY-MM-DD')        AS bank_date_str,
+      to_char(w.bank_date, 'YYYY-MM-DD')                    AS bank_date_str,
       w.bank_amt,
-      to_char(w.w_start, 'YYYY-MM-DD') || ' ~ ' || to_char(w.w_end, 'YYYY-MM-DD') AS qimai_window,
-      GREATEST(0, w.w_end - w.w_start + 1)::int       AS window_days,
-      COALESCE(qi.qimai_count, 0)::int                AS qimai_count,
-      COALESCE(qi.qimai_total, 0)::numeric            AS qimai_total,
-      w.bank_amt - COALESCE(qi.qimai_total, 0)        AS diff,
+      to_char(w.qimai_start, 'YYYY-MM-DD') || ' ~ '
+        || to_char(w.qimai_end, 'YYYY-MM-DD')                AS qimai_window,
+      GREATEST(0, w.qimai_end - w.qimai_start + 1)::int      AS window_days,
+      COALESCE(qi.qimai_count, 0)::int                       AS qimai_count,
+      COALESCE(qi.qimai_total, 0)::numeric                   AS qimai_total,
+      w.bank_amt - COALESCE(qi.qimai_total, 0)               AS diff,
       CASE WHEN COALESCE(qi.qimai_total, 0) > 0
         THEN ROUND((w.bank_amt / qi.qimai_total * 100)::numeric, 2)
         ELSE 0
-      END                                            AS entry_rate
-    FROM windows w
+      END                                                   AS entry_rate
+    FROM qimai_window w
     LEFT JOIN LATERAL (
       SELECT
-        COUNT(*)            AS qimai_count,
+        COUNT(*)              AS qimai_count,
         COALESCE(SUM(net_amt), 0) AS qimai_total
       FROM ${incomeOds}.income_detail q
       WHERE q.store_code = w.store_code
-        AND q.biz_date BETWEEN w.w_start AND w.w_end
+        AND q.biz_date BETWEEN w.qimai_start AND w.qimai_end
         AND NOT q.is_refund
         AND NOT q.is_member_payment
         AND (q.payment_methods @> ARRAY['淘宝闪购支付']::text[]
              OR q.biz_source = '淘宝闪购')
     ) qi ON true
-    ORDER BY w.txn_time
+    ORDER BY w.bank_date
   `;
   return [sql, params];
 }
