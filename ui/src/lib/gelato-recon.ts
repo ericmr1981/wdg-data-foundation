@@ -4,32 +4,48 @@
  */
 
 export const GELATO_RECON_SUPPORTED_BRANDS = ['gelatomiiix'];
+export const GELATO_T_DEFAULT = 1;          // 微信 T+1
+export const GELATO_ALIPAY_T_OFFSET = 4;   // 支付宝 T+4 (window_end = bank_date - 4)
+export const GELATO_ALIPAY_LOOKBACK_DAYS = 30;
 
 export interface ReconOpts {
   odsSchema: string;
   dmSchema: string;
   incomeOds: string;
-  periodEnd: string;
-  tOffset?: number;
+  periodEnd: string | null;
+  tOffset: number;
+  store?: string | null;
 }
 
 /**
  * 微信支付对账（固定 T+1 偏移）
  * gelatomiiix 的 income ODS 使用 legacy schema: gelatomiiix_ods
  */
-export function buildGelatoWechatQuery(opts: ReconOpts): string {
+export function buildGelatoWechatQuery(opts: ReconOpts): [string, unknown[]] {
+  const { odsSchema, dmSchema, periodEnd, tOffset, store } = opts;
   const INCOME_ODS = 'gelatomiiix_ods';
-  return `
+  const params: unknown[] = [];
+  const filterClauses: string[] = [];
+  if (periodEnd) {
+    params.push(periodEnd);
+    filterClauses.push(`AND t.txn_time < $${params.length}::DATE`);
+  }
+  if (store && store !== 'all') {
+    params.push(store);
+    filterClauses.push(`AND t.store_code = $${params.length}`);
+  }
+
+  const sql = `
     WITH bank_wechat AS (
       SELECT
         txn_time::DATE AS bank_date,
         store_code,
         SUM(COALESCE(in_amt, 0)) AS bank_amt
-      FROM ${opts.odsSchema}.bank_txn t
-      JOIN ${opts.dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
+      FROM ${odsSchema}.bank_txn t
+      JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
       WHERE c.lvl2_code = 'WECHAT'
         AND c.classified_source IN ('rule', 'override')
-        AND t.txn_time < '${opts.periodEnd}'::DATE
+        ${filterClauses.join('\n        ')}
       GROUP BY txn_time::DATE, store_code
     ),
     qimai_daily AS (
@@ -43,22 +59,25 @@ export function buildGelatoWechatQuery(opts: ReconOpts): string {
       GROUP BY biz_date, store_code
     )
     SELECT
-      b.bank_date,
+      to_char(b.bank_date, 'YYYY-MM-DD')        AS bank_date_str,
       b.bank_amt,
       b.store_code,
-      COALESCE(q.order_count, 0) AS qimai_count,
-      COALESCE(q.qimai_amt, 0) AS qimai_amt,
-      b.bank_amt - COALESCE(q.qimai_amt, 0) AS diff,
+      to_char(b.bank_date - $${params.length + 1}::int * INTERVAL '1 day', 'YYYY-MM-DD') AS qimai_date,
+      COALESCE(q.order_count, 0)::int            AS qimai_count,
+      COALESCE(q.qimai_amt, 0)::numeric          AS qimai_amt,
+      b.bank_amt - COALESCE(q.qimai_amt, 0)      AS diff,
       CASE WHEN COALESCE(q.qimai_amt, 0) > 0
         THEN ROUND((b.bank_amt / q.qimai_amt * 100)::numeric, 2)
         ELSE 0
       END AS entry_rate
     FROM bank_wechat b
     LEFT JOIN qimai_daily q
-      ON q.qimai_date = b.bank_date - INTERVAL '1 day'
-      AND q.store_code = b.store_code
+      ON q.qimai_date = b.bank_date - $${params.length + 1}::int * INTERVAL '1 day'
+     AND q.store_code = b.store_code
     ORDER BY b.bank_date
   `;
+  params.push(tOffset);
+  return [sql, params];
 }
 
 /**
@@ -66,40 +85,53 @@ export function buildGelatoWechatQuery(opts: ReconOpts): string {
  * gelatomiiix 的 income ODS 使用 legacy schema: gelatomiiix_ods
  * 第一笔打款的回退窗口为 30 天
  */
-export function buildGelatoAlipayQuery(opts: ReconOpts): string {
+export function buildGelatoAlipayQuery(opts: ReconOpts): [string, unknown[]] {
+  const { odsSchema, dmSchema, periodEnd, tOffset, store } = opts;
   const INCOME_ODS = 'gelatomiiix_ods';
-  return `
+  const params: unknown[] = [];
+  const filterClauses: string[] = [];
+  if (periodEnd) {
+    params.push(periodEnd);
+    filterClauses.push(`AND t.txn_time < $${params.length}::DATE`);
+  }
+  if (store && store !== 'all') {
+    params.push(store);
+    filterClauses.push(`AND t.store_code = $${params.length}`);
+  }
+
+  const sql = `
     WITH bank_alipay AS (
       SELECT
         t.id, t.store_code, t.txn_time, COALESCE(t.in_amt, 0) AS bank_amt
-      FROM ${opts.odsSchema}.bank_txn t
-      JOIN ${opts.dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
+      FROM ${odsSchema}.bank_txn t
+      JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
       WHERE c.lvl2_code = 'ALIPAY'
         AND c.classified_source IN ('rule', 'override')
-        AND t.txn_time < '${opts.periodEnd}'::DATE
+        ${filterClauses.join('\n        ')}
     ),
     windows AS (
       SELECT
         b.id, b.store_code, b.txn_time, b.bank_amt,
         LAG(b.txn_time) OVER (PARTITION BY b.store_code ORDER BY b.txn_time) AS prev_txn_time,
-        (b.txn_time - INTERVAL '4 days')::DATE AS window_end
+        (b.txn_time - $${params.length + 1}::int * INTERVAL '1 day')::DATE AS window_end
       FROM bank_alipay b
     ),
     windows_final AS (
       SELECT
         w.id, w.store_code, w.txn_time::DATE AS bank_date, w.bank_amt,
         w.window_end,
-        COALESCE(w.prev_txn_time::DATE, w.txn_time::DATE - 30) AS window_start
+        COALESCE(w.prev_txn_time::DATE, w.txn_time::DATE - INTERVAL '${GELATO_ALIPAY_LOOKBACK_DAYS} days') AS window_start
       FROM windows w
     )
     SELECT
-      wf.bank_date,
+      to_char(wf.bank_date, 'YYYY-MM-DD')                                            AS bank_date_str,
       wf.bank_amt,
-      wf.window_start || ' ~ ' || wf.window_end AS qimai_window,
-      (wf.window_end - wf.window_start) AS window_days,
-      COALESCE(qi.order_count, 0) AS qimai_count,
-      COALESCE(qi.total_amt, 0) AS qimai_total,
-      wf.bank_amt - COALESCE(qi.total_amt, 0) AS diff,
+      wf.store_code,
+      to_char(wf.window_start, 'YYYY-MM-DD') || ' ~ ' || to_char(wf.window_end, 'YYYY-MM-DD') AS qimai_window,
+      GREATEST(0, wf.window_end - wf.window_start + 1)::int                          AS window_days,
+      COALESCE(qi.order_count, 0)::int                                              AS qimai_count,
+      COALESCE(qi.total_amt, 0)::numeric                                            AS qimai_total,
+      wf.bank_amt - COALESCE(qi.total_amt, 0)                                        AS diff,
       CASE WHEN COALESCE(qi.total_amt, 0) > 0
         THEN ROUND((wf.bank_amt / qi.total_amt * 100)::numeric, 2)
         ELSE 0
@@ -117,4 +149,6 @@ export function buildGelatoAlipayQuery(opts: ReconOpts): string {
     ) qi ON true
     ORDER BY wf.bank_date
   `;
+  params.push(tOffset);
+  return [sql, params];
 }

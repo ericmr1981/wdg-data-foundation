@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     // Gelato's income_detail is in the legacy `gelatomiiix_ods` schema.
     const incomeOds = 'gelatomiiix_ods';
 
-    let periodEnd: string | undefined = undefined;
+    let periodEnd: string | null = null;
     if (period !== 'all') {
       const range = parsePeriod(period, span);
       if (!range) {
@@ -47,10 +47,10 @@ export async function GET(request: NextRequest) {
       periodEnd = range[1];
     }
 
-    const sql = buildGelatoWechatQuery({
-      odsSchema, dmSchema, incomeOds, periodEnd: periodEnd!, tOffset,
+    const [sql, params] = buildGelatoWechatQuery({
+      odsSchema, dmSchema, incomeOds, periodEnd, tOffset, store,
     });
-    const result = await pool.query(sql);
+    const result = await pool.query(sql, params);
 
     return NextResponse.json({
       success: true,
