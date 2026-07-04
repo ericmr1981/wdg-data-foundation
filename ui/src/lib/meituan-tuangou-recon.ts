@@ -12,7 +12,7 @@
  *   企迈端: payment_methods 含 "美团团购券"（不与其他渠道混）
  */
 
-export const MEITUAN_TUANGOU_T_DEFAULT = 3;
+export const MEITUAN_TUANGOU_T_DEFAULT = 5;
 export const MEITUAN_TUANGOU_LOOKBACK_DAYS = 60;
 
 export interface TuangouOpts {
