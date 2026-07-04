@@ -1032,7 +1032,7 @@ function MeituanTuangouSection({ brand, period, span, store }: {
     setError(null);
     const sp = new URLSearchParams({ brand, period, span });
     if (store && store !== 'all') sp.set('store', store);
-    sp.set('t_offset', '5');  // T+5 calibrated against 74 tuangou bank entries
+    sp.set('t_offset', '3');  // T+3 — per-row accuracy preferred over total sum
     fetch(`/api/income/meituan-tuangou-recon?${sp}`)
       .then(r => r.json())
       .then(json => {
