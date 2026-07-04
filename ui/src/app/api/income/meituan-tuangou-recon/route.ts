@@ -3,7 +3,8 @@ import pool from '@/lib/db';
 import { normalizeBrand, getOdsSchema, getDmSchema } from '@/lib/brand-server';
 import { getErrorMessage } from '@/lib/query-types';
 import { parsePeriod } from '@/app/api/financial/period-utils';
-import { buildMeituanTuangouQuery, MEITUAN_RECON_SUPPORTED_BRANDS } from '@/lib/meituan-recon';
+import { buildMeituanTuangouQuery } from '@/lib/meituan-tuangou-recon';
+import { MEITUAN_T_DEFAULT, MEITUAN_RECON_SUPPORTED_BRANDS } from '@/lib/meituan-recon';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
     const dmSchema = getDmSchema(brand);
     const incomeOds = odsSchema;
 
-    let periodEnd: string | undefined = undefined;
+    let periodEnd: string | null = null;
     if (period !== 'all') {
       const range = parsePeriod(period, span);
       if (!range) {
@@ -48,10 +49,10 @@ export async function GET(request: NextRequest) {
       periodEnd = range[1];
     }
 
-    const sql = buildMeituanTuangouQuery({
-      odsSchema, dmSchema, incomeOds, periodEnd: periodEnd!, tOffset,
+    const [sql, params] = buildMeituanTuangouQuery({
+      odsSchema, dmSchema, incomeOds, periodEnd, tOffset, store,
     });
-    const result = await pool.query(sql);
+    const result = await pool.query(sql, params);
 
     return NextResponse.json({
       success: true,
