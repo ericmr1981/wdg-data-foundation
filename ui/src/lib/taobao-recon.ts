@@ -271,7 +271,7 @@ export function buildTaobaoHybridQuery(opts: ReconOpts & { tOffset: number; cuto
         END AS entry_rate,
         'daily' AS _rmode
       FROM (
-        SELECT bank_date, store_code, SUM(COALESCE(in_amt, 0)) AS bank_amt
+        SELECT txn_time::DATE AS bank_date, store_code, SUM(COALESCE(in_amt, 0)) AS bank_amt
         FROM ${odsSchema}.bank_txn t
         JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
         WHERE c.lvl2_code = 'TAOBAO'
