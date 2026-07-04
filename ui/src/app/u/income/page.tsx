@@ -119,6 +119,26 @@ export default function PaymentPage() {
   });
   const [stores, setStores] = useState<{ code: string; name: string }[]>([]);
 
+  // Update URL whenever store/period/span changes, so refreshes keep the
+  // selection. Without this, refreshing sends the user back to the default
+  // ("all") and the page appears to ignore their dropdown choice.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (store && store !== 'all') params.set('store', store);
+    else params.delete('store');
+    if (period && period !== 'all') params.set('period', period);
+    else params.delete('period');
+    if (span && span !== 'month') params.set('span', span);
+    else params.delete('span');
+    const next = params.toString();
+    const current = window.location.search.replace(/^\?/, '');
+    if (next !== current) {
+      const url = window.location.pathname + (next ? '?' + next : '');
+      window.history.replaceState(null, '', url);
+    }
+  }, [store, period, span]);
+
   const urlParamsLoadedRef = useRef(true);
 
   // 从 URL 参数继承筛选条件（仅在首次加载时）
