@@ -228,7 +228,7 @@ export function buildTaobaoHybridQuery(opts: ReconOpts & { tOffset: number; cuto
             COALESCE(b.prev_bank_date, b.bank_date - ${TAOBAO_INITIAL_LOOKBACK_DAYS})::DATE - ${TAOBAO_T_PLUS_X}
             , 'YYYY-MM-DD') || ' ~ ' ||
           to_char((b.bank_date - 1) - ${TAOBAO_T_PLUS_X}, 'YYYY-MM-DD') AS qimai_window,
-          GREATEST(0, (b.bank_date - 1) - TAOBAO_T_PLUS_X - (COALESCE(b.prev_bank_date, b.bank_date - ${TAOBAO_INITIAL_LOOKBACK_DAYS})::DATE - TAOBAO_T_PLUS_X) + 1)::int AS window_days,
+          GREATEST(0, (b.bank_date - 1) - ${TAOBAO_T_PLUS_X} - (COALESCE(b.prev_bank_date, b.bank_date - ${TAOBAO_INITIAL_LOOKBACK_DAYS})::DATE - ${TAOBAO_T_PLUS_X}) + 1)::int AS window_days,
           qi.qimai_count, qi.qimai_total AS qimai_amt,
           b.bank_amt - COALESCE(qi.qimai_total, 0) AS diff,
           CASE WHEN COALESCE(qi.qimai_total, 0) > 0
