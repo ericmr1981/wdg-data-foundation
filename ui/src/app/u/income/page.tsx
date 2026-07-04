@@ -858,7 +858,7 @@ function TaobaoReconSection({ brand, period, span, store }: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isDaily = store === 'sh_sjh';
+  const isDaily = store === 'sh_sjh' || store === 'hz_fuyang';
 
   useEffect(() => {
     setLoading(true);
