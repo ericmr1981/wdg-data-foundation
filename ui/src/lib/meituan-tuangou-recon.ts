@@ -1,12 +1,19 @@
 /**
  * meituan-tuangou-recon.ts
- * 美团团购券对账 — LAG 窗口匹配模式
+ * 美团团购券对账 — 连续窗口 + T+5 滑动
  *
- * 银行端: lvl2_code='MEITUAN' AND summary 含 "团购"
- * 企迈端: payment_methods 含 "美团团购券"
+ * 算法（参考淘宝闪购，但入账延迟为 T+5 而非 T+3）:
+ *   raw window = [prev_bank_date, bank_date - 1]  (连续无间隔)
+ *   qimai window = raw window 整体前移 T+5 天
+ *   业务上：入账不规律（按笔/天，周节），但平均延迟是 5 天
  *
- * 窗口算法: LAG-based 连续窗口
+ * 排除规则:
+ *   银行端: summary LIKE '%团购%' AND lvl2_code='MEITUAN'
+ *   企迈端: payment_methods 含 "美团团购券"（不与其他渠道混）
  */
+
+export const MEITUAN_TUANGOU_T_DEFAULT = 5;
+export const MEITUAN_TUANGOU_LOOKBACK_DAYS = 60;
 
 export interface TuangouOpts {
   odsSchema: string;
@@ -33,7 +40,8 @@ export function buildMeituanTuangouQuery(opts: TuangouOpts): [string, unknown[]]
   const sql = `
     WITH bank_tuangou AS (
       SELECT
-        t.id, t.store_code, t.txn_time, COALESCE(t.in_amt, 0) AS bank_amt
+        t.id, t.store_code, t.txn_time::DATE AS bank_date, COALESCE(t.in_amt, 0) AS bank_amt,
+        LAG(t.txn_time::DATE) OVER (PARTITION BY t.store_code ORDER BY t.txn_time) AS prev_date
       FROM ${odsSchema}.bank_txn t
       JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
       WHERE t.summary LIKE '%团购%'
@@ -41,45 +49,48 @@ export function buildMeituanTuangouQuery(opts: TuangouOpts): [string, unknown[]]
         AND c.classified_source IN ('rule', 'override')
         ${filterClauses.join('\n        ')}
     ),
-    windows AS (
+    raw_window AS (
       SELECT
-        b.id, b.store_code, b.txn_time, b.bank_amt,
-        LAG(b.txn_time) OVER (PARTITION BY b.store_code ORDER BY b.txn_time) AS prev_txn_time
-      FROM bank_tuangou b
+        id, store_code, bank_date, bank_amt, prev_date,
+        (bank_date - 1)::DATE                                                                 AS w_end_raw,
+        COALESCE(prev_date, bank_date - INTERVAL '${MEITUAN_TUANGOU_LOOKBACK_DAYS} days')::DATE   AS w_start_raw
+      FROM bank_tuangou
     ),
-    windows_final AS (
+    qimai_window AS (
       SELECT
-        w.id, w.store_code, w.txn_time::DATE AS bank_date, w.bank_amt,
-        (w.txn_time - ($${params.length + 1}::int + 1) * INTERVAL '1 day')::DATE AS window_end,
-        (COALESCE(w.prev_txn_time, w.txn_time - INTERVAL '10 days') - $${params.length + 1}::int * INTERVAL '1 day')::DATE AS window_start
-      FROM windows w
+        id, store_code, bank_date, bank_amt, prev_date, w_end_raw, w_start_raw,
+        (w_end_raw   - $${params.length + 1}::int) AS qimai_end,
+        (w_start_raw - $${params.length + 1}::int) AS qimai_start
+      FROM raw_window
     )
     SELECT
-      to_char(wf.bank_date, 'YYYY-MM-DD')            AS bank_date_str,
-      wf.bank_amt,
-      wf.store_code,
-      to_char(wf.window_start, 'YYYY-MM-DD') || ' ~ ' || to_char(wf.window_end, 'YYYY-MM-DD') AS qimai_window,
-      GREATEST(0, (wf.window_end - wf.window_start + 1))::int AS window_days,
-      COALESCE(qi.order_count, 0)::int AS qimai_count,
-      COALESCE(qi.total_amt, 0)::numeric AS qimai_total,
-      wf.bank_amt - COALESCE(qi.total_amt, 0) AS diff,
-      CASE WHEN COALESCE(qi.total_amt, 0) > 0
-        THEN ROUND((wf.bank_amt / qi.total_amt * 100)::numeric, 2)
+      to_char(qw.bank_date, 'YYYY-MM-DD')            AS bank_date_str,
+      qw.bank_amt,
+      qw.store_code,
+      to_char(qw.qimai_start, 'YYYY-MM-DD') || ' ~ ' || to_char(qw.qimai_end, 'YYYY-MM-DD') AS qimai_window,
+      GREATEST(0, (qw.qimai_end - qw.qimai_start + 1))::int AS window_days,
+      COALESCE(qi.qimai_count, 0)::int               AS qimai_count,
+      COALESCE(qi.qimai_total, 0)::numeric           AS qimai_total,
+      qw.bank_amt - COALESCE(qi.qimai_total, 0)     AS diff,
+      CASE WHEN COALESCE(qi.qimai_total, 0) > 0
+        THEN ROUND((qw.bank_amt / qi.qimai_total * 100)::numeric, 2)
         ELSE 0
       END AS entry_rate
-    FROM windows_final wf
+    FROM qimai_window qw
     LEFT JOIN LATERAL (
       SELECT
-        COUNT(*) AS order_count,
-        COALESCE(SUM(net_amt), 0) AS total_amt
+        COUNT(*) AS qimai_count,
+        COALESCE(SUM(net_amt), 0) AS qimai_total
       FROM ${incomeOds}.income_detail q
-      WHERE q.store_code = wf.store_code
+      WHERE q.store_code = qw.store_code
+        AND q.biz_date BETWEEN qw.qimai_start AND qw.qimai_end
+        AND NOT q.is_refund
+        AND NOT q.is_member_payment
         AND q.payment_methods @> ARRAY['美团团购券']::text[]
-        AND q.biz_date >= wf.window_start
-        AND q.biz_date <= wf.window_end
     ) qi ON true
-    ORDER BY wf.bank_date
+    ORDER BY qw.bank_date
   `;
+  // Push tOffset as the last param (used in qimai_start/end shift)
   params.push(tOffset);
   return [sql, params];
 }
