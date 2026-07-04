@@ -921,46 +921,93 @@ function MeituanReconSection({ brand, period, span, store }: {
   const totDiff  = totBank - totQimai;
   const totRate  = totQimai > 0 ? (totBank / totQimai) * 100 : 0;
 
+  // Group rows by month (YYYY-MM from bank_date_str)
+  const monthGroups = new Map<string, MeituanRow[]>();
+  for (const r of data.rows) {
+    const month = (r.bank_date_str || r.bank_date || '').substring(0, 7);
+    if (!monthGroups.has(month)) monthGroups.set(month, []);
+    monthGroups.get(month)!.push(r);
+  }
+  const sortedMonths = Array.from(monthGroups.keys()).sort().reverse();
+
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto space-y-2">
+      {sortedMonths.map(month => {
+        const monthRows = monthGroups.get(month)!;
+        const mBank  = monthRows.reduce((s, r) => s + safeNum(r.bank_amt), 0);
+        const mQimai = monthRows.reduce((s, r) => s + safeNum(r.qimai_amt), 0);
+        const mCount = monthRows.reduce((s, r) => s + safeNum(r.qimai_count), 0);
+        const mDiff  = mBank - mQimai;
+        const mRate  = mQimai > 0 ? (mBank / mQimai) * 100 : 0;
+        return (
+          <details key={month} className="border rounded bg-white">
+            <summary className="px-3 py-2 cursor-pointer hover:bg-gray-50 flex items-center gap-3 text-sm">
+              <span className="font-medium">{month}</span>
+              <span className="text-xs text-gray-500">({monthRows.length} 笔)</span>
+              <span className="ml-auto text-xs text-gray-600">
+                银行 {fmt(mBank)} · 企迈 {fmt(mQimai)} ·{' '}
+                <span className={mRate >= 80 && mRate <= 105 ? 'text-green-700' : 'text-red-700'}>
+                  {mRate.toFixed(1)}%
+                </span>
+              </span>
+            </summary>
+            <table className="min-w-full divide-y divide-gray-200 text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">打款日期</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">对应企迈日</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">银行金额</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈笔数</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈金额</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">差额</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">入账率</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {monthRows.map((r, idx) => (
+                  <tr key={idx} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 whitespace-nowrap">{r.bank_date_str || r.bank_date}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">{r.qimai_date || '-'}</td>
+                    <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
+                    <td className="px-3 py-2 text-right">{safeNum(r.qimai_count)}</td>
+                    <td className="px-3 py-2 text-right font-mono">{fmt(r.qimai_amt)}</td>
+                    <td className={`px-3 py-2 text-right font-mono ${safeNum(r.diff) !== 0 ? 'text-red-600' : ''}`}>{fmt(r.diff)}</td>
+                    <td className={`px-3 py-2 text-right font-mono ${
+                      safeNum(r.entry_rate) >= 80 && safeNum(r.entry_rate) <= 105 ? 'text-green-600' : 'text-red-600'
+                    }`}>{safeNum(r.entry_rate).toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-gray-50 font-medium">
+                <tr>
+                  <td className="px-3 py-2 text-xs text-gray-600">月小计</td>
+                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2 text-right font-mono">{fmt(mBank)}</td>
+                  <td className="px-3 py-2 text-right">{mCount}</td>
+                  <td className="px-3 py-2 text-right font-mono">{fmt(mQimai)}</td>
+                  <td className={`px-3 py-2 text-right font-mono ${mDiff !== 0 ? 'text-red-600' : ''}`}>{fmt(mDiff)}</td>
+                  <td className={`px-3 py-2 text-right font-mono ${
+                    mRate >= 80 && mRate <= 105 ? 'text-green-700' : 'text-red-700'
+                  }`}>{mRate.toFixed(1)}%</td>
+                </tr>
+              </tfoot>
+            </table>
+          </details>
+        );
+      })}
+      {/* Grand total row */}
       <table className="min-w-full divide-y divide-gray-200 text-sm">
-        <thead className="bg-gray-50">
+        <tfoot className="bg-gray-100 font-bold">
           <tr>
-            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">打款日期</th>
-            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">对应企迈日</th>
-            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">银行金额</th>
-            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈笔数</th>
-            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">企迈金额</th>
-            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">差额</th>
-            <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">入账率</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-200">
-          <CollapsibleTableRows rows={data.rows} maxVisible={15}>
-            {(r: MeituanRow, idx) => (
-              <tr key={idx} className="hover:bg-gray-50">
-                <td className="px-3 py-2 whitespace-nowrap">{r.bank_date_str || r.bank_date}</td>
-                <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">{r.qimai_date || '-'}</td>
-                <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
-                <td className="px-3 py-2 text-right">{safeNum(r.qimai_count)}</td>
-                <td className="px-3 py-2 text-right font-mono">{fmt(r.qimai_amt)}</td>
-                <td className={`px-3 py-2 text-right font-mono ${safeNum(r.diff) !== 0 ? 'text-red-600' : ''}`}>{fmt(r.diff)}</td>
-                <td className={`px-3 py-2 text-right font-mono ${
-                  safeNum(r.entry_rate) >= 80 && safeNum(r.entry_rate) <= 105 ? 'text-green-600' : 'text-red-600'
-                }`}>{safeNum(r.entry_rate).toFixed(1)}%</td>
-              </tr>
-            )}
-          </CollapsibleTableRows>
-        </tbody>
-        <tfoot className="bg-gray-100 font-semibold">
-          <tr>
-            <td className="px-3 py-2 whitespace-nowrap">合计</td>
+            <td className="px-3 py-2 whitespace-nowrap">总计</td>
             <td className="px-3 py-2" />
             <td className="px-3 py-2 text-right font-mono">{fmt(totBank)}</td>
             <td className="px-3 py-2 text-right">{totCount}</td>
             <td className="px-3 py-2 text-right font-mono">{fmt(totQimai)}</td>
             <td className={`px-3 py-2 text-right font-mono ${totDiff !== 0 ? 'text-red-600' : ''}`}>{fmt(totDiff)}</td>
-            <td className="px-3 py-2 text-right font-mono">{totRate.toFixed(1)}%</td>
+            <td className={`px-3 py-2 text-right font-mono ${
+              totRate >= 80 && totRate <= 105 ? 'text-green-700' : 'text-red-700'
+            }`}>{totRate.toFixed(1)}%</td>
           </tr>
         </tfoot>
       </table>
