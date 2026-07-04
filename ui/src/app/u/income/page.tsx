@@ -603,6 +603,23 @@ function BankEntryRateSection({ brand, span, period, store, channel, onChannelCh
 
   const displayChannels = data.channels.filter(c => c.channel !== 'TOTAL' && c.channel !== 'OTHER' && c.channel !== 'ELEME');
 
+  // Aggregate monthly_trend (per month × channel) → per-month totals.
+  // X axis = month, two series: 企迈实收, 银行入账 (sum across channels).
+  const safeNum = (n: unknown): number => {
+    const v = Number(n ?? 0);
+    return Number.isFinite(v) ? v : 0;
+  };
+  const monthlyAggMap = new Map<string, { qimai_net_amt: number; bank_entry_amt: number }>();
+  for (const r of data.monthly_trend) {
+    const cur = monthlyAggMap.get(r.month) ?? { qimai_net_amt: 0, bank_entry_amt: 0 };
+    cur.qimai_net_amt += safeNum(r.qimai_net_amt);
+    cur.bank_entry_amt += safeNum(r.bank_entry_amt);
+    monthlyAggMap.set(r.month, cur);
+  }
+  const monthlyTrendByMonth = Array.from(monthlyAggMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, v]) => ({ month, ...v }));
+
   return (
     <div className="space-y-6">
       {/* Metric cards */}
@@ -643,10 +660,10 @@ function BankEntryRateSection({ brand, span, period, store, channel, onChannelCh
         })}
       </div>
 
-      {/* Line chart */}
-      {data.monthly_trend && data.monthly_trend.length > 0 && (
+      {/* Line chart — X axis is month (YYYY-MM), two series: 企迈实收 vs 银行入账 */}
+      {monthlyTrendByMonth.length > 0 && (
         <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={data.monthly_trend}>
+          <LineChart data={monthlyTrendByMonth}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="month" />
             <YAxis tickFormatter={v => (v / 10000).toFixed(0) + '万'} />
