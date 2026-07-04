@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     const dmSchema = getDmSchema(brand);
     const incomeOds = odsSchema;
 
-    let periodEnd: string | undefined = undefined;
+    let periodEnd: string | null = null;
     if (period !== 'all') {
       const range = parsePeriod(period, span);
       if (!range) {
@@ -46,10 +46,10 @@ export async function GET(request: NextRequest) {
       periodEnd = range[1];
     }
 
-    const sql = buildDouyinDailyQuery({
-      odsSchema, dmSchema, incomeOds, periodEnd: periodEnd!, tOffset,
+    const [sql, params] = buildDouyinDailyQuery({
+      odsSchema, dmSchema, incomeOds, periodEnd, tOffset, store,
     });
-    const result = await pool.query(sql);
+    const result = await pool.query(sql, params);
 
     return NextResponse.json({
       success: true,
