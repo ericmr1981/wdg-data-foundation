@@ -941,7 +941,7 @@ function TaobaoReconSection({ brand, period, span, store }: {
                   {monthRows.map((r, idx) => (
                     <tr key={idx} className="hover:bg-gray-50">
                       <td className="px-3 py-2 whitespace-nowrap">{r.bank_date_str}</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">{r.qimai_date || '-'}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">{r.qimai_date || r.qimai_window || '-'}</td>
                       <td className="px-3 py-2 text-right font-mono">{fmt(r.bank_amt)}</td>
                       <td className="px-3 py-2 text-right">{safeNum(r.qimai_count)}</td>
                       <td className="px-3 py-2 text-right font-mono">{fmt(getQimaiAmt(r))}</td>
