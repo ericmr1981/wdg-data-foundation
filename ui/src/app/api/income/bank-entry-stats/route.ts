@@ -18,27 +18,33 @@ async function getChannelCaseSql(cfgSchema: string, brand?: string): Promise<str
   const whens = rows.map(r =>
     `WHEN '${esc(r.payment_method)}' = ANY(payment_methods) THEN '${esc(r.channel_code)}'`
   ).join('\n            ');
-  // For tamkoko, split MEITUAN into MEITUAN_TUANGOU for 团购 orders
+  // For tamkoko, split MEITUAN into MEITUAN_TUANGOU for 团购 orders, and
+  // merge WECHAT + ALIPAY into WECHAT_ALIPAY (parent-company 苏州泰柯
+  // bundles both into single transfers, so per-channel split is misleading).
   if (brand === 'tamkoko') {
-    // Insert tuangou check before the generic MEITUAN mapping
     const customWhens = rows.map(r => {
       if (r.channel_code === 'MEITUAN') {
         return `WHEN '${esc(r.payment_method)}' = ANY(payment_methods) AND coupon_fee > 0 THEN 'MEITUAN_TUANGOU'\n            WHEN '${esc(r.payment_method)}' = ANY(payment_methods) THEN '${esc(r.channel_code)}'`;
       }
       return `WHEN '${esc(r.payment_method)}' = ANY(payment_methods) THEN '${esc(r.channel_code)}'`;
     }).join('\n            ');
-    return `CASE ${customWhens} ELSE 'OTHER' END`;
+    return `CASE
+      WHEN (CASE ${customWhens} ELSE 'OTHER' END) IN ('WECHAT', 'ALIPAY') THEN 'WECHAT_ALIPAY'
+      ELSE (CASE ${customWhens} ELSE 'OTHER' END)
+    END`;
   }
   return `CASE ${whens} ELSE 'OTHER' END`;
 }
 
 async function getBankChannelCaseSql(brand: string): Promise<string> {
   // Bank-side channel logic uses lvl2_code from classified snapshot.
-  // For tamkoko, split MEITUAN into MEITUAN_TUANGOU when bank summary contains 团购.
+  // For tamkoko, split MEITUAN into MEITUAN_TUANGOU when bank summary contains 团购,
+  // and merge WECHAT + ALIPAY into WECHAT_ALIPAY (parent-company bundles them).
   if (brand === 'tamkoko') {
     return `
       CASE
         WHEN c.lvl2_code = 'MEITUAN' AND t.summary LIKE '%团购%' THEN 'MEITUAN_TUANGOU'
+        WHEN c.lvl2_code IN ('WECHAT', 'ALIPAY') THEN 'WECHAT_ALIPAY'
         ELSE c.lvl2_code
       END
     `;
