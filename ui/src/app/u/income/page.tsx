@@ -626,7 +626,7 @@ function BankEntryRateSection({ brand, span, period, store, channel, onChannelCh
       <div className="grid grid-cols-3 gap-4">
         {displayChannels.map(ch => {
           const rate = ch.entry_rate;
-          // 4-tier color by entry rate:
+          // 4-tier color by entry rate (strict — no per-channel override):
           //   96-104%  → 深绿
           //   92-106%  → 浅绿
           //   90-110%  → 黄色
@@ -635,19 +635,13 @@ function BankEntryRateSection({ brand, span, period, store, channel, onChannelCh
                      : (rate >= 92 && rate <= 106) ? 'light-green'
                      : (rate >= 90 && rate <= 110) ? 'yellow'
                      : 'red';
-          // When tier is in the green band, keep the channel's own accent color
-          // (subtle, dark for dark-green, light for light-green). Otherwise use
-          // the tier color.
-          const channelBase = CHANNEL_COLORS[ch.channel];
           const TIER_COLORS = {
             'dark-green':  'bg-emerald-100 border-emerald-300 text-emerald-900',
             'light-green': 'bg-emerald-50  border-emerald-200 text-emerald-700',
             'yellow':      'bg-yellow-50  border-yellow-300 text-yellow-800',
             'red':         'bg-red-50     border-red-300    text-red-800',
           } as const;
-          const colorClass = (tier === 'dark-green' || tier === 'light-green') && channelBase
-            ? channelBase
-            : TIER_COLORS[tier];
+          const colorClass = TIER_COLORS[tier];
           return (
             <div
               key={ch.channel}
