@@ -859,14 +859,15 @@ function TaobaoReconSection({ brand, period, span, store }: {
   const [error, setError] = useState<string | null>(null);
 
   const isDaily = store === 'sh_sjh';
-  const useFolded = isDaily || store === 'hz_fuyang';  // daily-only or hybrid mode
+  const isHybrid = store === 'hz_fuyang' || store === 'wz_bjwxc';
+  const useFolded = isDaily || isHybrid;
 
   useEffect(() => {
     setLoading(true);
     setError(null);
     const sp = new URLSearchParams({ brand, period, span });
     if (store && store !== 'all') sp.set('store', store);
-    if (isDaily || store === 'hz_fuyang') sp.set('t_offset', '3');
+    if (isDaily || isHybrid) sp.set('t_offset', '3');
     fetch(`/api/income/taobao-recon?${sp}`)
       .then(r => r.json())
       .then(json => {

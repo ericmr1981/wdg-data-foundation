@@ -51,8 +51,8 @@ export async function GET(request: NextRequest) {
       periodEnd = range[1];
     }
 
-    // Hybrid mode: hz_fuyang with t_offset provided — LAG before 6/16, T+N from 6/16
-    const isHybrid = store === 'hz_fuyang' && useDaily;
+    // Hybrid mode: hz_fuyang / wz_bjwxc with t_offset — LAG before 6/16, T+N from 6/16
+    const isHybrid = (store === 'hz_fuyang' || store === 'wz_bjwxc') && useDaily;
 
     let result;
     let tOffset: number | undefined;
