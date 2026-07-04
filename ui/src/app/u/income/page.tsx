@@ -1191,7 +1191,7 @@ function DouyinReconSection({ brand, period, span, store }: {
     setError(null);
     const sp = new URLSearchParams({ brand, period, span });
     if (store && store !== 'all') sp.set('store', store);
-    sp.set('t_offset', '6');  // T+6 calibrated against 293 抖音团购 bank entries
+    sp.set('t_offset', '5');  // T+5
     fetch(`/api/income/douyin-recon?${sp}`)
       .then(r => r.json())
       .then(json => {

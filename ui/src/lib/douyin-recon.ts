@@ -10,7 +10,7 @@
  */
 
 export const DOUYIN_RECON_SUPPORTED_BRANDS = ['tamkoko'] as const;
-export const DOUYIN_T_DEFAULT = 6;
+export const DOUYIN_T_DEFAULT = 5;
 export const DOUYIN_T_LOOKBACK_DAYS = 14;  // 抖音日结为主
 
 export interface ReconOpts {
