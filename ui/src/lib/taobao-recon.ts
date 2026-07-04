@@ -224,7 +224,11 @@ export function buildTaobaoHybridQuery(opts: ReconOpts & { tOffset: number; cuto
         SELECT
           b.bank_date, b.bank_amt, b.store_code,
           NULL::text AS qimai_date,
-          NULL::int AS window_days_lag,
+          to_char(
+            COALESCE(b.prev_bank_date, b.bank_date - ${TAOBAO_INITIAL_LOOKBACK_DAYS})::DATE - ${TAOBAO_T_PLUS_X}
+            , 'YYYY-MM-DD') || ' ~ ' ||
+          to_char((b.bank_date - 1) - ${TAOBAO_T_PLUS_X}, 'YYYY-MM-DD') AS qimai_window,
+          GREATEST(0, (b.bank_date - 1) - TAOBAO_T_PLUS_X - (COALESCE(b.prev_bank_date, b.bank_date - ${TAOBAO_INITIAL_LOOKBACK_DAYS})::DATE - TAOBAO_T_PLUS_X) + 1)::int AS window_days,
           qi.qimai_count, qi.qimai_total AS qimai_amt,
           b.bank_amt - COALESCE(qi.qimai_total, 0) AS diff,
           CASE WHEN COALESCE(qi.qimai_total, 0) > 0
@@ -262,6 +266,8 @@ export function buildTaobaoHybridQuery(opts: ReconOpts & { tOffset: number; cuto
         SUM(b.bank_amt) AS bank_amt,
         b.store_code,
         to_char(b.bank_date - $${tIdx}::int, 'YYYY-MM-DD') AS qimai_date,
+        NULL::text AS qimai_window,
+        NULL::int AS window_days,
         COALESCE(q.qimai_count, 0)::int AS qimai_count,
         COALESCE(q.qimai_amt, 0)::numeric AS qimai_amt,
         SUM(b.bank_amt) - COALESCE(q.qimai_amt, 0) AS diff,
@@ -297,7 +303,7 @@ export function buildTaobaoHybridQuery(opts: ReconOpts & { tOffset: number; cuto
     SELECT
       to_char(bank_date, 'YYYY-MM-DD') AS bank_date_str,
       bank_amt, store_code,
-      qimai_date,
+      qimai_date, qimai_window, window_days,
       qimai_count, qimai_amt, diff, entry_rate,
       _rmode
     FROM lag_part
@@ -305,7 +311,7 @@ export function buildTaobaoHybridQuery(opts: ReconOpts & { tOffset: number; cuto
     SELECT
       to_char(bank_date, 'YYYY-MM-DD') AS bank_date_str,
       bank_amt, store_code,
-      qimai_date,
+      qimai_date, qimai_window, window_days,
       qimai_count, qimai_amt, diff, entry_rate,
       _rmode
     FROM daily_part
