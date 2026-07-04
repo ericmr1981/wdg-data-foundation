@@ -518,7 +518,7 @@ const CHANNEL_COLORS: Record<string, string> = {
 const CHANNEL_LABELS: Record<string, string> = {
   WECHAT: '微信支付',
   ALIPAY: '支付宝',
-  MEITUAN: '美团/蜜可诗',
+  MEITUAN: '美团',
   MEITUAN_TUANGOU: '美团团购券',
   CLOUD_PAY: '云闪付',
   UNIONPAY: '云闪付',
