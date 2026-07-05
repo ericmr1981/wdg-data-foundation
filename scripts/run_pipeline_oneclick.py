@@ -55,12 +55,14 @@ SQL_DIR = PROJECT_ROOT / "sql"
 IMPORT_SCRIPTS = {
     "gelatomiiix": PROJECT_ROOT / "scripts" / "import_yufeng_bank_txn.py",
     "bonjur": PROJECT_ROOT / "scripts" / "import_bonjur_sales_daily.py",
+    "tamkoko": PROJECT_ROOT / "scripts" / "import_tamkoko_income_detail.py",
 }
 
 # Schema names per brand
 BRAND_SCHEMAS = {
     "gelatomiiix": {"ods": "brand_gelatomiiix_ods", "cfg": "brand_gelatomiiix_cfg", "dm": "brand_gelatomiiix_dm"},
     "bonjur": {"ods": "bonjur_ods", "cfg": "bonjur_cfg", "dm": "bonjur_dm"},
+    "tamkoko": {"ods": "brand_tamkoko_ods", "cfg": "brand_tamkoko_cfg", "dm": "brand_tamkoko_dm"},
 }
 
 
@@ -340,7 +342,7 @@ def main():
 
     parser.add_argument(
         "--brand",
-        choices=["gelatomiiix", "bonjur", "all"],
+        choices=["gelatomiiix", "bonjur", "tamkoko", "all"],
         default="all",
         help="品牌 (default: all)",
     )
