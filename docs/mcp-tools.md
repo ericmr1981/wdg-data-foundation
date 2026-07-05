@@ -7,7 +7,7 @@
 - **Endpoint**: `POST /api/mcp` (JSON-RPC 2.0)
 - **Method**: `tools/list` (discover) · `tools/call` (invoke)
 - **Header**: `x-mcp-session: internal` (auto-injected by tool wrappers)
-- **Count**: 47 tools across 10 modules
+- **Count**: 48 tools across 10 modules
 
 ## Agent write policy (important)
 
@@ -45,7 +45,7 @@
 
 | Tool | Purpose | Risk |
 |---|---|---|
-| `upload_bank_txn_file` | Upload bank .xlsx → trigger import → returns sourceFileId + coverage | write raw ODS |
+| `upload_bank_txn_file` | Upload bank .xlsx → trigger import → returns sourceFileId + coverage (supports gelatomiiix/yufeng/bonjur/tamkoko) | write raw ODS |
 | `get_unclassified_transactions` | List unclassified bank txns (filtered by brand/file/month) | read |
 | `get_txn_detail` | Get full detail of a single txn (counterparty, summary, memo, purpose) | read |
 | `get_candidates` | Get keyword candidates for rule `match_value` | read |
@@ -90,6 +90,7 @@
 |---|---|
 | `upload_gelatomiiix_income_detail` | Upload Qimai income CSV → gelatomiiix_ods.income_detail |
 | `upload_bonjur_income_detail` | Upload Qimai income CSV → bonjur_ods.income_detail |
+| `upload_tamkoko_income_detail` | Upload Qimai income CSV → brand_tamkoko_ods.income_detail |
 | `query_gelatomiiix_income` | Query Qimai income detail records (paginated) |
 | `get_qimai_entry_rate` | Gelatomiiix-only: channel-level Qimai-to-bank match rate |
 
@@ -162,7 +163,7 @@
 
 ## Common parameters
 
-- **`brand`**: enum `gelatomiiix | yufeng | bonjur` (default `yufeng` for legacy compat). Use `yufeng` or `gelatomiiix` interchangeably — `normalizeBrand()` resolves both.
+- **`brand`**: enum `gelatomiiix | yufeng | bonjur | tamkoko` (default `yufeng` for legacy compat). Use `yufeng` or `gelatomiiix` interchangeably — `normalizeBrand()` resolves both.
 - **`period`**: YYYY-MM format
 - **`span`**: `month` | `quarter` | `year` (default `month`)
 - **`store` / `store_code`**: store code or `all` (default `all`)
