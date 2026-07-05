@@ -32,7 +32,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: 'Missing required field: store' }, { status: 400 });
   }
 
-  // 3. Compute SHA256 hash before saving
+  // 3. Validate store_code against ops.stores whitelist (before writing file)
+  const storeCheck = await pool.query(
+    `SELECT 1 FROM ops.stores WHERE brand_code = 'tamkoko' AND store_code = $1 AND enabled = true`,
+    [store]
+  );
+  if (!storeCheck.rows.length) {
+    const validStores = await pool.query(
+      `SELECT store_code, store_name FROM ops.stores WHERE brand_code = 'tamkoko' AND enabled = true ORDER BY store_code`
+    );
+    const suggestions = validStores.rows
+      .map((r: { store_code: string; store_name: string }) => `  · ${r.store_code} (${r.store_name})`)
+      .join('\n');
+    return NextResponse.json({
+      success: false,
+      error: `store_code '${store}' is not a valid enabled store for brand 'tamkoko'.\nValid stores:\n${suggestions}`
+    }, { status: 400 });
+  }
+
+  // 4. Compute SHA256 hash before saving
   const arrayBuffer = await file.arrayBuffer();
   const fileBuffer = Buffer.from(arrayBuffer);
   const fileHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');

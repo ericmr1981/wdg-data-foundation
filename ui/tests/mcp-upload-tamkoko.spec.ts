@@ -52,7 +52,7 @@ test.describe('MCP tamkoko upload tools', () => {
     });
 
     const content = result.result?.content?.[0]?.text ?? '';
-    expect(content.toLowerCase()).toMatch(/not a valid enabled store|nonexistent/i);
+    expect(content.toLowerCase()).toMatch(/not a valid enabled store/i);
   });
 
   test('upload_bank_txn_file with brand=tamkoko: tool accepts tamkoko enum', async () => {
