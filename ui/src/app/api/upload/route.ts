@@ -198,9 +198,19 @@ export async function POST(request: Request) {
       if (source === 'bank') {
         scriptName = 'import_yufeng_bank_txn.py';
       } else if (source === 'income') {
-        scriptName = brand === 'bonjur'
-          ? 'import_bonjur_income_detail.py'
-          : 'import_gelatomiiix_income_detail.py';
+        const INCOME_SCRIPT_BY_BRAND: Record<string, string> = {
+          bonjur: 'import_bonjur_income_detail.py',
+          gelatomiiix: 'import_gelatomiiix_income_detail.py',
+          yufeng: 'import_gelatomiiix_income_detail.py',
+          tamkoko: 'import_tamkoko_income_detail.py',
+        };
+        scriptName = INCOME_SCRIPT_BY_BRAND[brand];
+        if (!scriptName) {
+          return NextResponse.json({
+            success: false,
+            error: `Unsupported brand for income upload: ${brand}. Supported: ${Object.keys(INCOME_SCRIPT_BY_BRAND).join(', ')}`,
+          }, { status: 400 });
+        }
       } else {
         return NextResponse.json({ success: false, error: 'Unknown source type' }, { status: 400 });
       }
