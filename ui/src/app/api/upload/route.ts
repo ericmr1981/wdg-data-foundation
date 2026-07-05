@@ -180,8 +180,60 @@ export async function POST(request: Request) {
 
   await writeFile(filePath, fileBuffer);
 
-  let importResult: string | null = null;
+  // Pre-INSERT raw.ingest_file so MCP clients get a sourceFileId immediately.
+  // The Python import script will UPSERT this row (ON CONFLICT file_hash) and
+  // update status to 'success' / 'failed' when it finishes.
+  let sourceFileId: number | null = null;
+  let importStatus: string | null = null;
+  let rowCount: number | null = null;
+  let errorMessage: string | null = null;
+  let skippedReupload = false;
   let importError: string | null = null;
+  try {
+    const q = await pool.query(
+      `SELECT id, status, row_count, error_message
+       FROM raw.ingest_file WHERE file_hash = $1 LIMIT 1`,
+      [fileHash]
+    );
+    if (q.rows?.length) {
+      sourceFileId = Number(q.rows[0].id);
+      importStatus = q.rows[0].status;
+      rowCount = q.rows[0].row_count ?? null;
+      errorMessage = q.rows[0].error_message ?? null;
+      // If a previous successful import exists, do NOT spawn Python again —
+      // just re-run refresh incrementally so snapshot reflects current state.
+      if (importStatus === 'success' && source === 'bank') {
+        skippedReupload = true;
+      }
+    } else {
+      // First-time upload: create a pending row so the caller has a sourceFileId to track.
+      const ins = await pool.query(
+        `INSERT INTO raw.ingest_file
+           (brand_code, store_code, source_type, month, file_name, file_path, file_hash, file_size, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+         ON CONFLICT (file_hash) DO UPDATE SET updated_at = NOW()
+         RETURNING id, status, row_count, error_message`,
+        [brand, store, source, yyyyMM, fileName, filePath, fileHash, fileBuffer.length]
+      );
+      const r = ins.rows[0];
+      sourceFileId = Number(r.id);
+      importStatus = r.status;
+      rowCount = r.row_count ?? null;
+    }
+  } catch (e: any) {
+    // If pre-INSERT fails, fall through to synchronous spawn below.
+    importError = `pre-insert failed: ${e?.message ?? e}`;
+  }
+
+  // For MCP/internal-session callers, run the import + refresh in the BACKGROUND
+  // and return immediately with the sourceFileId. The MCP client polls raw.ingest_file
+  // (or just trusts the agent workflow) to learn when import completes.
+  // For UI callers (with admin/operator auth), keep the original synchronous behavior
+  // so the browser gets import stats back in one round-trip.
+  // MCP always returns immediately — even on idempotent re-upload — to stay under the 30s deadline.
+  const asyncImport = isMcp && triggerImport && !importError;
+
+  let importResult: string | null = null;
 
   if (triggerImport) {
     try {
@@ -217,80 +269,79 @@ export async function POST(request: Request) {
 
       const scriptPath = path.join(scriptsDir, scriptName);
 
-      const importOutput = await new Promise<string>((resolve, reject) => {
+      // Helper that runs the import + post-import refresh. Caller decides
+      // whether to await (UI) or fire-and-forget (MCP).
+      const runImport = async (): Promise<string> => {
         const projectRoot = path.join(process.cwd(), '..');
         const venvPython = path.join(projectRoot, '.venv', 'bin', 'python');
         const pythonBin =
           process.env.PYTHON_BIN ||
           (existsSync(venvPython) ? venvPython : 'python3');
 
-        const childProcess = spawn(pythonBin, [scriptPath, ...scriptArgs], {
-          cwd: projectRoot,
-          env: { ...process.env }
+        const stdout = await new Promise<string>((resolve, reject) => {
+          const childProcess = spawn(pythonBin, [scriptPath, ...scriptArgs], {
+            cwd: projectRoot,
+            env: { ...process.env },
+            detached: true,  // don't keep Node alive waiting for child
+          });
+          let buf = '';
+          let errBuf = '';
+          childProcess.stdout.on('data', (d) => { buf += d.toString(); });
+          childProcess.stderr.on('data', (d) => { errBuf += d.toString(); });
+          childProcess.on('close', (code) => {
+            if (code === 0) resolve(buf);
+            else reject(new Error(errBuf || `Process exited with code ${code}`));
+          });
+          childProcess.on('error', (err) => { reject(err); });
+          childProcess.unref();  // fully detach
         });
+        return stdout;
+      };
 
-        let stdout = '';
-        let stderr = '';
-
-        childProcess.stdout.on('data', (data) => { stdout += data.toString(); });
-        childProcess.stderr.on('data', (data) => { stderr += data.toString(); });
-
-        childProcess.on('close', (code) => {
-          if (code === 0) {
-            resolve(stdout);
-          } else {
-            reject(new Error(stderr || `Process exited with code ${code}`));
-          }
+      if (asyncImport) {
+        // Background — return to client immediately. MCP 30s deadline.
+        setImmediate(() => {
+          const schemaPrefix = ['yufeng', 'bonjur'].includes(brand) ? brand : `brand_${brand}`;
+          const task = skippedReupload
+            // No Python spawn — just refresh incrementally on the existing row.
+            ? (source === 'bank' && sourceFileId
+                ? pool.query(`SELECT ${schemaPrefix}_dm.refresh_bank_txn_classified_snapshot($1)`, [sourceFileId])
+                : Promise.resolve())
+            : runImport()
+                .then(() => source === 'bank' && sourceFileId
+                  ? pool.query(`SELECT ${schemaPrefix}_dm.refresh_bank_txn_classified_snapshot($1)`, [sourceFileId])
+                  : null);
+          task.catch((err) => {
+            console.error(`[upload async] import failed for sourceFileId=${sourceFileId}:`, err);
+          });
         });
-
-        childProcess.on('error', (err) => { reject(err); });
-      });
-
-      importResult = importOutput;
+        importResult = 'queued (async)';
+      } else {
+        // Synchronous (UI / non-MCP callers).
+        const importOutput = await runImport();
+        importResult = importOutput;
+      }
     } catch (error: any) {
       importError = error.message;
     }
   }
 
-  let sourceFileId: number | null = null;
-  let importStatus: string | null = null;
-  let rowCount: number | null = null;
-  let errorMessage: string | null = null;
-
-  try {
-    const q = await pool.query(
-      `SELECT id, status, row_count, error_message
-       FROM raw.ingest_file
-       WHERE file_hash = $1
-       LIMIT 1`,
-      [fileHash]
-    );
-    if (q.rows?.length) {
-      sourceFileId = Number(q.rows[0].id);
-      importStatus = q.rows[0].status;
-      rowCount = q.rows[0].row_count ?? null;
-      errorMessage = q.rows[0].error_message ?? null;
-    }
-  } catch {
-    // best-effort
-  }
-
-  if (!importError && triggerImport && source === 'bank') {
-    // Re-query sourceFileId — Python script just inserted it (line 260 query may have run before insert).
-    if (!sourceFileId) {
-      try {
-        const q = await pool.query(
-          `SELECT id FROM raw.ingest_file WHERE file_hash = $1 LIMIT 1`,
-          [fileHash]
-        );
-        if (q.rows?.length) sourceFileId = Number(q.rows[0].id);
-      } catch { /* best-effort */ }
-    }
+  // Post-import refresh for synchronous (UI) bank uploads only — async path already
+  // scheduled its own refresh in the setImmediate above.
+  if (!importError && !asyncImport && triggerImport && source === 'bank' && sourceFileId && !skippedReupload) {
     try {
       const schemaPrefix = ['yufeng', 'bonjur'].includes(brand) ? brand : `brand_${brand}`;
-      // Only refresh the just-imported file (much faster than full NULL refresh on large tables).
       await pool.query(`SELECT ${schemaPrefix}_dm.refresh_bank_txn_classified_snapshot($1)`, [sourceFileId]);
       importResult = (importResult || '') + '\n✅ 分类完成';
+    } catch (classifyErr: any) {
+      importError = `分类失败: ${classifyErr.message}`;
+    }
+  } else if (!importError && skippedReupload && source === 'bank' && sourceFileId) {
+    // Re-run incremental refresh for a previously-successful re-upload (no Python spawn).
+    try {
+      const schemaPrefix = ['yufeng', 'bonjur'].includes(brand) ? brand : `brand_${brand}`;
+      await pool.query(`SELECT ${schemaPrefix}_dm.refresh_bank_txn_classified_snapshot($1)`, [sourceFileId]);
+      importResult = (importResult || '') + '\n✅ 已刷新分类';
     } catch (classifyErr: any) {
       importError = `分类失败: ${classifyErr.message}`;
     }
@@ -302,7 +353,7 @@ export async function POST(request: Request) {
   let totalThisBrandMonth: number | null = null;
   let coveragePct: number | null = null;
 
-  if (source === 'bank' && sourceFileId && !importError) {
+  if (source === 'bank' && sourceFileId && !importError && !asyncImport) {
     const schemaPrefix = ['yufeng', 'bonjur'].includes(brand) ? brand : `brand_${brand}`;
     try {
       // Get the month from ingest_file (set by import script from file path)
