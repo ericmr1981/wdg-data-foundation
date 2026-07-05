@@ -240,6 +240,9 @@ def main():
                         third_party_txn_no, order_source, order_type, source_file
                     ) VALUES %s
                     ON CONFLICT (store_code, order_no) DO UPDATE SET
+                        brand_name = EXCLUDED.brand_name,
+                        city = EXCLUDED.city,
+                        store_name = EXCLUDED.store_name,
                         biz_date = EXCLUDED.biz_date,
                         channel = EXCLUDED.channel,
                         gross_amt = EXCLUDED.gross_amt,
@@ -247,8 +250,10 @@ def main():
                         revenue_amt = EXCLUDED.revenue_amt,
                         payment_methods = EXCLUDED.payment_methods,
                         third_party_txn_no = EXCLUDED.third_party_txn_no,
-                        source_file_id = EXCLUDED.source_file_id,
-                        source_file = EXCLUDED.source_file
+                        order_source = EXCLUDED.order_source,
+                        order_type = EXCLUDED.order_type,
+                        source_file = EXCLUDED.source_file,
+                        source_file_id = EXCLUDED.source_file_id
                     """,
                     [(*r, source_file_id) for r in rows],
                 )
