@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 
 const RerunMatchByFileInput = z.object({
-  brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).describe('Brand code'),
+  brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur', 'tamkoko']).describe('Brand code'),
   source_file_ids: z.array(z.number().int().positive()).optional()
     .describe('Specific source file IDs to rerun (provide this OR all_files=true)'),
   all_files: z.boolean().optional().default(false)

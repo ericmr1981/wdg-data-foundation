@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetCoverageByFileInput = z.object({
-  brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).optional().default('yufeng')
+  brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur', 'tamkoko']).optional().default('yufeng')
     .describe('Brand code (default yufeng = gelatomiiix)'),
 });
 

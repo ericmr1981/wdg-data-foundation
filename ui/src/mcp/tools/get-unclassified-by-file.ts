@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetUnclassifiedByFileInput = z.object({
-  brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).optional().default('yufeng')
+  brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur', 'tamkoko']).optional().default('yufeng')
     .describe('Brand code (default yufeng = gelatomiiix)'),
   file_id: z.number().int().positive().optional()
     .describe('Filter by specific source file ID (recommended)'),
@@ -17,7 +17,7 @@ export const getUnclassifiedByFileTool = {
 **Use case**: After upload, pinpoint which exact file has unclassified records; get the unclassified txn list per file for proposal generation.
 
 **Parameters**:
-- brand (optional): gelatomiiix | yufeng | bonjur, default yufeng
+- brand (optional): gelatomiiix | yufeng | bonjur | tamkoko, default yufeng
 - file_id (optional): filter by source file ID
 - limit (optional): max rows, default 100
 

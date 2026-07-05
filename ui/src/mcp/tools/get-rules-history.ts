@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 
 const GetRulesHistoryInput = z.object({
-  brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).optional().default('yufeng')
+  brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur', 'tamkoko']).optional().default('yufeng')
     .describe('Brand code (default yufeng = gelatomiiix)'),
   rule_id: z.number().int().positive().optional()
     .describe('Filter by specific rule ID (recommended for tracking a single rule)'),

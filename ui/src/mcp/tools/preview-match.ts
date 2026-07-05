@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 
 const PreviewMatchInput = z.object({
-  brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).optional().default('yufeng')
+  brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur', 'tamkoko']).optional().default('yufeng')
     .describe('Brand code (default yufeng = gelatomiiix)'),
   match_value: z.string().min(1).describe('Match keyword to preview (e.g. 美团 / 微信 / 房租)'),
   limit: z.number().int().min(1).max(100).optional().default(20)

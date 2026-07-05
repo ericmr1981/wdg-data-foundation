@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
 
 const ListCategoriesInput = z.object({
-  brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur']).optional().default('yufeng')
+  brand: z.enum(['gelatomiiix', 'yufeng', 'bonjur', 'tamkoko']).optional().default('yufeng')
     .describe('Brand code (default yufeng = gelatomiiix)'),
   level: z.enum(['lvl1', 'lvl2', 'all']).optional().default('all')
     .describe('Category level filter (default all)'),
