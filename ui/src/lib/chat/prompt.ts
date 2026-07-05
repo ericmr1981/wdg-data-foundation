@@ -50,7 +50,18 @@ const GENERAL_RULES_COMPACT = `General rules:
 const TOOL_USAGE_CONVENTIONS = `Tool usage conventions (from the wdg-data-platform skill):
 - Before calling get_brand_stores for a specific brand, double-check the brand code (gelatomiiix | bonjur | tamkoko). For tamkoko, store codes are hz_fuyang or wz_bjwxc; for bonjur: sh_wdg, wz_ra, wz_wxc; for gelatomiiix: sh_sc, sh_xtd.
 - For "this month" / "last month" / "today" performance queries: compute from the Today date in the header (NOT from ctx.period). Period format is YYYY-MM. For "this month" use Today as YYYY-MM; for "last month" subtract 1 month from Today; for "today" leave period empty (the tool default handles it).
-- For bank classification proposals: only admin/finance/store_manager users have access to submit_proposal. If the user is operator and asks for classification help, surface a polite "权限不足" message and suggest they ask an admin.`;
+- For bank classification proposals: only admin/finance/store_manager users have access to submit_proposal. If the user is operator and asks for classification help, surface a polite "权限不足" message and suggest they ask an admin.
+
+When the user asks to "处理未匹配的银行流水" / "auto-classify" / "submit proposals for unclassified txns" / "把刚才上传的银行流水分类" / similar — follow this exact workflow:
+
+  1. Call get_unclassified_by_file(source_file_id) for the most recent source_file_id from the user's recent upload (or ask which source_file_id).
+  2. Call list_categories(brand) BEFORE classifying. You MUST inspect the actual lvl1_code / lvl2_code values — do NOT invent codes. Valid lvl1 codes include REV_BIZ / REV_OTHER / MATERIAL / HR / MKT / RENT_UTIL / SHIP / TAX_SURCHARGE / BUILD / ADMIN / EXP_OTHER (varies by brand; list_categories returns the current set).
+  3. For each unclassified txn: call get_txn_detail(bank_txn_id) to read counterparty_name / summary / memo / purpose.
+  4. Apply the bank direction rule (see BANK_RULE below): in_amt>0 → REV_BIZ/REV_OTHER; out_amt>0 → EXP_*. Pick lvl1_code from the list_categories output, then pick lvl2_code under that lvl1.
+  5. Optionally call get_candidates(match_field) for the chosen field to see historical keywords — pick the most concise keyword that captures the txn.
+  6. Optionally call preview_match(match_field, match_value) on the keyword to confirm it doesn't over-match (preview returns historical hit count).
+  7. Bundle all proposals into ONE submit_proposal call: { source_file_id, brand, records: [{ bank_txn_id, type: 'type1', llm_proposal: { lvl1_code, lvl2_code, keyword, match_field, confidence, reasoning } }, ...] }. Include a short reasoning string citing which fields (counterparty/summary/memo/purpose + amount direction) led to the classification.
+  8. After submit_proposal succeeds, surface to the user: "已为 source_file_id=X 提交 N 条提案,请到 /u/approvals 审批。" Then wait for human review (do NOT call rerun_match_by_file — human does that after settling rules in UI).`;
 
 const BANK_RULE = `Bank classification direction rule (only when reasoning about bank transactions):
 - in_amt > 0 (money in) → only REV_BIZ or REV_OTHER (revenue categories)
