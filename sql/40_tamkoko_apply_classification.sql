@@ -1,7 +1,7 @@
 -- ============================================================
 -- brand_tamkoko_dm 分类快照、override、视图、refresh 函数
--- 结构与 bonjur 一致;函数体内 fn_classify 调用走 tamkoko cfg
--- 依赖: brand_tamkoko_cfg.fn_classify, brand_tamkoko_ods.bank_txn
+-- 结构与 bonjur 一致;函数体内 fn_classify_bank_txn_v2 调用走 tamkoko cfg
+-- 依赖: brand_tamkoko_dm.fn_classify_bank_txn_v2, brand_tamkoko_ods.bank_txn
 -- ============================================================
 
 CREATE SCHEMA IF NOT EXISTS brand_tamkoko_dm;
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS brand_tamkoko_dm.bank_txn_override (
 );
 
 -- refresh 函数:全量重刷快照(指定 source_file_id 时只刷该文件)
--- 使用 brand_tamkoko_cfg.fn_classify(txn) 进行分类
+-- 使用 brand_tamkoko_dm.fn_classify_bank_txn_v2 进行分类
 CREATE OR REPLACE FUNCTION brand_tamkoko_dm.refresh_bank_txn_classified_snapshot(
   target_source_file_id INT DEFAULT NULL
 ) RETURNS void
@@ -52,15 +52,9 @@ BEGIN
     DELETE FROM brand_tamkoko_dm.bank_txn_classified_snapshot;
   END IF;
 
-  -- 2. 重算 + 插入 (使用 LATERAL 调用 fn_classify)
+  -- 2. 重算 + 插入 (使用 LATERAL 调用 fn_classify_bank_txn_v2)
   FOR rec IN
-    SELECT
-      t.id AS bank_txn_id,
-      t.source_file_id,
-      t.counterparty_name,
-      t.summary,
-      t.purpose,
-      t.memo
+    SELECT t.id AS bank_txn_id, t.source_file_id
     FROM brand_tamkoko_ods.bank_txn t
     WHERE (target_source_file_id IS NULL OR t.source_file_id = target_source_file_id)
   LOOP
@@ -99,12 +93,7 @@ BEGIN
         r.lvl2_code,
         CASE WHEN r.matched_rule_id IS NOT NULL THEN 'rule' ELSE 'unclassified' END,
         rec.source_file_id
-      FROM brand_tamkoko_cfg.fn_classify(
-        rec.counterparty_name,
-        rec.summary,
-        rec.purpose,
-        rec.memo
-      ) r
+      FROM brand_tamkoko_dm.fn_classify_bank_txn_v2(rec.bank_txn_id) r
       ON CONFLICT (bank_txn_id) DO UPDATE SET
         matched_rule_id = EXCLUDED.matched_rule_id,
         lvl1_code = EXCLUDED.lvl1_code,
