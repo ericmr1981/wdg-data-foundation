@@ -276,9 +276,20 @@ export async function POST(request: Request) {
   }
 
   if (!importError && triggerImport && source === 'bank') {
+    // Re-query sourceFileId — Python script just inserted it (line 260 query may have run before insert).
+    if (!sourceFileId) {
+      try {
+        const q = await pool.query(
+          `SELECT id FROM raw.ingest_file WHERE file_hash = $1 LIMIT 1`,
+          [fileHash]
+        );
+        if (q.rows?.length) sourceFileId = Number(q.rows[0].id);
+      } catch { /* best-effort */ }
+    }
     try {
       const schemaPrefix = ['yufeng', 'bonjur'].includes(brand) ? brand : `brand_${brand}`;
-      await pool.query(`SELECT ${schemaPrefix}_dm.refresh_bank_txn_classified_snapshot(NULL)`);
+      // Only refresh the just-imported file (much faster than full NULL refresh on large tables).
+      await pool.query(`SELECT ${schemaPrefix}_dm.refresh_bank_txn_classified_snapshot($1)`, [sourceFileId]);
       importResult = (importResult || '') + '\n✅ 分类完成';
     } catch (classifyErr: any) {
       importError = `分类失败: ${classifyErr.message}`;
