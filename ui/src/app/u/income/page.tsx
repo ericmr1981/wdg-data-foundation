@@ -184,10 +184,6 @@ export default function PaymentPage() {
 
   // Fetch income metrics
   useEffect(() => {
-    let cancelled = false;
-    if (!brand) return;
-    setMetricsLoading(true);
-
     if (!brand) return;
     setMetricsLoading(true);
     fetch(`/api/financial/income-metrics?brand=${brand}&period=${period}&span=${span}&store=${store}`)
@@ -198,12 +194,10 @@ export default function PaymentPage() {
       })
       .catch(err => console.error('income-metrics fetch error', err))
       .finally(() => setMetricsLoading(false));
-    return () => { cancelled = true; };
   }, [brand, period, span, store]);
 
   // Fetch counterparty list
   useEffect(() => {
-    let cancelled = false;
     async function fetchList() {
       setLoading(true);
       setError(null);
@@ -224,7 +218,6 @@ export default function PaymentPage() {
       }
     }
     fetchList();
-    return () => { cancelled = true; };
   }, [brand, period, span, store, selectedChannel]);
 
   // Fetch detail when counterparty selected
@@ -562,7 +555,6 @@ function BankEntryRateSection({ brand, span, period, store, channel, onChannelCh
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
     setLoading(true);
     setError(null);
     const storeParam = store && store !== 'all' ? `&store=${encodeURIComponent(store)}` : '';
@@ -601,8 +593,7 @@ function BankEntryRateSection({ brand, span, period, store, channel, onChannelCh
         }
       })
       .catch((err: unknown) => setError(getErrorMessage(err)))
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => setLoading(false));
   }, [brand, span, period, store, channel, onChannelChange]);
 
   if (loading) return (
@@ -752,7 +743,6 @@ function SettlementCycleSection({ brand, period, span, store }: {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
     setLoading(true);
     setError(null);
     const sp = new URLSearchParams({ brand, period, span });
@@ -764,8 +754,7 @@ function SettlementCycleSection({ brand, period, span, store }: {
         else setError(json.error ?? '加载失败');
       })
       .catch((err: unknown) => setError(getErrorMessage(err)))
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => setLoading(false));
   }, [brand, period, span, store]);
 
   if (loading) return <div className="text-sm text-gray-500">加载中...</div>;
@@ -874,7 +863,6 @@ function TaobaoReconSection({ brand, period, span, store }: {
   const useFolded = isDaily || isHybrid;
 
   useEffect(() => {
-    let cancelled = false;
     setLoading(true);
     setError(null);
     const sp = new URLSearchParams({ brand, period, span });
@@ -883,14 +871,12 @@ function TaobaoReconSection({ brand, period, span, store }: {
     fetch(`/api/income/taobao-recon?${sp}`)
       .then(r => r.json())
       .then(json => {
-        if (cancelled) return;
         if (json.success && json.data) setData(json.data);
         else setError(json.error ?? '加载失败');
       })
-      .catch((err: unknown) => { if (!cancelled) setError(getErrorMessage(err)); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [brand, period, span, store]);
+      .catch((err: unknown) => setError(getErrorMessage(err)))
+      .finally(() => setLoading(false));
+  }, [brand, period, span, store, isDaily]);
 
   if (loading) return <div className="text-sm text-gray-500">加载中...</div>;
   if (error) return <div className="text-red-600 text-sm">{error}</div>;
@@ -1082,7 +1068,6 @@ function MeituanReconSection({ brand, period, span, store }: {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
     setLoading(true);
     setError(null);
     const sp = new URLSearchParams({ brand, period, span });
@@ -1095,8 +1080,7 @@ function MeituanReconSection({ brand, period, span, store }: {
         else setError(json.error ?? '加载失败');
       })
       .catch((err: unknown) => setError(getErrorMessage(err)))
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => setLoading(false));
   }, [brand, period, span, store]);
 
   if (loading) return <div className="text-sm text-gray-500">加载中...</div>;
@@ -1220,7 +1204,6 @@ function MeituanTuangouSection({ brand, period, span, store }: {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
     setLoading(true);
     setError(null);
     const sp = new URLSearchParams({ brand, period, span });
@@ -1233,8 +1216,7 @@ function MeituanTuangouSection({ brand, period, span, store }: {
         else setError(json.error ?? '加载失败');
       })
       .catch((err: unknown) => setError(getErrorMessage(err)))
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => setLoading(false));
   }, [brand, period, span, store]);
 
   if (loading) return <div className="text-sm text-gray-500">加载中...</div>;
@@ -1361,7 +1343,6 @@ function DouyinReconSection({ brand, period, span, store }: {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
     setLoading(true);
     setError(null);
     const sp = new URLSearchParams({ brand, period, span });
@@ -1374,8 +1355,7 @@ function DouyinReconSection({ brand, period, span, store }: {
         else setError(json.error ?? '加载失败');
       })
       .catch((err: unknown) => setError(getErrorMessage(err)))
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => setLoading(false));
   }, [brand, period, span, store]);
 
   if (loading) return <div className="text-sm text-gray-500">加载中...</div>;
@@ -1498,7 +1478,6 @@ function GelatoWechatSection({ brand, period, span, store }: {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
     setLoading(true);
     setError(null);
     const sp = new URLSearchParams({ brand, period, span });
@@ -1511,8 +1490,7 @@ function GelatoWechatSection({ brand, period, span, store }: {
         else setError(json.error ?? '加载失败');
       })
       .catch((err: unknown) => setError(getErrorMessage(err)))
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => setLoading(false));
   }, [brand, period, span, store]);
 
   if (loading) return <div className="text-sm text-gray-500">加载中...</div>;
@@ -1635,7 +1613,6 @@ function GelatoAlipaySection({ brand, period, span, store }: {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
     setLoading(true);
     setError(null);
     const sp = new URLSearchParams({ brand, period, span });
@@ -1648,8 +1625,7 @@ function GelatoAlipaySection({ brand, period, span, store }: {
         else setError(json.error ?? '加载失败');
       })
       .catch((err: unknown) => setError(getErrorMessage(err)))
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => setLoading(false));
   }, [brand, period, span, store]);
 
   if (loading) return <div className="text-sm text-gray-500">加载中...</div>;
