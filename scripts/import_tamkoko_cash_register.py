@@ -36,13 +36,17 @@ from _store_guard import (
     safe_resolve_store,
 )
 
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "port": os.getenv("DB_PORT", "5432"),
-    "database": os.getenv("DB_NAME", "dataplatform"),
-    "user": os.getenv("DB_USER", "postgres"),
-    "password": os.environ["DB_PASSWORD"],
-}
+def _get_db_config() -> dict:
+    """Build DB config dict; accesses DB_PASSWORD at call time (fail-fast
+    when actually needed). Deferring this from module level makes the
+    module importable for pure-function tests in envs without DB creds."""
+    return {
+        "host": os.getenv("DB_HOST", "localhost"),
+        "port": os.getenv("DB_PORT", "5432"),
+        "database": os.getenv("DB_NAME", "dataplatform"),
+        "user": os.getenv("DB_USER", "postgres"),
+        "password": os.environ["DB_PASSWORD"],
+    }
 
 STORE_CODE = os.getenv("CASH_REGISTER_STORE_CODE", "sh_sjh")
 STORE_NAME = os.getenv("CASH_REGISTER_STORE_NAME", "上海世纪汇店")
