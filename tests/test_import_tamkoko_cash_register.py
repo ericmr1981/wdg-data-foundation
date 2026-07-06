@@ -158,3 +158,37 @@ def test_is_already_imported_returns_none_when_new(monkeypatch):
 
     monkeypatch.setattr(mod, "_get_db_config", lambda: {"host": "x"})
     assert mod.is_already_imported(FakeConn(), "newhash") is None
+
+
+def test_replace_existing_for_period_deletes_old_files(monkeypatch):
+    """replace=true 时按 ODS 中 biz_date 年/月判定旧 source_file 并删除"""
+    executed = []
+
+    class FakeCursor:
+        def execute(self, sql, params=None):
+            executed.append((sql, params))
+
+        def fetchall(self):
+            # 模拟:旧月份有 2 个 source_file_id
+            return [(101,), (102,)]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    class FakeConn:
+        def cursor(self):
+            return FakeCursor()
+
+        def commit(self):
+            pass
+
+    monkeypatch.setattr(mod, "_get_db_config", lambda: {"host": "x"})
+    mod.replace_existing_for_period(FakeConn(), "sh_sjh", "2026-06-15")
+
+    # 期望:先 SELECT 找旧 source_file_id,再 DELETE ingest_file(CASCADE 清 ODS)
+    assert any("SELECT DISTINCT source_file_id" in s[0] for s in executed)
+    assert any("DELETE FROM raw.ingest_file" in s[0] and 101 in (s[1] or ()) for s in executed) \
+        or any("DELETE FROM raw.ingest_file" in s[0] for s in executed)

@@ -212,6 +212,32 @@ def finalize_source_file(conn, source_file_id: int, row_count: int, status: str 
 
 
 # ---- 后续 task 添加 ----
-# def replace_existing_for_period(...) -> None
+def replace_existing_for_period(conn, store_code: str, biz_date_sample: str):
+    """replace=true 时调用:按 ODS 内 biz_date 年/月删除旧 source_file
+
+    实现:
+      1. SELECT DISTINCT source_file_id FROM cash_register_order
+         WHERE store_code=? AND date_trunc('month', biz_date) = date_trunc('month', biz_date_sample)
+      2. DELETE FROM raw.ingest_file WHERE id IN (...) -- ON DELETE CASCADE 自动清 ODS
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT DISTINCT source_file_id
+                 FROM brand_tamkoko_ods.cash_register_order
+                WHERE store_code = %s
+                  AND date_trunc('month', biz_date) = date_trunc('month', %s::date)""",
+            (store_code, biz_date_sample),
+        )
+        old_ids = [r[0] for r in cur.fetchall()]
+        if not old_ids:
+            return
+        cur.execute(
+            "DELETE FROM raw.ingest_file WHERE id = ANY(%s)",
+            (old_ids,),
+        )
+        conn.commit()
+
+
+# ---- 后续 task 添加 ----
 # def import_one_file(...) -> dict
 # def main() -> None
