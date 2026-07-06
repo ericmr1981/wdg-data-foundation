@@ -31,6 +31,8 @@ import { queryStoreReportTrendTool } from './tools/query-store-report-trend';
 import { queryFinancialStatementTool } from './tools/query-financial-statement';
 import { queryBonjurSalesSummaryTool } from './tools/query-bonjur-sales-summary';
 import { getPipelineKpiTool } from './tools/get-pipeline-kpi';
+import { getInventoryTurnoverTool } from './tools/get-inventory-turnover';
+import { getInventorySummaryTool } from './tools/get-inventory-summary';
 import { previewMatchTool } from './tools/preview-match';
 import { uploadTamkokoInventoryTool } from './tools/upload-tamkoko-inventory';
 import { queryFinancialOverviewTool } from './tools/query-financial-overview';
@@ -99,6 +101,8 @@ const TOOLS: Record<string, ToolModule> = {
   query_financial_statement:   queryFinancialStatementTool,
   query_bonjur_sales_summary:  queryBonjurSalesSummaryTool,
   get_pipeline_kpi:            getPipelineKpiTool,
+  get_inventory_turnover:      getInventoryTurnoverTool,
+  get_inventory_summary:       getInventorySummaryTool,
   preview_match:               previewMatchTool,
   upload_tamkoko_inventory:    uploadTamkokoInventoryTool,
   query_financial_overview:    queryFinancialOverviewTool,
