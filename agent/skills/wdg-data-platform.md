@@ -6,6 +6,9 @@ description: |
 triggers:
   - "tool"
   - "MCP"
+  - "库存"
+  - "周转"
+  - "盘点"
 ---
 
 # WDG Data Platform Tool Conventions
@@ -32,6 +35,31 @@ triggers:
 | `get_qimai_entry_rate` | gelatomiiix, bonjur, tamkoko | 全品牌渠道入账率总览 | 多维度分析 |
 
 **入口顺序**：先 `get_qimai_entry_rate` 看总览 → 再调具体渠道明细。详见 `qimai-bank-reconciliation` 技能。
+
+## 库存与盘点工具（仅泰柯茶园）
+
+泰柯是唯一用真 COGS（`v_cogs_monthly` = 期初+银行物料采购−期末库存）的品牌，毛利率、库存周转、利润表营业成本、资产负债表存货、现金流量表存货变动都依赖月度库存盘点。录入入口是 `/u/inventory` 页面（admin/operator 可见），agent 不直接写入。
+
+| 工具 | 品牌 | 适用场景 | 返回关键字段 |
+|---|---|---|---|
+| `get_inventory_turnover` | tamkoko | "本月周转几次？哪几个月缺期初？" | `turnover_times`, `turnover_days`, `cogs_amt`, `opening_amt`, `closing_amt` |
+| `get_inventory_summary` | tamkoko | "某店某月盘点录入了？谁/何时改的？是否被软删？" | `total_amount`, `note`, `updated_by`, `updated_at`, 软删行 `total_amount=0` 且 `note='deleted <iso>'` |
+
+**算法**：
+- `turnover_times = cogs_amt / ((opening_amt + closing_amt) / 2)`，`turnover_days = 30 / turnover_times`
+- 首期或缺 closing → turnover 返 NULL（类似首期缺期初库存毛利返 NULL）
+- 数据源：`brand_tamkoko_ods.inventory_monthly_summary`（总额） + `v_cogs_monthly` + `v_inventory_turnover`
+
+**权限**：
+- 两个工具只读，无角色要求（通过 `x-mcp-session=internal` 走内部会话）
+- 录入/修改盘点必须走 UI（`/u/inventory`，admin/operator），不要试图用 MCP 写
+
+**典型用法**：
+- 查 hz_fuyang 2026-05 周转：`get_inventory_turnover(store_code='hz_fuyang', period='2026-05')`
+- 列出某店所有盘点历史：`get_inventory_summary(store_code='wz_bjwxc')`（按 period DESC 排序）
+- 库存健康检查：看哪些 (store, period) 缺 closing → 周转返 NULL → 提示用户补录
+
+如果用户问"\<品牌\>库存"，先确认是否 tamkoko——其他品牌无此视图。
 
 ## 回复用语规范
 
@@ -86,5 +114,7 @@ ctx.period 是用户**当前查看的页面**的期间, 跟"用户想查的期�
 | `get_douyin_recon` | tamkoko | — |
 | `get_gelato_wechat_recon` | gelatomiiix | — |
 | `get_gelato_alipay_recon` | gelatomiiix | — |
+| `get_inventory_turnover` | tamkoko | 其他品牌无 `v_cogs_monthly` / `v_inventory_turnover` 视图 |
+| `get_inventory_summary` | tamkoko | 其他品牌无 `inventory_monthly_summary` 表 |
 
 如果用户问"\<品牌\>的\<渠道\>"，先确认该品牌是否支持该工具。

@@ -27,6 +27,8 @@ export { queryStoreReportTrendTool } from './query-store-report-trend';
 export { queryFinancialStatementTool } from './query-financial-statement';
 export { queryBonjurSalesSummaryTool } from './query-bonjur-sales-summary';
 export { getPipelineKpiTool } from './get-pipeline-kpi';
+export { getInventoryTurnoverTool } from './get-inventory-turnover';
+export { getInventorySummaryTool } from './get-inventory-summary';
 export { previewMatchTool } from './preview-match';
 export { uploadTamkokoInventoryTool } from './upload-tamkoko-inventory';
 export { queryFinancialOverviewTool } from './query-financial-overview';
