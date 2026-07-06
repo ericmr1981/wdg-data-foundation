@@ -37,6 +37,8 @@ WHERE store_code='hz_fuyang_test' AND to_char(month,'YYYY-MM')='2026-05';
 -- 期望: numeric, numeric
 
 -- ── 新表单独生效：summary 优先于 SKU SUM ──────────────────────────
+BEGIN;
+
 INSERT INTO brand_tamkoko_ods.inventory_monthly_summary
   (store_code, period, total_amount, updated_by)
 VALUES ('hz_fuyang', '2099-12', 777.77, 'test');
@@ -53,3 +55,5 @@ END $$;
 
 DELETE FROM brand_tamkoko_ods.inventory_monthly_summary
  WHERE store_code = 'hz_fuyang' AND period = '2099-12';
+
+COMMIT;
