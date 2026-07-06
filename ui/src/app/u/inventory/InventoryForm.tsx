@@ -68,11 +68,10 @@ export function InventoryForm({ stores }: Props) {
       <label className="flex flex-col text-xs text-gray-600">
         期间
         <input
-          type="text"
+          type="month"
           value={period}
           onChange={(e) => setPeriod(e.target.value)}
-          placeholder="YYYY-MM"
-          className="border rounded px-2 py-1 text-sm w-28"
+          className="border rounded px-2 py-1 text-sm w-36"
         />
       </label>
       <label className="flex flex-col text-xs text-gray-600">

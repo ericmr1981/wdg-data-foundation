@@ -21,8 +21,9 @@ test.describe('tamkoko inventory summary', () => {
     await page.goto('/u/inventory');
     await expect(page.getByRole('heading', { name: '月度盘点' })).toBeVisible();
 
-    const period = `20${Math.floor(Math.random() * 90) + 10}-01`;
-    await page.locator('input[placeholder="YYYY-MM"]').fill(period);
+    // Fixed period avoids CI cross-run collisions; teardown via DELETE on cleanup
+    const period = '2099-12';
+    await page.locator('input[type="month"]').fill(period);
     await page.locator('input[type=number]').fill('1234.56');
     await page.getByRole('button', { name: '保存' }).click();
 
