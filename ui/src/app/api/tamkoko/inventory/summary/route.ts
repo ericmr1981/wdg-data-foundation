@@ -93,7 +93,7 @@ export async function POST(req: Request) {
              note         = EXCLUDED.note,
              updated_by   = EXCLUDED.updated_by,
              updated_at   = NOW()`,
-      [body.store_code, body.period, body.total_amount, note, user!.username]
+      [body.store_code, body.period, body.total_amount, note, user?.username || 'unknown']
     );
 
     await client.query(
@@ -102,7 +102,7 @@ export async function POST(req: Request) {
        VALUES ('inventory_summary', $1, 'upsert', $2, $3::jsonb)`,
       [
         `tamkoko:${body.store_code}:${body.period}`,
-        user!.username,
+        user?.username || 'unknown',
         JSON.stringify({ old, new: { total_amount: body.total_amount, note } }),
       ]
     );
@@ -173,7 +173,7 @@ export async function DELETE(req: Request) {
               updated_by = $4,
               updated_at = NOW()
         WHERE store_code = $1 AND period = $2`,
-      [store_code, period, `deleted ${stamp}`, user!.username]
+      [store_code, period, `deleted ${stamp}`, user?.username || 'unknown']
     );
 
     await client.query(
@@ -182,7 +182,7 @@ export async function DELETE(req: Request) {
        VALUES ('inventory_summary', $1, 'soft_delete', $2, $3::jsonb)`,
       [
         `tamkoko:${store_code}:${period}`,
-        user!.username,
+        user?.username || 'unknown',
         JSON.stringify({ old, deleted_at: stamp }),
       ]
     );
