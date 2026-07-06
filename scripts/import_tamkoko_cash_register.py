@@ -182,17 +182,19 @@ def is_already_imported(conn, file_hash: str) -> Optional[int]:
 
 def register_source_file(conn, meta: dict, file_hash: str, file_size: int) -> int:
     """INSERT 一条 raw.ingest_file,status='running',返回 id"""
+    # month in ingest_file expects YYYY-MM-DD format, convert from YYYY-MM
+    month_date = f"{meta['month']}-01"
     with conn.cursor() as cur:
         cur.execute(
             """INSERT INTO raw.ingest_file (
                 brand_code, store_code, source_type, month,
                 file_name, file_path, file_hash, file_size, status
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'running')
-            ON CONFLICT (file_hash) DO UPDATE SET
+            ON CONFLICT (brand_code, file_hash) DO UPDATE SET
                 status = 'running', updated_at = NOW()
             RETURNING id""",
             (
-                meta["brand_code"], meta["store_code"], SOURCE_TYPE, meta["month"],
+                meta["brand_code"], meta["store_code"], SOURCE_TYPE, month_date,
                 meta["file_name"], meta["file_path"], file_hash, file_size,
             ),
         )
@@ -238,6 +240,121 @@ def replace_existing_for_period(conn, store_code: str, biz_date_sample: str):
         conn.commit()
 
 
-# ---- 后续 task 添加 ----
-# def import_one_file(...) -> dict
-# def main() -> None
+def import_one_file(conn, meta: dict, replace: bool = False) -> dict:
+    """导入单文件到 ODS。返回值:
+        {
+            "source_file_id": int,
+            "row_count": int,
+            "skipped": bool,
+        }
+    """
+    file_hash = calculate_sha256(meta["file_path"])
+    existing_id = is_already_imported(conn, file_hash)
+    if existing_id is not None:
+        return {"source_file_id": existing_id, "row_count": 0, "skipped": True}
+
+    # 读 + 聚合
+    with open(meta["file_path"], "r", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+    aggregated = aggregate_by_order_no(rows)
+
+    # store-guard:store_name 与 env 不一致 → warn + 仍继续
+    if aggregated:
+        actual_name = aggregated[0]["store_name"]
+        expected_name = STORE_NAME
+        if actual_name != expected_name:
+            print(
+                f"⚠️  store_name 不一致: file={actual_name!r} env={expected_name!r} → 继续入库",
+                file=sys.stderr,
+            )
+
+    file_size = Path(meta["file_path"]).stat().st_size
+    source_file_id = register_source_file(conn, meta, file_hash, file_size)
+
+    # replace=true 时清同月份旧 source_file(CASCADE 清 ODS)
+    if replace and aggregated:
+        # 用第一条记录的 biz_date 判定月份
+        sample_biz = aggregated[0]["biz_date"]
+        if sample_biz:
+            replace_existing_for_period(conn, meta["store_code"], sample_biz)
+
+    # 写 ODS
+    if aggregated:
+        with conn.cursor() as cur:
+            execute_values(
+                cur,
+                f"""INSERT INTO {TARGET_TABLE} (
+                    store_code, store_name, biz_date, order_no,
+                    order_source, order_type, meal_period,
+                    gross_amt, revenue_amt, discount_amt, net_amt, qty,
+                    source_file_id
+                ) VALUES %s""",
+                [(
+                    meta["store_code"], r["store_name"], r["biz_date"], r["order_no"],
+                    r["order_source"], r["order_type"], r["meal_period"],
+                    r["gross_amt"], r["revenue_amt"], r["discount_amt"], r["net_amt"], r["qty"],
+                    source_file_id,
+                ) for r in aggregated],
+            )
+            conn.commit()
+
+    finalize_source_file(conn, source_file_id, len(aggregated), "success")
+    return {"source_file_id": source_file_id, "row_count": len(aggregated), "skipped": False}
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("path", help="CSV 文件或目录路径")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--replace", action="store_true",
+                        help="按 ODS 内 biz_date 年/月删除同 store+月份旧 source_file 后再写")
+    parser.add_argument("--brand", default=BRAND_CODE)
+    args = parser.parse_args()
+
+    target = Path(args.path)
+    if target.is_file():
+        files = [target]
+    elif target.is_dir():
+        files = sorted(target.glob("*.csv"))
+    else:
+        print(f"路径不存在: {args.path}", file=sys.stderr)
+        sys.exit(1)
+    if not files:
+        print(f"未找到 CSV 文件: {args.path}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"目标表: {TARGET_TABLE}, 文件数: {len(files)}, replace={args.replace}")
+
+    conn = psycopg2.connect(**_get_db_config())
+    try:
+        for csv_path in files:
+            print(f"\n=== {csv_path.name} ===")
+            try:
+                meta = parse_path(str(csv_path))
+            except ValueError as e:
+                print(f"  ❌ 路径解析失败: {e}", file=sys.stderr)
+                continue
+            print(f"  brand={meta['brand_code']}, store={meta['store_code']}, month={meta['month']}")
+
+            if args.dry_run:
+                with open(csv_path, "r", encoding="utf-8-sig") as f:
+                    n = sum(1 for _ in csv.DictReader(f))
+                print(f"  [dry-run] 跳过,文件有 {n} 行")
+                continue
+
+            try:
+                result = import_one_file(conn, meta, replace=args.replace)
+                if result["skipped"]:
+                    print(f"  ⏭ SKIPPED (已导入过, source_file_id={result['source_file_id']})")
+                else:
+                    print(f"  ✅ 导入成功, source_file_id={result['source_file_id']}, rows={result['row_count']}")
+            except Exception as e:
+                print(f"  ❌ 导入失败: {e}", file=sys.stderr)
+                sys.exit(1)
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    main()

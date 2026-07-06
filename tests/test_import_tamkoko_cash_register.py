@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import psycopg2
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -192,3 +193,108 @@ def test_replace_existing_for_period_deletes_old_files(monkeypatch):
     assert any("SELECT DISTINCT source_file_id" in s[0] for s in executed)
     assert any("DELETE FROM raw.ingest_file" in s[0] and 101 in (s[1] or ()) for s in executed) \
         or any("DELETE FROM raw.ingest_file" in s[0] for s in executed)
+
+
+def _has_db() -> bool:
+    import os
+    return bool(os.environ.get("DB_PASSWORD"))
+
+
+@pytest.mark.integration
+def test_import_one_file_writes_ods_rows(tmp_path, monkeypatch):
+    """用 tests/test_fixtures/cash_register_sample_3rows.csv 跑 import_one_file,
+    验证 ODS 写入 3 行(3 个净订单,无退款)"""
+    # 这需要真 DB,标记 integration;若环境无 DB 可 skip
+    if not _has_db():
+        pytest.skip("需要 DATABASE 环境变量 DB_PASSWORD 连接到本地 PG")
+
+    import os
+    monkeypatch.setenv("CASH_REGISTER_STORE_CODE", "sh_sjh")
+    monkeypatch.setenv("CASH_REGISTER_STORE_NAME", "上海世纪汇店")
+
+    conn = psycopg2.connect(**mod._get_db_config())
+    try:
+        # 清测试 store 的旧数据(避免污染)
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM raw.ingest_file WHERE brand_code='tamkoko' AND source_type='cash_register' AND file_hash=%s",
+                (mod.calculate_sha256(str(SAMPLE_CSV)),),
+            )
+            conn.commit()
+
+        meta = {
+            "brand_code": "tamkoko",
+            "store_code": "sh_sjh",
+            "source_type": "cash_register",
+            "month": "2026-06",
+            "file_name": SAMPLE_CSV.name,
+            "file_path": str(SAMPLE_CSV),
+        }
+        result = mod.import_one_file(conn, meta, replace=False)
+
+        assert result["skipped"] is False
+        assert result["row_count"] == 3
+        assert result["source_file_id"] > 0
+
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM brand_tamkoko_ods.cash_register_order WHERE source_file_id = %s",
+                (result["source_file_id"],),
+            )
+            (n,) = cur.fetchone()
+            assert n == 3
+
+        # 二次运行 → SKIPPED
+        result2 = mod.import_one_file(conn, meta, replace=False)
+        assert result2["skipped"] is True
+        assert result2["source_file_id"] == result["source_file_id"]
+    finally:
+        conn.close()
+
+
+@pytest.mark.integration
+def test_import_one_file_with_refund_merges_rows(tmp_path, monkeypatch):
+    """退款 fixture 应合并为 1 个净订单(SUM 后全 0)+ 1 个普通订单"""
+    if not _has_db():
+        pytest.skip("需要 DATABASE 环境变量 DB_PASSWORD 连接到本地 PG")
+
+    import os
+    monkeypatch.setenv("CASH_REGISTER_STORE_CODE", "sh_sjh")
+    monkeypatch.setenv("CASH_REGISTER_STORE_NAME", "上海世纪汇店")
+
+    conn = psycopg2.connect(**mod._get_db_config())
+    try:
+        # 用 refund fixture
+        meta = {
+            "brand_code": "tamkoko",
+            "store_code": "sh_sjh",
+            "source_type": "cash_register",
+            "month": "2026-06",
+            "file_name": REFUND_CSV.name,
+            "file_path": str(REFUND_CSV),
+        }
+        # 清旧 hash
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM raw.ingest_file WHERE brand_code='tamkoko' AND source_type='cash_register' AND file_hash=%s",
+                (mod.calculate_sha256(str(REFUND_CSV)),),
+            )
+            conn.commit()
+
+        result = mod.import_one_file(conn, meta, replace=False)
+        assert result["row_count"] == 2, f"应为 2 个净订单(1 退款合并 + 1 普通),实际 {result['row_count']}"
+
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT order_no, gross_amt, revenue_amt, net_amt, qty FROM brand_tamkoko_ods.cash_register_order WHERE source_file_id = %s ORDER BY order_no",
+                (result["source_file_id"],),
+            )
+            rows = cur.fetchall()
+        # 退款订单 SUM 后为 0
+        refund_row = next(r for r in rows if r[0].endswith("001"))
+        assert refund_row[1] == 0.0  # gross
+        assert refund_row[2] == 0.0  # revenue
+        assert refund_row[3] == 0.0  # net
+        assert refund_row[4] == 0.0  # qty
+    finally:
+        conn.close()
