@@ -35,3 +35,21 @@ SELECT '5月 gross/net_pct 非 NULL' AS check_name,
 FROM brand_tamkoko_dm.v_store_monthly_kpi
 WHERE store_code='hz_fuyang_test' AND to_char(month,'YYYY-MM')='2026-05';
 -- 期望: numeric, numeric
+
+-- ── 新表单独生效：summary 优先于 SKU SUM ──────────────────────────
+INSERT INTO brand_tamkoko_ods.inventory_monthly_summary
+  (store_code, period, total_amount, updated_by)
+VALUES ('hz_fuyang', '2099-12', 777.77, 'test');
+
+DO $$
+DECLARE got NUMERIC;
+BEGIN
+  SELECT closing_amt INTO got FROM brand_tamkoko_dm.v_cogs_monthly
+   WHERE store_code = 'hz_fuyang' AND period = '2099-12';
+  IF got IS DISTINCT FROM 777.77 THEN
+    RAISE EXCEPTION 'summary-only scenario: expected 777.77, got %', got;
+  END IF;
+END $$;
+
+DELETE FROM brand_tamkoko_ods.inventory_monthly_summary
+ WHERE store_code = 'hz_fuyang' AND period = '2099-12';
