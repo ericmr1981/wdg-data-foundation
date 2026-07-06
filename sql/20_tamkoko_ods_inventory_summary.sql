@@ -4,12 +4,12 @@
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS brand_tamkoko_ods.inventory_monthly_summary (
-  store_code    TEXT NOT NULL,
-  period        TEXT NOT NULL,                                    -- 'YYYY-MM'
-  total_amount  NUMERIC(14,2) NOT NULL CHECK (total_amount >= 0),
-  note          TEXT,
-  updated_by    TEXT NOT NULL,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  store_code    text NOT NULL,
+  period        text NOT NULL,                                    -- 'YYYY-MM'
+  total_amount  numeric(14,2) NOT NULL CHECK (total_amount >= 0),
+  note          text,
+  updated_by    text NOT NULL,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (store_code, period)
 );
