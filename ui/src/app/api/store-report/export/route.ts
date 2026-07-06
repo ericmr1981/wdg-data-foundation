@@ -77,6 +77,7 @@ export async function GET(request: Request) {
         rent_ratio_pct: r.rent_ratio_pct == null ? null : Number(r.rent_ratio_pct),
         gross_profit_rate_pct: r.gross_profit_rate_pct == null ? null : Number(r.gross_profit_rate_pct),
         net_profit_rate_pct: r.net_profit_rate_pct == null ? null : Number(r.net_profit_rate_pct),
+        turnover_times: null,
       });
       snapshot = { current: toKpi(cur.rows[0]), previous: prev.rows[0] ? toKpi(prev.rows[0]) : null };
 

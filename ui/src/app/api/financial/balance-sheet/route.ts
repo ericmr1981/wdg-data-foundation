@@ -21,6 +21,7 @@ interface BalanceRow {
   loan_balance: string;
   capital_balance: string;
   retained_earnings: string;
+  inventory_amt: number;
 }
 
 function buildBalanceLines(raw: BalanceRow[]): LineItem[] {
@@ -31,13 +32,17 @@ function buildBalanceLines(raw: BalanceRow[]): LineItem[] {
   const loans = Number(r.loan_balance);
   const capital = Number(r.capital_balance);
   const retained = Number(r.retained_earnings);
-  const totalAssets = cash;
+  const inventory = r.inventory_amt || 0;
+  const totalAssets = cash + inventory;
   const totalLiabilities = loans;
   const totalEquity = capital + retained;
   const lines: LineItem[] = [];
 
   lines.push({ section: 'asset_header', label: '资产', amount: 0, indent: 0, is_subtotal: false, is_highlight: false });
   lines.push({ section: 'asset_detail', label: '  货币资金', amount: cash, indent: 1, is_subtotal: false, is_highlight: false });
+  if (inventory > 0) {
+    lines.push({ section: 'asset_detail', label: '  存货', amount: inventory, indent: 1, is_subtotal: false, is_highlight: false });
+  }
   lines.push({ section: 'asset_total', label: '资产总计', amount: totalAssets, indent: 0, is_subtotal: true, is_highlight: true });
 
   lines.push({ section: 'liability_header', label: '负债', amount: 0, indent: 0, is_subtotal: false, is_highlight: false });
@@ -50,7 +55,7 @@ function buildBalanceLines(raw: BalanceRow[]): LineItem[] {
   lines.push({ section: 'equity_total', label: '所有者权益总计', amount: totalEquity, indent: 0, is_subtotal: true, is_highlight: true });
 
   const liabEquityTotal = totalLiabilities + totalEquity;
-  const balanceDiff = cash - liabEquityTotal;
+  const balanceDiff = totalAssets - liabEquityTotal;
   lines.push({ section: 'total', label: '负债和所有者权益总计', amount: liabEquityTotal, indent: 0, is_subtotal: false, is_highlight: true });
 
   if (Math.abs(balanceDiff) > 0.01) {
@@ -133,15 +138,35 @@ export async function GET(request: Request) {
       GROUP BY store_code
     `;
 
-    const [balanceRes, profitRes] = await Promise.all([
+    // Inventory closing amount at the period end (month-end snapshot).
+    // For tamkoko this comes from v_inventory_turnover.closing_amt (which
+    // already prefers inventory_monthly_summary over SKU detail). NULL → no inventory.
+    const inventoryParams: (string | number)[] = [targetMonth];
+    let inventoryStoreClause = '';
+    if (store !== 'all') {
+      inventoryStoreClause = 'AND store_code = $2';
+      inventoryParams.push(store);
+    }
+    const inventoryQuery = `
+      SELECT store_code, closing_amt
+      FROM ${dmSchema}.v_inventory_turnover
+      WHERE period = to_char($1::date, 'YYYY-MM') ${inventoryStoreClause}
+    `;
+
+    const [balanceRes, profitRes, inventoryRes] = await Promise.all([
       pool.query(balanceQuery, params),
       pool.query(profitQuery, profitParams),
+      pool.query(inventoryQuery, inventoryParams).catch(() => ({ rows: [] as { store_code: string; closing_amt: string | null }[] })),
     ]);
 
     const profitMap = new Map(profitRes.rows.map(r => [r.store_code, Number(r.retained_earnings)]));
+    const inventoryMap = new Map(
+      inventoryRes.rows.map(r => [r.store_code, r.closing_amt != null ? Number(r.closing_amt) : 0])
+    );
     const merged = balanceRes.rows.map(r => ({
       ...r,
       retained_earnings: profitMap.get(r.store_code) || 0,
+      inventory_amt: inventoryMap.get(r.store_code) || 0,
     }));
 
     const lines = buildBalanceLines(merged);

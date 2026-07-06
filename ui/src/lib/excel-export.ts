@@ -199,6 +199,7 @@ export function buildStoreReportWorkbook(input: ExportInput): XLSX.WorkBook {
     rent_ratio_pct: input.trend.series.rent_ratio_pct[yoyIndex] ?? null,
     gross_profit_rate_pct: input.trend.series.gross_profit_rate_pct?.[yoyIndex] ?? null,
     net_profit_rate_pct: input.trend.series.net_profit_rate_pct?.[yoyIndex] ?? null,
+    turnover_times: null,
   } : null;
 
   const yoyHeader = ['指标', `当月 (${input.month})`, `去年同期 (${yoy})`, '同比%'];

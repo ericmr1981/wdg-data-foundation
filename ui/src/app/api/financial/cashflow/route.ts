@@ -23,7 +23,7 @@ interface CashflowRow {
   net_amount: string;
 }
 
-function buildCashflowLines(raw: CashflowRow[]): LineItem[] {
+function buildCashflowLines(raw: CashflowRow[], inventoryAdj: number = 0): LineItem[] {
   const lines: LineItem[] = [];
   const operating = raw.filter(r => r.activity === 'operating');
   const investing = raw.filter(r => r.activity === 'investing');
@@ -60,7 +60,12 @@ function buildCashflowLines(raw: CashflowRow[]): LineItem[] {
   if (opOutflows.length > 0) {
     lines.push({ section: 'operating_out', label: '  经营活动现金流出小计', amount: -opOutflowTotal, indent: 1, is_subtotal: true, is_highlight: false });
   }
-  lines.push({ section: 'operating_net', label: '经营活动产生的现金流量净额', amount: opNet, indent: 0, is_subtotal: false, is_highlight: true });
+  // Non-cash adjustment: inventory change. Positive = inventory grew (use of cash).
+  if (inventoryAdj !== 0) {
+    lines.push({ section: 'operating_out_detail', label: '  存货变动', amount: inventoryAdj, indent: 1, is_subtotal: false, is_highlight: false });
+  }
+  const opNetWithInv = opNet + inventoryAdj;
+  lines.push({ section: 'operating_net', label: '经营活动产生的现金流量净额', amount: opNetWithInv, indent: 0, is_subtotal: false, is_highlight: true });
 
   // Investing
   const invNet = investing.reduce((s, r) => s + toNum(r.net_amount), 0);
@@ -81,7 +86,7 @@ function buildCashflowLines(raw: CashflowRow[]): LineItem[] {
   lines.push({ section: 'financing_net', label: '筹资活动产生的现金流量净额', amount: finNet, indent: 0, is_subtotal: false, is_highlight: true });
 
   // Net increase (only from classified activities)
-  const totalNet = opNet + invNet + finNet;
+  const totalNet = opNetWithInv + invNet + finNet;
   lines.push({ section: 'total_net', label: '四、现金净增加额', amount: totalNet, indent: 0, is_subtotal: false, is_highlight: true });
 
   // Unclassified items display
@@ -152,8 +157,37 @@ export async function GET(request: Request) {
       ORDER BY min(sort_order)
     `;
 
-    const result = await pool.query(query, params);
-    const lines = buildCashflowLines(result.rows);
+    // Inventory change for the period: closing - opening summed across stores.
+    // Positive value = inventory increased (use of cash, displayed as negative in CF).
+    // Negative value = inventory decreased (source of cash, displayed as positive in CF).
+    // For tamkoko this comes from v_cogs_monthly; SUM(opening_amt) and SUM(closing_amt)
+    // over the period gives the change.
+    const invParams: (string | number)[] = [startDate, endDate];
+    let invStoreClause = '';
+    if (store !== 'all') {
+      invStoreClause = 'AND store_code = $3';
+      invParams.push(store);
+    }
+    const invChangeQuery = `
+      SELECT
+        COALESCE(SUM(opening_amt), 0)::numeric AS opening_total,
+        COALESCE(SUM(closing_amt), 0)::numeric AS closing_total
+      FROM ${dmSchema}.v_cogs_monthly
+      WHERE period >= to_char($1::date, 'YYYY-MM')
+        AND period <  to_char($2::date, 'YYYY-MM')
+        ${invStoreClause}
+    `;
+
+    const [result, invRes] = await Promise.all([
+      pool.query(query, params),
+      pool.query(invChangeQuery, invParams).catch(() => ({ rows: [{ opening_total: '0', closing_total: '0' }] })),
+    ]);
+    const invOpening = Number(invRes.rows[0]?.opening_total || 0);
+    const invClosing = Number(invRes.rows[0]?.closing_total || 0);
+    // inventoryDelta is the change in inventory (closing - opening).
+    // Cash flow effect: a positive delta (inventory grew) is a USE of cash → negative on CF.
+    const inventoryDelta = invClosing - invOpening;
+    const lines = buildCashflowLines(result.rows, -inventoryDelta);
 
     return NextResponse.json({
       success: true,

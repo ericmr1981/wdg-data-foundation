@@ -67,7 +67,7 @@ export async function GET(request: Request) {
     // Current period queries
     const cp = withStore([startDate, endDate]);
 
-    const [profitRes, cfRes, balanceRes, storesRes, beginBalanceRes, npRes, expensesRes] = await Promise.all([
+    const [profitRes, cfRes, balanceRes, storesRes, beginBalanceRes, npRes, gmRes, expensesRes] = await Promise.all([
       pool.query(
         `SELECT lvl1_code, sum(amount) as amount FROM ${dmSchema}.v_profit_statement WHERE month >= $1::date AND month < $2::date ${cp.clause} GROUP BY lvl1_code`,
         cp.params
@@ -96,6 +96,15 @@ export async function GET(request: Request) {
          WHERE month >= $1::date AND month < $2::date ${cp.clause}`,
         cp.params
       ),
+      // Gross margin: source of truth is v_store_monthly_kpi.gross_profit_rate_pct (cogs-based for
+      // tamkoko via v_cogs_monthly; approximation for brands without inventory). AVG across months
+      // is fine because the view already returns NULL for first-period-no-opening cases.
+      pool.query(
+        `SELECT AVG(gross_profit_rate_pct) as rate_pct
+         FROM ${dmSchema}.v_store_monthly_kpi
+         WHERE month >= $1::date AND month < $2::date ${cp.clause}`,
+        cp.params
+      ),
       // 营业支出 = sum of operating categories only (excludes BUILD investing, EXP_OTHER misc, FINANCE financing, etc.)
       pool.query(
         `SELECT COALESCE(SUM(ABS(amount)), 0)::numeric AS operating_expenses
@@ -113,12 +122,19 @@ export async function GET(request: Request) {
     // 营业支出: explicit sum of operating categories. Excludes BUILD (investing) and any non-operating amounts.
     const expenses = Number(expensesRes.rows[0]?.operating_expenses || 0);
 
-    // Unified formula (all brands). After v_store_monthly_kpi redesign (cogs basis), the view's
-    // net_profit_rate_pct is the source of truth. AVG handles the case where some months have NULL
-    // (e.g. bonjur/gelatomiiix until inventory is added).
+    // Unified formula (all brands). gross_profit_rate_pct from v_store_monthly_kpi is the
+    // source of truth: for tamkoko it derives from cogs (v_cogs_monthly), and therefore
+    // depends on inventory_monthly_summary. For brands without inventory it falls back to
+    // the bank-MATERIAL approximation inside the view. Only fall back to the local bank
+    // approximation when the view itself returns NULL (e.g. all months in range lack opening).
     let grossMarginRate: number;
     let netProfitRate: number;
-    grossMarginRate = revenue > 0 ? (revenue + materialCost) / revenue : 0;
+    const gmFromView = gmRes.rows[0]?.rate_pct;
+    if (gmFromView != null) {
+      grossMarginRate = Number(gmFromView) / 100;
+    } else {
+      grossMarginRate = revenue > 0 ? (revenue + materialCost) / revenue : 0;
+    }
     netProfitRate = Number(npRes.rows[0]?.rate_pct || 0) / 100;
     const operatingCashflow = Number(cfRes.rows.find((r: CashflowRow) => r.activity === 'operating')?.net_amount || 0);
     const cashBalance = Number(balanceRes.rows[0]?.cash_balance || 0);
@@ -150,7 +166,7 @@ export async function GET(request: Request) {
 
     if (prevBounds) {
       const pp = withStore(prevBounds);
-      const [prevProfitRes, prevCfRes, prevNpRes] = await Promise.all([
+      const [prevProfitRes, prevCfRes, prevNpRes, prevGmRes] = await Promise.all([
         pool.query(
           `SELECT lvl1_code, sum(amount) as amount FROM ${dmSchema}.v_profit_statement WHERE month >= $1::date AND month < $2::date ${pp.clause} GROUP BY lvl1_code`,
           pp.params
@@ -165,6 +181,12 @@ export async function GET(request: Request) {
            WHERE month >= $1::date AND month < $2::date ${pp.clause}`,
           pp.params
         ),
+        pool.query(
+          `SELECT AVG(gross_profit_rate_pct) as rate_pct
+           FROM ${dmSchema}.v_store_monthly_kpi
+           WHERE month >= $1::date AND month < $2::date ${pp.clause}`,
+          pp.params
+        ),
       ]);
 
       const prevMap = new Map(prevProfitRes.rows.map((r: ProfitRow) => [r.lvl1_code, Number(r.amount)]));
@@ -173,7 +195,12 @@ export async function GET(request: Request) {
       const prevOcf = Number(prevCfRes.rows[0]?.net_amount || 0);
 
       vsRevenue = (revenue > 0 && prevRev > 0) ? (revenue - prevRev) / prevRev : 0;
-      vsGm = (revenue > 0 && prevRev > 0) ? ((revenue + materialCost) / revenue) - ((prevRev + prevMat) / prevRev) : 0;
+      // Match the current-period rule: prefer the view's gross_profit_rate_pct (cogs-based for
+      // tamkoko) over the bank-MATERIAL approximation; only fall back when the view returned NULL.
+      const prevGmRateRaw = prevGmRes.rows[0]?.rate_pct;
+      const prevGmRate = prevGmRateRaw != null ? Number(prevGmRateRaw) / 100
+        : (prevRev > 0 ? (prevRev + prevMat) / prevRev : 0);
+      vsGm = revenue > 0 ? grossMarginRate - prevGmRate : 0;
       const prevNpRate = Number(prevNpRes.rows[0]?.rate_pct || 0) / 100;
       // Unified formula (all brands). Use the view's pre-computed prev-period net_profit_rate_pct.
       vsNp = revenue > 0 ? netProfitRate - prevNpRate : 0;
