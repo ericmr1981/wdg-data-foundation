@@ -67,7 +67,7 @@ export async function GET(request: Request) {
     // Current period queries
     const cp = withStore([startDate, endDate]);
 
-    const [profitRes, cfRes, balanceRes, storesRes, beginBalanceRes, npRes, gmRes, expensesRes] = await Promise.all([
+    const [profitRes, cfRes, balanceRes, storesRes, beginBalanceRes, npRes, gmRes, cogsRes, qimaiRes, expensesRes] = await Promise.all([
       pool.query(
         `SELECT lvl1_code, sum(amount) as amount FROM ${dmSchema}.v_profit_statement WHERE month >= $1::date AND month < $2::date ${cp.clause} GROUP BY lvl1_code`,
         cp.params
@@ -113,6 +113,33 @@ export async function GET(request: Request) {
            AND month >= $1::date AND month < $2::date ${cp.clause}`,
         cp.params
       ),
+      // Inventory-based COGS for qimai-gross-margin calc (tamkoko only). NULL when brand has no
+      // cogs view. COGS = opening + purchase − closing (per v_cogs_monthly). We SUM across months
+      // in the period for parity with the bank-revenue SUM.
+      pool.query(
+        `SELECT COALESCE(SUM(cogs_amt), 0)::numeric AS cogs_total
+         FROM ${dmSchema}.v_cogs_monthly
+         WHERE period >= to_char($1::date, 'YYYY-MM')
+           AND period <  to_char($2::date, 'YYYY-MM')
+           ${cp.clause}`,
+        cp.params
+      ).catch(() => ({ rows: [{ cogs_total: null }] })),
+      // Qimai revenue for the period. `income_detail` schema differs per brand:
+      //   - gelatomiiix: gelatomiiix_ods (legacy)
+      //   - tamkoko, bonjur, yufeng: <brand>_ods
+      // We use the ods schema returned by getOdsSchema (which already does this mapping for
+      // gelatomiiix; see brand-server). is_member_payment / is_refund filter to non-loyalty
+      // and non-refund rows to avoid double-counting.
+      pool.query(
+        `SELECT
+           COALESCE(SUM(net_amt), 0)::numeric   AS qimai_net,
+           COALESCE(SUM(gross_amt), 0)::numeric AS qimai_gross
+         FROM ${getOdsSchema(brand)}.income_detail
+         WHERE NOT COALESCE(is_member_payment, FALSE)
+           AND NOT COALESCE(is_refund, FALSE)
+           AND biz_date >= $1::date AND biz_date < $2::date ${cp.clause}`,
+        cp.params
+      ).catch(() => ({ rows: [{ qimai_net: null, qimai_gross: null }] })),
     ]);
 
     const pMap = new Map(profitRes.rows.map((r: ProfitRow) => [r.lvl1_code, Number(r.amount)]));
@@ -136,6 +163,26 @@ export async function GET(request: Request) {
       grossMarginRate = revenue > 0 ? (revenue + materialCost) / revenue : 0;
     }
     netProfitRate = Number(npRes.rows[0]?.rate_pct || 0) / 100;
+
+    // Qimai-based gross margin (营业净收 / 营业额). Uses the same COGS as the bank-based formula.
+    // Both numbers share the same cost base; only the revenue denominator differs.
+    //   - 营业净收毛利率 = (净收入 − COGS) / 净收入    (主显示 — 跟平台口径一致)
+    //   - 营业额毛利率   = (营业额 − COGS) / 营业额    (副显示 — 含优惠/折扣)
+    // Returns null when qimai data is unavailable (brand without income_detail) or
+    // when COGS is null (no inventory, no approximation) — we do NOT silently fall back
+    // to the bank-MATERIAL approximation here, to keep the qimai view honest.
+    const cogsTotal: number | null = cogsRes.rows[0]?.cogs_total != null
+      ? Number(cogsRes.rows[0].cogs_total) : null;
+    const qimaiNet: number | null = qimaiRes.rows[0]?.qimai_net != null
+      ? Number(qimaiRes.rows[0].qimai_net) : null;
+    const qimaiGross: number | null = qimaiRes.rows[0]?.qimai_gross != null
+      ? Number(qimaiRes.rows[0].qimai_gross) : null;
+    const grossMarginRateQimaiNet: number | null =
+      qimaiNet != null && cogsTotal != null && qimaiNet > 0
+        ? (qimaiNet - cogsTotal) / qimaiNet : null;
+    const grossMarginRateQimaiGross: number | null =
+      qimaiGross != null && cogsTotal != null && qimaiGross > 0
+        ? (qimaiGross - cogsTotal) / qimaiGross : null;
     const operatingCashflow = Number(cfRes.rows.find((r: CashflowRow) => r.activity === 'operating')?.net_amount || 0);
     const cashBalance = Number(balanceRes.rows[0]?.cash_balance || 0);
     const beginningBalance = Number(beginBalanceRes.rows[0]?.cash_balance || 0);
@@ -212,6 +259,14 @@ export async function GET(request: Request) {
       data: {
         period, span, store,
         revenue, grossMarginRate, netProfitRate,
+        // Qimai-based gross margin (separate from bank-based grossMarginRate above).
+        // qimaiNetRevenue / qimaiGrossRevenue are the raw amounts; the rate fields are
+        // pre-computed. They share the same COGS as grossMarginRate — only the
+        // denominator differs (营业净收 vs 营业额).
+        qimaiNetRevenue: qimaiNet,
+        qimaiGrossRevenue: qimaiGross,
+        grossMarginRateQimaiNet,
+        grossMarginRateQimaiGross,
         operatingCashflow, cashBalance, cashRunway,
         storeCount, revenuePerStore,
         ignoreCount, beginningBalance, expenses,

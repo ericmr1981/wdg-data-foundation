@@ -12,6 +12,12 @@ interface OverviewData {
   expenses: number;
   grossMarginRate: number | null;
   netProfitRate: number | null;
+  /** Qimai-based gross margin (营业净收 / 营业额). Big number on the gross-margin card. */
+  grossMarginRateQimaiNet: number | null;
+  /** Qimai-based gross margin using 营业额. Small number on the gross-margin card. */
+  grossMarginRateQimaiGross: number | null;
+  qimaiNetRevenue: number | null;
+  qimaiGrossRevenue: number | null;
   operatingCashflow: number;
   cashBalance: number;
   cashRunway: number | null;
@@ -121,15 +127,21 @@ function MiniBar({ pct, color }: { pct: number; color: string }) {
   );
 }
 
-function KpiCard({ label, value, prefix = '¥', vsPrev, isRate = false, invert = false, trendKey, active, onClick, noClick }: {
+function KpiCard({ label, value, prefix = '¥', vsPrev, isRate = false, invert = false, trendKey, active, onClick, noClick, subValue, subLabel }: {
   label: string; value: number | null; prefix?: string; vsPrev?: number; isRate?: boolean; invert?: boolean;
   trendKey?: TrendKey; active?: boolean; onClick?: () => void; noClick?: boolean;
+  subValue?: number | null; subLabel?: string;
 }) {
   const display = value == null
     ? '-'
     : isRate
       ? `${(value * 100).toFixed(1)}%`
       : `${prefix}${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const subDisplay = subValue == null
+    ? null
+    : isRate
+      ? `${(subValue * 100).toFixed(1)}%`
+      : `${prefix}${subValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const vs = vsPrev !== undefined;
   const good = vs ? (invert ? vsPrev <= 0 : vsPrev >= 0) : true;
   const nullTooltip = value == null && isRate ? '首期缺期初库存，毛利率/净利润率暂不显示。从有上月期末的月份开始展示。' : undefined;
@@ -141,6 +153,11 @@ function KpiCard({ label, value, prefix = '¥', vsPrev, isRate = false, invert =
     >
       <div className="text-[11px] text-gray-500 mb-0.5 truncate">{label}</div>
       <div className="text-lg font-bold text-gray-900">{display}</div>
+      {subDisplay && (
+        <div className="text-[10px] text-gray-500 mt-0.5" title={subLabel}>
+          {subLabel ? `${subLabel} ${subDisplay}` : subDisplay}
+        </div>
+      )}
       {vs && (
         <div className={`text-[11px] mt-0.5 ${good ? 'text-green-600' : 'text-red-600'}`}>
           {vsPrev >= 0 ? '↑' : '↓'} {Math.abs(vsPrev * 100).toFixed(1)}%
@@ -488,19 +505,35 @@ export default function DashboardPage() {
         <>
           {/* All cards in one aligned grid: 5 clickable KPI + 4 auxiliary */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-5 gap-3">
-            {CLICKABLE_KPIS.map(k => (
-              <KpiCard
-                key={k}
-                label={TREND_LABELS[k]}
-                value={k === 'revenue' ? overview.revenue : k === 'expenses' ? overview.expenses : k === 'gross_margin_rate' ? overview.grossMarginRate : k === 'net_profit_rate' ? overview.netProfitRate : overview.operatingCashflow}
-                isRate={k === 'gross_margin_rate' || k === 'net_profit_rate'}
-                vsPrev={k === 'revenue' ? overview.vsPrevPeriod.revenue : k === 'gross_margin_rate' ? overview.vsPrevPeriod.grossMarginRate : k === 'net_profit_rate' ? overview.vsPrevPeriod.netProfitRate : k === 'operating_cashflow' ? overview.vsPrevPeriod.operatingCashflow : undefined}
-                invert={k === 'operating_cashflow'}
-                trendKey={k}
-                active={activeTrend === k}
-                onClick={() => setActiveTrend(k)}
-              />
-            ))}
+            {CLICKABLE_KPIS.map(k => {
+              // Gross margin card shows two layers: big = 营业净收 (primary, qimai net),
+              // small = 营业额 (secondary, qimai gross). Falls back to bank-based
+              // grossMarginRate when qimai data is unavailable for the brand.
+              const isGrossCard = k === 'gross_margin_rate';
+              const primaryValue = isGrossCard
+                ? (overview.grossMarginRateQimaiNet ?? overview.grossMarginRate)
+                : k === 'revenue' ? overview.revenue
+                : k === 'expenses' ? overview.expenses
+                : k === 'net_profit_rate' ? overview.netProfitRate
+                : overview.operatingCashflow;
+              const subValue = isGrossCard ? overview.grossMarginRateQimaiGross : null;
+              const subLabel = isGrossCard ? '营业额' : undefined;
+              return (
+                <KpiCard
+                  key={k}
+                  label={TREND_LABELS[k]}
+                  value={primaryValue}
+                  isRate={k === 'gross_margin_rate' || k === 'net_profit_rate'}
+                  vsPrev={k === 'revenue' ? overview.vsPrevPeriod.revenue : k === 'gross_margin_rate' ? overview.vsPrevPeriod.grossMarginRate : k === 'net_profit_rate' ? overview.vsPrevPeriod.netProfitRate : k === 'operating_cashflow' ? overview.vsPrevPeriod.operatingCashflow : undefined}
+                  invert={k === 'operating_cashflow'}
+                  trendKey={k}
+                  active={activeTrend === k}
+                  onClick={() => setActiveTrend(k)}
+                  subValue={subValue}
+                  subLabel={subLabel}
+                />
+              );
+            })}
             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3">
               <div className="text-[11px] text-blue-600">银行余额</div>
               <div className="text-sm font-bold text-blue-900 mt-1">
