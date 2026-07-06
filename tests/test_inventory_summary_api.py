@@ -45,15 +45,22 @@ def test_get_returns_list():
 
 
 def test_post_then_upsert_then_audit():
-    payload = {"store_code": "hz_fuyang", "period": "2099-08", "total_amount": 123.45}
-    s1, b1 = _req("/api/tamkoko/inventory/summary", "POST", payload)
-    assert s1 == 200, b1
-    assert b1["data"]["total_amount"] == 123.45
+    period = "2099-08"
+    try:
+        payload = {"store_code": "hz_fuyang", "period": period, "total_amount": 123.45}
+        s1, b1 = _req("/api/tamkoko/inventory/summary", "POST", payload)
+        assert s1 == 200, b1
+        assert b1["data"]["total_amount"] == 123.45
 
-    payload2 = {"store_code": "hz_fuyang", "period": "2099-08", "total_amount": 234.56}
-    s2, b2 = _req("/api/tamkoko/inventory/summary", "POST", payload2)
-    assert s2 == 200
-    assert b2["data"]["total_amount"] == 234.56
+        payload2 = {"store_code": "hz_fuyang", "period": period, "total_amount": 234.56}
+        s2, b2 = _req("/api/tamkoko/inventory/summary", "POST", payload2)
+        assert s2 == 200
+        assert b2["data"]["total_amount"] == 234.56
+    finally:
+        _req(
+            f"/api/tamkoko/inventory/summary?store_code=hz_fuyang&period={period}",
+            "DELETE",
+        )
 
 
 def test_post_negative_amount_rejected():
@@ -65,3 +72,48 @@ def test_post_negative_amount_rejected():
 def test_unauth_get_returns_401():
     s, _ = _req("/api/tamkoko/inventory/summary", cookie="")
     assert s == 401
+
+
+def test_unauth_post_returns_401():
+    s, _ = _req(
+        "/api/tamkoko/inventory/summary", "POST",
+        {"store_code": "hz_fuyang", "period": "2099-08", "total_amount": 1},
+        cookie="",
+    )
+    assert s == 401
+
+
+def test_delete_admin_succeeds():
+    period = "2099-09"
+    try:
+        seed_s, seed_b = _req(
+            "/api/tamkoko/inventory/summary", "POST",
+            {"store_code": "hz_fuyang", "period": period, "total_amount": 100},
+        )
+        assert seed_s == 200, seed_b
+
+        s, b = _req(
+            f"/api/tamkoko/inventory/summary?store_code=hz_fuyang&period={period}",
+            "DELETE",
+        )
+        assert s == 200, b
+        assert b["data"]["deleted"] is True
+    finally:
+        _req(
+            f"/api/tamkoko/inventory/summary?store_code=hz_fuyang&period={period}",
+            "DELETE",
+        )
+
+
+def test_delete_not_found_returns_404():
+    s, b = _req(
+        "/api/tamkoko/inventory/summary?store_code=hz_fuyang&period=2099-12",
+        "DELETE",
+    )
+    assert s == 404, b
+
+
+def test_delete_non_admin_returns_403():
+    # TEST_SESSION_COOKIE is admin-only in test env, so we can't construct
+    # a non-admin session here. Skip until a second cookie fixture exists.
+    pytest.skip("non-admin cookie not available in test env")
