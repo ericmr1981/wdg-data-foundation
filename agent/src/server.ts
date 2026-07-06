@@ -1,5 +1,6 @@
 // agent/src/server.ts
 // Agent Service 完整入口 — 接所有模块
+import 'dotenv/config'
 import Fastify from 'fastify'
 import Anthropic from '@anthropic-ai/sdk'
 import cors from '@fastify/cors'
