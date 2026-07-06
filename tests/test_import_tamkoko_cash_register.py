@@ -249,6 +249,17 @@ def test_import_one_file_writes_ods_rows(tmp_path, monkeypatch):
         assert result2["skipped"] is True
         assert result2["source_file_id"] == result["source_file_id"]
     finally:
+        # Teardown: clean up test data so we don't pollute the DB across runs.
+        # ON DELETE CASCADE on cash_register_order.source_file_id clears ODS rows.
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM raw.ingest_file WHERE brand_code='tamkoko' AND source_type='cash_register' AND file_hash=%s",
+                    (mod.calculate_sha256(str(SAMPLE_CSV)),),
+                )
+                conn.commit()
+        except Exception:
+            pass
         conn.close()
 
 
@@ -297,4 +308,14 @@ def test_import_one_file_with_refund_merges_rows(tmp_path, monkeypatch):
         assert refund_row[3] == 0.0  # net
         assert refund_row[4] == 0.0  # qty
     finally:
+        # Teardown: clean up test data (ON DELETE CASCADE clears ODS rows).
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM raw.ingest_file WHERE brand_code='tamkoko' AND source_type='cash_register' AND file_hash=%s",
+                    (mod.calculate_sha256(str(REFUND_CSV)),),
+                )
+                conn.commit()
+        except Exception:
+            pass
         conn.close()
