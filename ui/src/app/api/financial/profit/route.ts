@@ -14,7 +14,10 @@ interface LineItem {
   is_highlight: boolean;
 }
 
-function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: string; lvl2_code: string; lvl2_name: string; amount: string }[]): LineItem[] {
+function buildProfitLines(
+  raw: { section: string; lvl1_code: string; lvl1_name: string; lvl2_code: string; lvl2_name: string; amount: string }[],
+  cogsTotal: number | null = null,
+): LineItem[] {
   const lines: LineItem[] = [];
 
   const revenue = raw.filter(r => r.section === 'revenue' && r.lvl1_code === 'REV_BIZ');
@@ -40,7 +43,12 @@ function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: 
 
   const revenueAmt = sumAmount(revenue);
   const otherIncomeAmt = sumAmount(otherIncome);
-  const costSigned = totalSigned(material);                    // negative
+  // Cost of goods sold: when inventory data is available (cogsTotal != null),
+  // use the inventory-based COGS; otherwise fall back to bank MATERIAL outflow
+  // (legacy approximation). The bank MATERIAL lines are still rendered as detail
+  // rows for transparency.
+  const materialSigned = totalSigned(material);   // negative (bank MATERIAL outflow)
+  const costSigned = cogsTotal != null ? -Math.abs(cogsTotal) : materialSigned;
   const taxSurchargeSigned = totalSigned(taxSurcharge);       // negative
   const expenseSigned = totalSigned([...otherExpense, ...shipping]);  // negative
   const costDisplay = Math.abs(costSigned);
@@ -73,6 +81,12 @@ function buildProfitLines(raw: { section: string; lvl1_code: string; lvl1_name: 
     lines.push({ section: 'cost_detail', label: `  材料采购 - ${r.lvl2_name}`, amount: Math.abs(Number(r.amount)), indent: 1, is_subtotal: false, is_highlight: false });
   }
   lines.push({ section: 'cost', label: '营业成本合计', amount: costDisplay, indent: 0, is_subtotal: true, is_highlight: false });
+  // Indicate which cost basis is in use; helps the reader tell inventory-based from approximation.
+  if (cogsTotal != null) {
+    lines.push({ section: 'cost_note', label: '  (口径: 库存 COGS = 期初+采购−期末)', amount: 0, indent: 1, is_subtotal: false, is_highlight: false });
+  } else {
+    lines.push({ section: 'cost_note', label: '  (口径: 银行物料采购近似,无库存数据)', amount: 0, indent: 1, is_subtotal: false, is_highlight: false });
+  }
 
   // — Section 3: 税金及附加 (always shown if has data, per accounting standards) —
   if (taxSurcharge.length > 0) {
@@ -181,8 +195,30 @@ export async function GET(request: Request) {
       ORDER BY min(sort_order), lvl1_code, lvl2_code
     `;
 
-    const result = await pool.query(query, params);
-    const lines = buildProfitLines(result.rows);
+    // Inventory-based COGS: when tamkoko has inventory_monthly_summary rows,
+    // SUM(cogs_amt) across the period is the true cost of goods sold.
+    // Falls back to NULL (= use bank MATERIAL approximation) when not available.
+    const cogsParams: (string | number)[] = [startDate, endDate];
+    let cogsStoreClause = '';
+    if (store !== 'all') {
+      cogsStoreClause = `AND store_code = $3`;
+      cogsParams.push(store);
+    }
+    const cogsQuery = `
+      SELECT COALESCE(SUM(cogs_amt), 0)::numeric AS cogs_total
+      FROM ${dmSchema}.v_cogs_monthly
+      WHERE period >= to_char($1::date, 'YYYY-MM')
+        AND period <  to_char($2::date, 'YYYY-MM')
+        ${cogsStoreClause}
+    `;
+
+    const [result, cogsRes] = await Promise.all([
+      pool.query(query, params),
+      pool.query(cogsQuery, cogsParams).catch(() => ({ rows: [{ cogs_total: null }] })),
+    ]);
+    const cogsTotal: number | null = cogsRes.rows[0]?.cogs_total != null
+      ? Number(cogsRes.rows[0].cogs_total) : null;
+    const lines = buildProfitLines(result.rows, cogsTotal);
 
     return NextResponse.json({
       success: true,
