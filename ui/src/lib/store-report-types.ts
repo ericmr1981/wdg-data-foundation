@@ -21,6 +21,7 @@ export interface StoreKpi {
   rent_ratio_pct: number | null;
   gross_profit_rate_pct: number | null;
   net_profit_rate_pct: number | null;
+  turnover_times: number | null;
 }
 
 export interface SnapshotResponse {

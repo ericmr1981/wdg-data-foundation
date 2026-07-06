@@ -75,6 +75,14 @@ export function KpiCards({ current, previous }: Props) {
                   : '毛利率 -'}
               </div>
             )}
+            {key === 'gross_profit_amt' && current.turnover_times != null && (
+              <div
+                className="text-xs text-gray-500 mt-0.5"
+                title="库存周转次数 = COGS ÷ 平均库存"
+              >
+                周转 {current.turnover_times.toFixed(2)} 次
+              </div>
+            )}
             {key === 'net_profit_amt' && (
               <div
                 className="text-xs text-gray-500 mt-0.5"

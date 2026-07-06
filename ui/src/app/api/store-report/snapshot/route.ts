@@ -46,8 +46,17 @@ export async function GET(request: Request) {
     let previousRows: StoreKpi[] = [];
     try {
       const cur = await pool.query(
-        `SELECT * FROM ${schema}.v_store_monthly_kpi WHERE to_char(month, 'YYYY-MM') = $1 AND store_code = $2`,
-        [month, store]
+        `SELECT k.*,
+                CASE WHEN $3::text = 'tamkoko'
+                     THEN v.turnover_times
+                     ELSE NULL::numeric
+                END AS turnover_times
+           FROM ${schema}.v_store_monthly_kpi k
+           LEFT JOIN brand_tamkoko_dm.v_inventory_turnover v
+             ON v.store_code = k.store_code
+            AND v.period = to_char(k.month, 'YYYY-MM')
+          WHERE to_char(k.month, 'YYYY-MM') = $1 AND k.store_code = $2`,
+        [month, store, brand]
       );
       currentRows = cur.rows;
       if (currentRows.length === 0) {
@@ -57,8 +66,17 @@ export async function GET(request: Request) {
         );
       }
       const prev = await pool.query(
-        `SELECT * FROM ${schema}.v_store_monthly_kpi WHERE to_char(month, 'YYYY-MM') = $1 AND store_code = $2`,
-        [prevMonth, store]
+        `SELECT k.*,
+                CASE WHEN $3::text = 'tamkoko'
+                     THEN v.turnover_times
+                     ELSE NULL::numeric
+                END AS turnover_times
+           FROM ${schema}.v_store_monthly_kpi k
+           LEFT JOIN brand_tamkoko_dm.v_inventory_turnover v
+             ON v.store_code = k.store_code
+            AND v.period = to_char(k.month, 'YYYY-MM')
+          WHERE to_char(k.month, 'YYYY-MM') = $1 AND k.store_code = $2`,
+        [prevMonth, store, brand]
       );
       previousRows = prev.rows;
     } catch (e: any) {
@@ -91,6 +109,7 @@ export async function GET(request: Request) {
       rent_ratio_pct: r.rent_ratio_pct == null ? null : Number(r.rent_ratio_pct),
       gross_profit_rate_pct: r.gross_profit_rate_pct == null ? null : Number(r.gross_profit_rate_pct),
       net_profit_rate_pct: r.net_profit_rate_pct == null ? null : Number(r.net_profit_rate_pct),
+      turnover_times: r.turnover_times == null ? null : Number(r.turnover_times),
     });
 
     return NextResponse.json<ApiResult<SnapshotResponse>>({
