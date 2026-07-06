@@ -42,6 +42,7 @@ interface InventoryStore {
   min_period: string | null;
   max_period: string | null;
   gap_months: string[];
+  latest_turnover_times: number | null;
 }
 
 
@@ -214,17 +215,20 @@ export default async function HomePage() {
   for (const brand of brands) {
     try {
       const odsSchema = `${brand.schema_prefix}_ods`;
+      const isTamkoko = brand.brand_code === 'tamkoko';
+      // tamkoko reads the new monthly summary table; other brands keep the SKU path.
+      const invTable = isTamkoko ? 'inventory_monthly_summary' : 'inventory_month_end';
       // Per-store summary: latest period, sku count, total amount
       const invRes = await pool.query(`
         SELECT
           i.store_code,
           COALESCE(s.store_name, i.store_code) AS store_name,
-          COUNT(DISTINCT i.period)::int AS period_count,
-          COUNT(DISTINCT i.sku)::int AS sku_count,
-          SUM(i.amount) AS total_inventory_amt,
+          COUNT(*)::int AS period_count,
+          ${isTamkoko ? 'NULL::int' : 'COUNT(DISTINCT i.sku)'} AS sku_count,
+          SUM(${isTamkoko ? 'i.total_amount' : 'i.amount'}) AS total_inventory_amt,
           MIN(i.period) AS min_period,
           MAX(i.period) AS max_period
-        FROM ${sanitizeSchema(odsSchema)}.inventory_month_end i
+        FROM ${sanitizeSchema(odsSchema)}.${invTable} i
         LEFT JOIN ops.stores s ON s.store_code = i.store_code AND s.brand_code = $1
         GROUP BY i.store_code, s.store_name
         ORDER BY i.store_code
@@ -233,11 +237,21 @@ export default async function HomePage() {
         // Get sorted periods for gap detection
         const gapRes = await pool.query(`
           SELECT DISTINCT period
-          FROM ${sanitizeSchema(odsSchema)}.inventory_month_end
+          FROM ${sanitizeSchema(odsSchema)}.${invTable}
           WHERE store_code = $1
           ORDER BY period
         `, [row.store_code]);
         const periods: string[] = (gapRes.rows as { period: string }[]).map(r => r.period);
+        // For tamkoko: fetch turnover for the latest period (only place it matters on the dashboard)
+        let latestTurnover: number | null = null;
+        if (isTamkoko && row.max_period) {
+          const turnRes = await pool.query(`
+            SELECT turnover_times FROM brand_tamkoko_dm.v_inventory_turnover
+             WHERE store_code = $1 AND period = $2
+          `, [row.store_code, row.max_period]);
+          const turnRow = turnRes.rows[0] as { turnover_times: number | null } | undefined;
+          latestTurnover = turnRow?.turnover_times ?? null;
+        }
         inventoryStores.push({
           brand_code: brand.brand_code,
           store_code: row.store_code,
@@ -248,6 +262,7 @@ export default async function HomePage() {
           min_period: row.min_period,
           max_period: row.max_period,
           gap_months: findPeriodGaps(periods),
+          latest_turnover_times: latestTurnover,
         });
       }
     } catch {
@@ -399,6 +414,7 @@ export default async function HomePage() {
                     <th className="py-2 font-medium">盘点点数</th>
                     <th className="py-2 font-medium">数据范围</th>
                     <th className="py-2 font-medium">完整性</th>
+                    <th className="py-2 font-medium">周转次数</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -422,6 +438,11 @@ export default async function HomePage() {
                           ) : (
                             <span className="text-green-600 text-xs">连续</span>
                           )}
+                        </td>
+                        <td className="py-2.5 text-gray-600 tabular-nums">
+                          {inv.latest_turnover_times != null
+                            ? `${inv.latest_turnover_times.toFixed(2)} 次`
+                            : '-'}
                         </td>
                       </tr>
                     );
