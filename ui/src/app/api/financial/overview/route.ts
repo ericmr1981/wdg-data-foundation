@@ -105,14 +105,6 @@ export async function GET(request: Request) {
          WHERE month >= $1::date AND month < $2::date ${cp.clause}`,
         cp.params
       ),
-      // 营业支出 = sum of operating categories only (excludes BUILD investing, EXP_OTHER misc, FINANCE financing, etc.)
-      pool.query(
-        `SELECT COALESCE(SUM(ABS(amount)), 0)::numeric AS operating_expenses
-         FROM ${dmSchema}.v_profit_statement
-         WHERE lvl1_code IN ('MATERIAL','HR','MKT','RENT_UTIL','SHIP','ADMIN','TAX_SURCHARGE')
-           AND month >= $1::date AND month < $2::date ${cp.clause}`,
-        cp.params
-      ),
       // Inventory-based COGS for qimai-gross-margin calc (tamkoko only). NULL when brand has no
       // cogs view. COGS = opening + purchase − closing (per v_cogs_monthly). We SUM across months
       // in the period for parity with the bank-revenue SUM.
@@ -123,7 +115,7 @@ export async function GET(request: Request) {
            AND period <  to_char($2::date, 'YYYY-MM')
            ${cp.clause}`,
         cp.params
-      ).catch(() => ({ rows: [{ cogs_total: null }] })),
+      ),
       // Qimai revenue for the period. `income_detail` schema differs per brand:
       //   - gelatomiiix: gelatomiiix_ods (legacy)
       //   - tamkoko, bonjur, yufeng: <brand>_ods
@@ -139,7 +131,15 @@ export async function GET(request: Request) {
            AND NOT COALESCE(is_refund, FALSE)
            AND biz_date >= $1::date AND biz_date < $2::date ${cp.clause}`,
         cp.params
-      ).catch(() => ({ rows: [{ qimai_net: null, qimai_gross: null }] })),
+      ),
+      // 营业支出 = sum of operating categories only (excludes BUILD investing, EXP_OTHER misc, FINANCE financing, etc.)
+      pool.query(
+        `SELECT COALESCE(SUM(ABS(amount)), 0)::numeric AS operating_expenses
+         FROM ${dmSchema}.v_profit_statement
+         WHERE lvl1_code IN ('MATERIAL','HR','MKT','RENT_UTIL','SHIP','ADMIN','TAX_SURCHARGE')
+           AND month >= $1::date AND month < $2::date ${cp.clause}`,
+        cp.params
+      ),
     ]);
 
     const pMap = new Map(profitRes.rows.map((r: ProfitRow) => [r.lvl1_code, Number(r.amount)]));
