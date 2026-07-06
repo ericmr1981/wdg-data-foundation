@@ -102,3 +102,59 @@ def test_sample_fixture_has_backtick_order_no():
         rows = list(csv.DictReader(f))
     assert len(rows) == 3
     assert all(r["订单号"].startswith("`") for r in rows)
+
+
+def test_is_already_imported_returns_id_when_success(monkeypatch):
+    """SHA256 命中且 status='success' 时返回 source_file_id,主流程据此 SKIPPED"""
+    captured = {"calls": []}
+
+    class FakeCursor:
+        def execute(self, sql, params=None):
+            captured["calls"].append((sql, params))
+
+        def fetchone(self):
+            return (42,)  # 已存在的 source_file_id
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    class FakeConn:
+        def cursor(self):
+            return FakeCursor()
+
+        def commit(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(mod, "_get_db_config", lambda: {"host": "x"})
+    result = mod.is_already_imported(FakeConn(), "abc123hash")
+    assert result == 42
+
+
+def test_is_already_imported_returns_none_when_new(monkeypatch):
+    """SHA256 未命中或 status != 'success' 时返回 None"""
+
+    class FakeCursor:
+        def execute(self, sql, params=None):
+            pass
+
+        def fetchone(self):
+            return None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    class FakeConn:
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr(mod, "_get_db_config", lambda: {"host": "x"})
+    assert mod.is_already_imported(FakeConn(), "newhash") is None

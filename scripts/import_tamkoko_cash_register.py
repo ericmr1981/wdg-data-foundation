@@ -167,7 +167,51 @@ def aggregate_by_order_no(rows: list[dict]) -> list[dict]:
 
 
 # ---- 后续 task 添加 ----
-# def register_source_file(...) -> int
+def is_already_imported(conn, file_hash: str) -> Optional[int]:
+    """查 raw.ingest_file,若 (brand=tamkoko, file_hash=?, status='success') 返回 source_file_id,否则 None"""
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT id FROM raw.ingest_file
+               WHERE brand_code = %s AND file_hash = %s AND status = 'success'
+               LIMIT 1""",
+            (BRAND_CODE, file_hash),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+
+
+def register_source_file(conn, meta: dict, file_hash: str, file_size: int) -> int:
+    """INSERT 一条 raw.ingest_file,status='running',返回 id"""
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO raw.ingest_file (
+                brand_code, store_code, source_type, month,
+                file_name, file_path, file_hash, file_size, status
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'running')
+            ON CONFLICT (file_hash) DO UPDATE SET
+                status = 'running', updated_at = NOW()
+            RETURNING id""",
+            (
+                meta["brand_code"], meta["store_code"], SOURCE_TYPE, meta["month"],
+                meta["file_name"], meta["file_path"], file_hash, file_size,
+            ),
+        )
+        sf_id = cur.fetchone()[0]
+        conn.commit()
+        return sf_id
+
+
+def finalize_source_file(conn, source_file_id: int, row_count: int, status: str = "success"):
+    """更新 raw.ingest_file.status / row_count"""
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE raw.ingest_file SET status=%s, row_count=%s, finished_at=NOW(), updated_at=NOW() WHERE id=%s",
+            (status, row_count, source_file_id),
+        )
+        conn.commit()
+
+
+# ---- 后续 task 添加 ----
 # def replace_existing_for_period(...) -> None
 # def import_one_file(...) -> dict
 # def main() -> None
