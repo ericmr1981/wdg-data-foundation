@@ -15,6 +15,25 @@ function validatePeriod(p: unknown): p is string {
   return typeof p === 'string' && PERIOD_RE.test(p);
 }
 
+// pg returns numeric/date as strings; coerce to JS numbers for client ergonomics.
+function toNum(v: unknown): number | null {
+  if (v == null) return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function coerceRow<T extends Record<string, unknown>>(row: T): T {
+  const out = { ...row } as Record<string, unknown>;
+  for (const k of [
+    'total_amount',
+    'cogs_amt', 'opening_amt', 'closing_amt',
+    'turnover_times', 'turnover_days',
+  ] as const) {
+    if (k in out) out[k] = toNum(out[k]);
+  }
+  return out as T;
+}
+
 export async function GET(req: Request) {
   try {
     const user = await getSessionUser(req);
@@ -45,7 +64,10 @@ export async function GET(req: Request) {
       ORDER BY m.period DESC, m.store_code
     `;
     const res = await pool.query(sql, params);
-    return NextResponse.json({ success: true, data: res.rows as InventorySummaryRow[] });
+    return NextResponse.json({
+      success: true,
+      data: (res.rows as unknown as Record<string, unknown>[]).map(coerceRow) as unknown as InventorySummaryRow[],
+    });
   } catch (e: unknown) {
     const err = e as { status?: number; message?: string };
     const status = err.status ?? 500;
@@ -122,7 +144,10 @@ export async function POST(req: Request) {
       [body.store_code, body.period]
     );
     await client.query('COMMIT');
-    return NextResponse.json({ success: true, data: out.rows[0] as InventorySummaryRow });
+    return NextResponse.json({
+      success: true,
+      data: coerceRow(out.rows[0] as unknown as Record<string, unknown>) as unknown as InventorySummaryRow,
+    });
   } catch (e: unknown) {
     await client.query('ROLLBACK').catch(() => {});
     const err = e as { status?: number };

@@ -80,7 +80,7 @@ export function KpiCards({ current, previous }: Props) {
                 className="text-xs text-gray-500 mt-0.5"
                 title="库存周转次数 = COGS ÷ 平均库存"
               >
-                周转 {current.turnover_times.toFixed(2)} 次
+                周转 {Number(current.turnover_times).toFixed(2)} 次
               </div>
             )}
             {key === 'net_profit_amt' && (

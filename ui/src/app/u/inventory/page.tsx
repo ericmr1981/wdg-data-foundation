@@ -75,7 +75,7 @@ export default async function InventoryPage() {
                     : '-'}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">
-                  {r.turnover_times != null ? r.turnover_times.toFixed(2) : '-'}
+                  {r.turnover_times != null ? Number(r.turnover_times).toFixed(2) : '-'}
                 </td>
                 <td className="px-3 py-2">{r.updated_by}</td>
                 <td className="px-3 py-2 text-xs text-gray-600">
