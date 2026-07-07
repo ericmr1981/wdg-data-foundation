@@ -71,6 +71,8 @@ import { queryTamkokoSalesMealPeriodTool } from './tools/query-tamkoko-sales-mea
 import { queryTamkokoSalesWeekdayTool } from './tools/query-tamkoko-sales-weekday';
 import { queryTamkokoSalesMultiStoreTool } from './tools/query-tamkoko-sales-multi-store';
 import { queryTamkokoSalesCombinedTool } from './tools/query-tamkoko-sales-combined';
+import { queryTamkokoSalesTrendTool } from './tools/query-tamkoko-sales-trend';
+import { queryTamkokoSalesDailyTool } from './tools/query-tamkoko-sales-daily';
 
 type ToolModule = {
   name: string;
@@ -145,6 +147,8 @@ const TOOLS: Record<string, ToolModule> = {
   query_tamkoko_sales_weekday:        queryTamkokoSalesWeekdayTool,
   query_tamkoko_sales_multi_store:    queryTamkokoSalesMultiStoreTool,
   query_tamkoko_sales_combined:       queryTamkokoSalesCombinedTool,
+  query_tamkoko_sales_trend:         queryTamkokoSalesTrendTool,
+  query_tamkoko_sales_daily:         queryTamkokoSalesDailyTool,
 };
 
 /** Try short-name match, then long-name match */

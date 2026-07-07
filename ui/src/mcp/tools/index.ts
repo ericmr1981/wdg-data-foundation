@@ -64,3 +64,5 @@ export { listRuleGroupsTool } from './list-rule-groups';
 export { listCategoriesTool } from './list-categories';
 export { rerunMatchByFileTool } from './rerun-match-by-file';
 export { createStoreTool } from './create-store';
+export { queryTamkokoSalesTrendTool } from './query-tamkoko-sales-trend';
+export { queryTamkokoSalesDailyTool } from './query-tamkoko-sales-daily';
