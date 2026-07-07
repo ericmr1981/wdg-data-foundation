@@ -555,8 +555,8 @@ export default function TamkokoSalesPage() {
                         <ResponsiveContainer width="100%" height={220}>
                             <LineChart data={[...meal].sort((a, b) => mealPeriodRank(a.meal_period) - mealPeriodRank(b.meal_period))}>
                                 <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="meal_period" tickFormatter={(v) => (MEAL_PERIOD_LABELS[v as string] || v)} />
-                                <YAxis />
+                                <XAxis dataKey="meal_period" />
+                                <YAxis tickFormatter={(v: number) => fmtNum(v, 0)} />
                                 <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
                                 <Legend />
                                 <Line type="monotone" dataKey={mealMetric} name={mealMetric === 'gross_amt' ? '营业额' : '营业收入'} stroke={CHART_COLORS[2]} strokeWidth={2} />
