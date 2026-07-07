@@ -2,6 +2,7 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import type { Channel, IncomingMsg, OutgoingMsg } from './types.js'
 import type { ChannelManager } from './manager.js'
+import { verifyAgentToken } from './auth.js'
 
 interface Client {
   ws: WebSocket
@@ -24,10 +25,25 @@ export class WebChannel implements Channel {
   async start(): Promise<void> {
     this.wss.on('connection', (ws, req) => {
       const url = new URL(req.url ?? '/', 'http://localhost')
-      const userId = url.searchParams.get('userId') ?? 'anonymous'
-      const conversationId = url.searchParams.get('conversationId')
+      const token = url.searchParams.get('token')
 
-      this.clients.set(ws, { ws, userId, conversationId })
+      let userId: string
+      try {
+        if (!token) {
+          ws.close(1008, 'missing_token')
+          return
+        }
+        const claims = verifyAgentToken(token)
+        userId = claims.sub
+      } catch (e) {
+        const reason = (e as Error).message.startsWith('EXPIRED_TOKEN')
+          ? 'expired_token'
+          : 'invalid_token'
+        ws.close(1008, reason)
+        return
+      }
+
+      this.clients.set(ws, { ws, userId, conversationId: null })
 
       ws.on('message', async (raw) => {
         try {
