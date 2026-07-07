@@ -6,7 +6,7 @@ import {
     BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
-import { STORE_OPTIONS, STORES, storeName } from './stores';
+import { STORE_OPTIONS, STORES } from './stores';
 import { aggregateKpiTotal, pivotTrendByStore, pivotDimByStore, type OverviewRow, type TrendMetric, type TrendByStoreRow } from './aggregation';
 import { GroupedBarChart } from './components/GroupedBarChart';
 import { StoreCompareTable, type MultiStoreRow } from './components/StoreCompareTable';
