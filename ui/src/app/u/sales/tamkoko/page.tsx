@@ -64,7 +64,7 @@ export default function TamkokoSalesPage() {
     const [selectedDrillMonth, setSelectedDrillMonth] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    const [overview, setOverview] = useState<OverviewRow | null>(null);
+    const [overview, setOverview] = useState<OverviewRow[] | null>(null);
     const [trend, setTrend] = useState<OverviewRow[] | null>(null);
     const [daily, setDaily] = useState<DailyRow[] | null>(null);
     const [channel, setChannel] = useState<ChannelRow[] | null>(null);
@@ -78,7 +78,7 @@ export default function TamkokoSalesPage() {
         try {
             const base = `/api/tamkoko/sales`;
             const [o, t, ch, dt, mp, ct] = await Promise.all([
-                apiGet<OverviewRow>(`${base}/overview?store=${storeCode}&month=${month}`),
+                apiGet<OverviewRow[]>(`${base}/overview?store=${storeCode}&month=${month}`),
                 apiGet<OverviewRow[]>(`${base}/trend?store=${storeCode}&months=12`),
                 apiGet<ChannelRow[]>(`${base}/channel?store=${storeCode}&month=${month}`),
                 apiGet<DineRow[]>(`${base}/dine-takeaway?store=${storeCode}&month=${month}`),
@@ -111,12 +111,13 @@ export default function TamkokoSalesPage() {
     }, [storeCode, selectedDrillMonth]);
 
     // 5 KPI
-    const kpis = overview ? [
-        { label: '营业额',   value: fmtNum(overview.gross_amt, 2),    color: 'blue'   as const, key: 'gross_amt'   as const },
-        { label: '营业收入', value: fmtNum(overview.revenue_amt, 2),  color: 'green'  as const, key: 'revenue_amt' as const },
-        { label: '实收率',   value: fmtPct(overview.cash_in_rate_pct ?? Number(overview.cash_in_rate) * 100, 2), color: 'yellow' as const, key: 'cash_in_rate_pct' as const },
-        { label: '订单数',   value: fmtNum(overview.order_cnt),        color: 'purple' as const, key: 'order_cnt'   as const },
-        { label: '客单价',   value: fmtNum(overview.avg_order_amt, 2), color: 'pink'   as const, key: 'avg_order_amt' as const },
+    const cur = overview?.[0];
+    const kpis = cur ? [
+        { label: '营业额',   value: fmtNum(cur.gross_amt, 2),    color: 'blue'   as const, key: 'gross_amt'   as const },
+        { label: '营业收入', value: fmtNum(cur.revenue_amt, 2),  color: 'green'  as const, key: 'revenue_amt' as const },
+        { label: '实收率',   value: fmtPct(cur.cash_in_rate_pct ?? Number(cur.cash_in_rate) * 100, 2), color: 'yellow' as const, key: 'cash_in_rate_pct' as const },
+        { label: '订单数',   value: fmtNum(cur.order_cnt),        color: 'purple' as const, key: 'order_cnt'   as const },
+        { label: '客单价',   value: fmtNum(cur.avg_order_amt, 2), color: 'pink'   as const, key: 'avg_order_amt' as const },
     ] : [];
 
     // 趋势折线:4 KPI 全画(从 trend 数组取每个 key)
