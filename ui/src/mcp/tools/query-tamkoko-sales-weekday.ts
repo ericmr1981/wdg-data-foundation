@@ -5,7 +5,7 @@ export const queryTamkokoSalesWeekdayTool = {
     name: 'query_tamkoko_sales_weekday',
     description: '查询 tamkoko 按周+星期几分布(0=周日..6=周六),委托 v_cash_register_weekday',
     inputSchema: z.object({
-        store: z.string().optional(),
+        store: z.string().optional().describe('store_code,如 sh_sjh。省略 = 返回所有门店数据(多店模式,按 store 分组)'),
         from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     }),

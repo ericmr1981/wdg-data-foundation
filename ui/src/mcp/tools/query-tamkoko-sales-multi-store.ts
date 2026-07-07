@@ -3,7 +3,7 @@ import { mcpFetch } from '@/lib/mcp-fetch';
 
 export const queryTamkokoSalesMultiStoreTool = {
     name: 'query_tamkoko_sales_multi_store',
-    description: '查询 tamkoko 多门店月度对比 + rank,委托 v_cash_register_multi_store',
+    description: '查询 tamkoko 所有门店月度 KPI 对比 + gross rank,用于多店比对分析。委托 v_cash_register_multi_store',
     inputSchema: z.object({
         month: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('月份第一天,如 2026-06-01'),
     }),

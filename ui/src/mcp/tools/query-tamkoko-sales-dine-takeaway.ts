@@ -5,7 +5,7 @@ export const queryTamkokoSalesDineTakeawayTool = {
     name: 'query_tamkoko_sales_dine_takeaway',
     description: '查询 tamkoko 堂食 vs 外卖月度对比,委托 v_cash_register_dine_takeaway',
     inputSchema: z.object({
-        store: z.string().optional(),
+        store: z.string().optional().describe('store_code,如 sh_sjh。省略 = 返回所有门店数据(多店模式,按 store 分组)'),
         month: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         type: z.string().optional().describe('堂食 / 外卖'),
     }),

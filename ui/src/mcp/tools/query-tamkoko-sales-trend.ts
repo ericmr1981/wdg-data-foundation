@@ -5,7 +5,7 @@ export const queryTamkokoSalesTrendTool = {
     name: 'query_tamkoko_sales_trend',
     description: '查询 tamkoko 最近 N 个月趋势(默认 12),委托 v_cash_register_overview',
     inputSchema: z.object({
-        store: z.string().optional(),
+        store: z.string().optional().describe('store_code,如 sh_sjh。省略 = 返回所有门店数据(多店模式,按 store 分组)'),
         months: z.number().int().min(1).max(24).optional().default(12),
     }),
     async execute(params: { store?: string; months?: number }) {

@@ -5,7 +5,7 @@ export const queryTamkokoSalesDailyTool = {
     name: 'query_tamkoko_sales_daily',
     description: '查询 tamkoko 月内日级趋势(drill-down),委托 v_cash_register_daily,month 必填 YYYY-MM-01',
     inputSchema: z.object({
-        store: z.string().optional(),
+        store: z.string().optional().describe('store_code,如 sh_sjh。省略 = 返回所有门店数据(多店模式,按 store 分组)'),
         month: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-01'),
     }),
     async execute(params: { store?: string; month: string }) {

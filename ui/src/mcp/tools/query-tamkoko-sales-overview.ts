@@ -5,7 +5,7 @@ export const queryTamkokoSalesOverviewTool = {
     name: 'query_tamkoko_sales_overview',
     description: '查询 tamkoko 收银明细月度 KPI 概览(营业额/营业收入/实收率/收益率/订单数),委托 brand_tamkoko_dm.v_cash_register_overview',
     inputSchema: z.object({
-        store: z.string().optional().describe('store_code, 如 sh_sjh (默认全部)'),
+        store: z.string().optional().describe('store_code,如 sh_sjh。省略 = 返回所有门店数据(多店模式,按 store 分组)'),
         month: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD').optional().describe('月份第一天,如 2026-06-01'),
     }),
     async execute(params: { store?: string; month?: string }) {

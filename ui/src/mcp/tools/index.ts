@@ -55,7 +55,6 @@ export { queryTamkokoSalesDineTakeawayTool } from './query-tamkoko-sales-dine-ta
 export { queryTamkokoSalesMealPeriodTool } from './query-tamkoko-sales-meal-period';
 export { queryTamkokoSalesWeekdayTool } from './query-tamkoko-sales-weekday';
 export { queryTamkokoSalesMultiStoreTool } from './query-tamkoko-sales-multi-store';
-export { queryTamkokoSalesCombinedTool } from './query-tamkoko-sales-combined';
 export { getUnclassifiedByFileTool } from './get-unclassified-by-file';
 export { getProposalTool } from './get-proposal';
 export { getRulesHistoryTool } from './get-rules-history';

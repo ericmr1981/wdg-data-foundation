@@ -70,7 +70,6 @@ import { queryTamkokoSalesDineTakeawayTool } from './tools/query-tamkoko-sales-d
 import { queryTamkokoSalesMealPeriodTool } from './tools/query-tamkoko-sales-meal-period';
 import { queryTamkokoSalesWeekdayTool } from './tools/query-tamkoko-sales-weekday';
 import { queryTamkokoSalesMultiStoreTool } from './tools/query-tamkoko-sales-multi-store';
-import { queryTamkokoSalesCombinedTool } from './tools/query-tamkoko-sales-combined';
 import { queryTamkokoSalesTrendTool } from './tools/query-tamkoko-sales-trend';
 import { queryTamkokoSalesDailyTool } from './tools/query-tamkoko-sales-daily';
 
@@ -146,7 +145,6 @@ const TOOLS: Record<string, ToolModule> = {
   query_tamkoko_sales_meal_period:    queryTamkokoSalesMealPeriodTool,
   query_tamkoko_sales_weekday:        queryTamkokoSalesWeekdayTool,
   query_tamkoko_sales_multi_store:    queryTamkokoSalesMultiStoreTool,
-  query_tamkoko_sales_combined:       queryTamkokoSalesCombinedTool,
   query_tamkoko_sales_trend:         queryTamkokoSalesTrendTool,
   query_tamkoko_sales_daily:         queryTamkokoSalesDailyTool,
 };

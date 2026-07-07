@@ -5,7 +5,7 @@ export const queryTamkokoSalesChannelTool = {
     name: 'query_tamkoko_sales_channel',
     description: '查询 tamkoko 收银按订单来源(渠道)分布(企迈POS/美团外卖/淘宝闪购/...),委托 v_cash_register_channel',
     inputSchema: z.object({
-        store: z.string().optional().describe('store_code'),
+        store: z.string().optional().describe('store_code,如 sh_sjh。省略 = 返回所有门店数据(多店模式,按 store 分组)'),
         month: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('月份第一天'),
         source: z.string().optional().describe('订单来源,如 美团外卖'),
     }),
