@@ -6,7 +6,7 @@ import {
     BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
-import { STORE_OPTIONS, storeName } from './stores';
+import { STORE_OPTIONS, STORES, storeName } from './stores';
 import { aggregateKpiTotal, pivotTrendByStore, type OverviewRow, type TrendMetric, type TrendByStoreRow } from './aggregation';
 import { StoreCompareTable, type MultiStoreRow } from './components/StoreCompareTable';
 import { MultiStoreTrendChart, METRIC_LABEL } from './components/MultiStoreTrendChart';
@@ -195,6 +195,25 @@ export default function TamkokoSalesPage() {
 
     // 日级 drill-down 的 X 轴日期列表(该月所有日期)
     const dailyMonths: string[] = Array.from(new Set((daily ?? []).map(d => String(d.biz_date).slice(0, 10)))).sort();
+    // 日级 drill-down 的多店趋势数据:行键 = YYYY-MM-DD,值按 trendMetric 取数
+    const dailyTrendData: TrendByStoreRow[] = (() => {
+        const byDate = new Map<string, TrendByStoreRow>();
+        for (const date of dailyMonths) {
+            const row: TrendByStoreRow = { month: date } as TrendByStoreRow;
+            for (const s of STORES) row[s.code] = 0;
+            byDate.set(date, row);
+        }
+        for (const d of (daily ?? [])) {
+            const date = String(d.biz_date).slice(0, 10);
+            const row = byDate.get(date) ?? ({ month: date } as TrendByStoreRow);
+            const val = trendMetric === 'cash_in_rate'
+                ? Number(d.cash_in_rate_pct)
+                : Number(d[trendMetric]);
+            row[d.store_code] = val;
+            byDate.set(date, row);
+        }
+        return dailyMonths.map(d => byDate.get(d)!);
+    })();
     // 固定 12 个月 X 轴(从 11 个月前到当前月),空月填 0,避免布局抖动
     const channelTrendData = (() => {
         const months: string[] = [];
@@ -305,9 +324,7 @@ export default function TamkokoSalesPage() {
                             </label>
                         </div>
                         <MultiStoreTrendChart
-                            data={selectedDrillMonth
-                                ? pivotTrendByStore((daily ?? []).map(d => ({ store_code: d.store_code, month: d.biz_date, gross_amt: d.gross_amt, revenue_amt: d.revenue_amt, net_amt: '0', discount_amt: '0', qty: '0', order_cnt: d.order_cnt, cash_in_rate: '0', profit_rate: '0', avg_order_amt: '0', cash_in_rate_pct: '0', prev_gross_amt: null })), trendMetric, dailyMonths)
-                                : multiTrendData}
+                            data={selectedDrillMonth ? dailyTrendData : multiTrendData}
                             metric={trendMetric}
                             onDrillDown={selectedDrillMonth ? undefined : setSelectedDrillMonth}
                         />
