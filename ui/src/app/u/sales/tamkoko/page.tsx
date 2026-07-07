@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useBrand } from '@/lib/brand-context';
 import {
     BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -60,7 +59,6 @@ const MEAL_PERIOD_LABELS: Record<string, string> = {
 type MealMetric = 'gross_amt' | 'revenue_amt' | 'dine_takeaway';
 
 export default function TamkokoSalesPage() {
-    const { brand } = useBrand();
     const [storeCode, setStoreCode] = useState('sh_sjh');
     const [month, setMonth] = useState('2026-06-01');
     const [selectedDrillMonth, setSelectedDrillMonth] = useState<string | null>(null);
