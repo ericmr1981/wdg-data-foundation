@@ -7,7 +7,8 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { STORE_OPTIONS, STORES, storeName } from './stores';
-import { aggregateKpiTotal, pivotTrendByStore, type OverviewRow, type TrendMetric, type TrendByStoreRow } from './aggregation';
+import { aggregateKpiTotal, pivotTrendByStore, pivotDimByStore, type OverviewRow, type TrendMetric, type TrendByStoreRow } from './aggregation';
+import { GroupedBarChart } from './components/GroupedBarChart';
 import { StoreCompareTable, type MultiStoreRow } from './components/StoreCompareTable';
 import { MultiStoreTrendChart, METRIC_LABEL } from './components/MultiStoreTrendChart';
 
@@ -412,136 +413,157 @@ export default function TamkokoSalesPage() {
 
             {/* 渠道分布:donut + 表 */}
             <Section title="1. 渠道分布(订单来源)">
-                {channel && channel.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="min-w-0">
-                            <ResponsiveContainer width="100%" height={240}>
-                                <PieChart>
-                                    <Pie
-                                        data={channel.map(c => ({
-                                            order_source: c.order_source,
-                                            gross_amt: Number(c.gross_amt) || 0,
-                                            cash_in_rate: Number(c.cash_in_rate) || 0,
-                                        }))}
-                                        dataKey="gross_amt"
-                                        nameKey="order_source"
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={50}
-                                        outerRadius={90}
-                                        label={({ payload }: { payload?: { order_source?: string; gross_amt?: number; cash_in_rate?: number } }) => {
-                                            const p = payload;
-                                            return `${p?.order_source ?? ''}\n${fmtNum(p?.gross_amt, 0)}元\n${fmtPct((p?.cash_in_rate ?? 0) * 100, 1)}`;
-                                        }}
-                                    >
-                                        {channel.map((c, i) => <Cell key={c.order_source} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                                    </Pie>
-                                    <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
-                                </PieChart>
-                            </ResponsiveContainer>
+                {multiMode ? (
+                    channel && channel.length > 0 ? (
+                        <GroupedBarChart data={pivotDimByStore(channel as unknown as Record<string, unknown>[], 'order_source', 'gross_amt')} xKey="order_source" />
+                    ) : <Empty />
+                ) : (
+                    channel && channel.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="min-w-0">
+                                <ResponsiveContainer width="100%" height={240}>
+                                    <PieChart>
+                                        <Pie
+                                            data={channel.map(c => ({
+                                                order_source: c.order_source,
+                                                gross_amt: Number(c.gross_amt) || 0,
+                                                cash_in_rate: Number(c.cash_in_rate) || 0,
+                                            }))}
+                                            dataKey="gross_amt"
+                                            nameKey="order_source"
+                                            cx="50%"
+                                            cy="50%"
+                                            innerRadius={50}
+                                            outerRadius={90}
+                                            label={({ payload }: { payload?: { order_source?: string; gross_amt?: number; cash_in_rate?: number } }) => {
+                                                const p = payload;
+                                                return `${p?.order_source ?? ''}\n${fmtNum(p?.gross_amt, 0)}元\n${fmtPct((p?.cash_in_rate ?? 0) * 100, 1)}`;
+                                            }}
+                                        >
+                                            {channel.map((c, i) => <Cell key={c.order_source} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                                        </Pie>
+                                        <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <table className="w-full text-sm">
+                                <thead><tr className="text-left text-gray-500"><th>渠道</th><th>订单数</th><th>营业额</th><th>实收率</th></tr></thead>
+                                <tbody>
+                                    {channel.map(c => (
+                                        <tr key={c.order_source} className="border-t">
+                                            <td className="py-1">{c.order_source}</td>
+                                            <td>{fmtNum(c.order_cnt)}</td>
+                                            <td>{fmtNum(c.gross_amt, 2)}</td>
+                                            <td>{fmtPct(Number(c.cash_in_rate) * 100, 2)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
-                        <table className="w-full text-sm">
-                            <thead><tr className="text-left text-gray-500"><th>渠道</th><th>订单数</th><th>营业额</th><th>实收率</th></tr></thead>
-                            <tbody>
-                                {channel.map(c => (
-                                    <tr key={c.order_source} className="border-t">
-                                        <td className="py-1">{c.order_source}</td>
-                                        <td>{fmtNum(c.order_cnt)}</td>
-                                        <td>{fmtNum(c.gross_amt, 2)}</td>
-                                        <td>{fmtPct(Number(c.cash_in_rate) * 100, 2)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                ) : <Empty />}
+                    ) : <Empty />
+                )}
             </Section>
 
             {/* 堂食 vs 外卖:donut */}
             <Section title="2. 堂食 vs 外卖">
-                {dine && dine.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="min-w-0">
-                            <ResponsiveContainer width="100%" height={240}>
-                                <PieChart>
-                                    <Pie
-                                        data={dine.map(d => ({
-                                            order_type: d.order_type,
-                                            gross_amt: Number(d.gross_amt) || 0,
-                                            order_cnt: Number(d.order_cnt) || 0,
-                                        }))}
-                                        dataKey="gross_amt"
-                                        nameKey="order_type"
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={50}
-                                        outerRadius={90}
-                                        label={({ payload }: { payload?: { order_type?: string; gross_amt?: number; order_cnt?: number } }) => {
-                                            const p = payload;
-                                            return `${p?.order_type ?? ''}\n${fmtNum(p?.gross_amt, 0)}元\n${fmtNum(p?.order_cnt, 0)}单`;
-                                        }}
-                                    >
-                                        {dine.map((d, i) => <Cell key={d.order_type} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                                    </Pie>
-                                    <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
-                                    <Legend />
-                                </PieChart>
-                            </ResponsiveContainer>
+                {multiMode ? (
+                    dine && dine.length > 0 ? (
+                        <GroupedBarChart data={pivotDimByStore(dine as unknown as Record<string, unknown>[], 'order_type', 'gross_amt')} xKey="order_type" />
+                    ) : <Empty />
+                ) : (
+                    dine && dine.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="min-w-0">
+                                <ResponsiveContainer width="100%" height={240}>
+                                    <PieChart>
+                                        <Pie
+                                            data={dine.map(d => ({
+                                                order_type: d.order_type,
+                                                gross_amt: Number(d.gross_amt) || 0,
+                                                order_cnt: Number(d.order_cnt) || 0,
+                                            }))}
+                                            dataKey="gross_amt"
+                                            nameKey="order_type"
+                                            cx="50%"
+                                            cy="50%"
+                                            innerRadius={50}
+                                            outerRadius={90}
+                                            label={({ payload }: { payload?: { order_type?: string; gross_amt?: number; order_cnt?: number } }) => {
+                                                const p = payload;
+                                                return `${p?.order_type ?? ''}\n${fmtNum(p?.gross_amt, 0)}元\n${fmtNum(p?.order_cnt, 0)}单`;
+                                            }}
+                                        >
+                                            {dine.map((d, i) => <Cell key={d.order_type} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                                        </Pie>
+                                        <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
+                                        <Legend />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <table className="w-full text-sm">
+                                <thead><tr className="text-left text-gray-500"><th>类型</th><th>订单数</th><th>营业额</th><th>营业收入</th></tr></thead>
+                                <tbody>
+                                    {dine.map(d => (
+                                        <tr key={d.order_type} className="border-t">
+                                            <td className="py-1">{d.order_type}</td>
+                                            <td>{fmtNum(d.order_cnt)}</td>
+                                            <td>{fmtNum(d.gross_amt, 2)}</td>
+                                            <td>{fmtNum(d.revenue_amt, 2)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
-                        <table className="w-full text-sm">
-                            <thead><tr className="text-left text-gray-500"><th>类型</th><th>订单数</th><th>营业额</th><th>营业收入</th></tr></thead>
-                            <tbody>
-                                {dine.map(d => (
-                                    <tr key={d.order_type} className="border-t">
-                                        <td className="py-1">{d.order_type}</td>
-                                        <td>{fmtNum(d.order_cnt)}</td>
-                                        <td>{fmtNum(d.gross_amt, 2)}</td>
-                                        <td>{fmtNum(d.revenue_amt, 2)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                ) : <Empty />}
+                    ) : <Empty />
+                )}
             </Section>
 
             {/* 按餐段:LineChart + select */}
             <Section title="3. 按餐段(早/午/晚市)">
-                <div className="flex gap-2 mb-3 text-sm">
-                    <label>维度:
-                        <select className="ml-1 border rounded px-1" value={mealMetric} onChange={e => setMealMetric(e.target.value as MealMetric)}>
-                            <option value="gross_amt">营业额</option>
-                            <option value="revenue_amt">营业收入</option>
-                            <option value="dine_takeaway">外卖堂食</option>
-                        </select>
-                    </label>
-                </div>
-                {mealMetric === 'dine_takeaway' ? (
-                    mealByTypeData.length > 0 ? (
+                {multiMode ? (
+                    <GroupedBarChart
+                        data={pivotDimByStore((meal ?? []) as unknown as Record<string, unknown>[], 'meal_period', 'gross_amt')
+                            .sort((a, b) => mealPeriodRank(String(a.meal_period)) - mealPeriodRank(String(b.meal_period)))}
+                        xKey="meal_period"
+                        xTickFormatter={(v) => MEAL_PERIOD_LABELS[v] || v}
+                    />
+                ) : (<>
+                    <div className="flex gap-2 mb-3 text-sm">
+                        <label>维度:
+                            <select className="ml-1 border rounded px-1" value={mealMetric} onChange={e => setMealMetric(e.target.value as MealMetric)}>
+                                <option value="gross_amt">营业额</option>
+                                <option value="revenue_amt">营业收入</option>
+                                <option value="dine_takeaway">外卖堂食</option>
+                            </select>
+                        </label>
+                    </div>
+                    {mealMetric === 'dine_takeaway' ? (
+                        mealByTypeData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height={220}>
+                                <LineChart data={mealByTypeData}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="meal_period" tickFormatter={(v) => (MEAL_PERIOD_LABELS[v as string] || v)} />
+                                    <YAxis tickFormatter={(v) => fmtNum(v, 0)} />
+                                    <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
+                                    <Legend />
+                                    <Line type="monotone" dataKey="堂食" name="堂食" stroke={CHART_COLORS[3]} strokeWidth={2} dot={{ r: 3 }} />
+                                    <Line type="monotone" dataKey="外卖" name="外卖" stroke={CHART_COLORS[1]} strokeWidth={2} dot={{ r: 3 }} />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        ) : <Empty />
+                    ) : meal && meal.length > 0 ? (
                         <ResponsiveContainer width="100%" height={220}>
-                            <LineChart data={mealByTypeData}>
+                            <LineChart data={[...meal].sort((a, b) => mealPeriodRank(a.meal_period) - mealPeriodRank(b.meal_period))}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="meal_period" tickFormatter={(v) => (MEAL_PERIOD_LABELS[v as string] || v)} />
-                                <YAxis tickFormatter={(v) => fmtNum(v, 0)} />
+                                <YAxis />
                                 <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
                                 <Legend />
-                                <Line type="monotone" dataKey="堂食" name="堂食" stroke={CHART_COLORS[3]} strokeWidth={2} dot={{ r: 3 }} />
-                                <Line type="monotone" dataKey="外卖" name="外卖" stroke={CHART_COLORS[1]} strokeWidth={2} dot={{ r: 3 }} />
+                                <Line type="monotone" dataKey={mealMetric} name={mealMetric === 'gross_amt' ? '营业额' : '营业收入'} stroke={CHART_COLORS[2]} strokeWidth={2} />
                             </LineChart>
                         </ResponsiveContainer>
-                    ) : <Empty />
-                ) : meal && meal.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                        <LineChart data={meal}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="meal_period" />
-                            <YAxis />
-                            <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
-                            <Legend />
-                            <Line type="monotone" dataKey={mealMetric} name={mealMetric === 'gross_amt' ? '营业额' : '营业收入'} stroke={CHART_COLORS[2]} strokeWidth={2} />
-                        </LineChart>
-                    </ResponsiveContainer>
-                ) : <Empty />}
+                    ) : <Empty />}
+                </>)}
                 <div className="text-xs text-gray-500 mt-2 flex flex-wrap gap-3">
                     {Object.entries(MEAL_PERIOD_LABELS).map(([k, v]) => (
                         <span key={k}><b>{k}</b>: {v}</span>
@@ -551,80 +573,30 @@ export default function TamkokoSalesPage() {
 
             {/* 底部 12 月渠道趋势 */}
             <Section title="4. 渠道 12 个月趋势(近 12 月营业额)">
-                {channelTrendData.length > 0 && channelSources.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={260}>
-                        <LineChart data={channelTrendData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="month" />
-                            <YAxis />
-                            <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
-                            <Legend />
-                            {channelSources.map((s, i) => (
-                                <Line key={s} type="monotone" dataKey={s} name={s} stroke={CHART_COLORS[i % CHART_COLORS.length]} strokeWidth={2} />
-                            ))}
-                        </LineChart>
-                    </ResponsiveContainer>
-                ) : <Empty />}
-            </Section>
-
-            {/* 5. 多维组合 */}
-            <Section title="5. 多维组合">
-                <CombinedSection storeCode={storeCode} month={month} />
+                {multiMode ? (
+                    <MultiStoreTrendChart
+                        data={pivotTrendByStore((channelTrend ?? []) as unknown as OverviewRow[], 'gross_amt', FIXED_12_MONTHS)}
+                        metric="gross_amt"
+                        height={260}
+                    />
+                ) : (
+                    channelTrendData.length > 0 && channelSources.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={260}>
+                            <LineChart data={channelTrendData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="month" />
+                                <YAxis />
+                                <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
+                                <Legend />
+                                {channelSources.map((s, i) => (
+                                    <Line key={s} type="monotone" dataKey={s} name={s} stroke={CHART_COLORS[i % CHART_COLORS.length]} strokeWidth={2} />
+                                ))}
+                            </LineChart>
+                        </ResponsiveContainer>
+                    ) : <Empty />
+                )}
             </Section>
         </div>
-    );
-}
-
-function CombinedSection({ storeCode, month }: { storeCode: string; month: string }) {
-    const [dim1, setDim1] = useState<'order_source' | 'order_type' | 'meal_period' | 'weekday'>('order_source');
-    const [dim2, setDim2] = useState<'order_source' | 'order_type' | 'meal_period' | 'weekday'>('order_type');
-    const [rows, setRows] = useState<Array<Record<string, unknown>> | null>(null);
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            const r = await apiGet<Array<Record<string, unknown>>>(`/api/tamkoko/sales/combined?store=${storeCode}&month=${month}&dim1=${dim1}&dim2=${dim2}`);
-            if (!cancelled) setRows(r ?? null);
-        })();
-        return () => { cancelled = true; };
-    }, [storeCode, month, dim1, dim2]);
-
-    return (
-        <>
-            <div className="flex gap-2 mb-3 text-sm">
-                <label>维度1:
-                    <select className="ml-1 border rounded px-1" value={dim1} onChange={e => setDim1(e.target.value as typeof dim1)}>
-                        <option value="order_source">渠道</option>
-                        <option value="order_type">堂食/外卖</option>
-                        <option value="meal_period">餐段</option>
-                        <option value="weekday">星期</option>
-                    </select>
-                </label>
-                <label>维度2:
-                    <select className="ml-1 border rounded px-1" value={dim2} onChange={e => setDim2(e.target.value as typeof dim2)}>
-                        <option value="order_source">渠道</option>
-                        <option value="order_type">堂食/外卖</option>
-                        <option value="meal_period">餐段</option>
-                        <option value="weekday">星期</option>
-                    </select>
-                </label>
-            </div>
-            {rows && rows.length > 0 ? (
-                <table className="w-full text-sm">
-                    <thead><tr className="text-left text-gray-500"><th>{dim1}</th><th>{dim2}</th><th>订单数</th><th>营业额</th></tr></thead>
-                    <tbody>
-                        {rows.map((row, i) => (
-                            <tr key={i} className="border-t">
-                                <td className="py-1">{String(row['dim1_value'] ?? '')}</td>
-                                <td>{String(row['dim2_value'] ?? '')}</td>
-                                <td>{fmtNum(row['order_cnt'] as string)}</td>
-                                <td>{fmtNum(row['gross_amt'] as string, 2)}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            ) : <Empty />}
-        </>
     );
 }
 
