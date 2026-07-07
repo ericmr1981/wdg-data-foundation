@@ -18,7 +18,7 @@ function unwrap(result: any): any {
 }
 
 let ctx: APIRequestContext;
-test.beforeAll(async () => { ctx = await request.newContext({ baseURL: 'http://localhost:4100' }); });
+test.beforeAll(async () => { ctx = await request.newContext({ baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:4300' }); });
 test.afterAll(async () => { await ctx.dispose(); });
 
 test('query_tamkoko_sales_overview returns 1 row for sh_sjh/2026-06', async () => {
