@@ -49,12 +49,22 @@ interface MealRow {
     store_code: string; month: string; meal_period: string; gross_amt: string;
     revenue_amt: string; order_cnt: string;
 }
+interface CombinedRow {
+    dim1_value: string; dim2_value: string; gross_amt: string;
+    revenue_amt: string; order_cnt: string;
+}
 
 const MEAL_PERIOD_LABELS: Record<string, string> = {
     '早市': '06:00-10:59',
     '午市': '11:00-16:59',
     '晚市': '17:00-21:59',
     '未分类': '其他',
+};
+// 餐段业务顺序(早<午<下午茶<晚<未分类),用于 X 轴排序
+const MEAL_PERIOD_ORDER = ['早市', '午市', '下午茶', '晚市', '未分类'];
+const mealPeriodRank = (p: string): number => {
+    const i = MEAL_PERIOD_ORDER.indexOf(p);
+    return i === -1 ? MEAL_PERIOD_ORDER.length : i;
 };
 type MealMetric = 'gross_amt' | 'revenue_amt' | 'dine_takeaway';
 
@@ -72,18 +82,20 @@ export default function TamkokoSalesPage() {
     const [dine, setDine] = useState<DineRow[] | null>(null);
     const [meal, setMeal] = useState<MealRow[] | null>(null);
     const [mealMetric, setMealMetric] = useState<MealMetric>('gross_amt');
+    const [mealByType, setMealByType] = useState<CombinedRow[] | null>(null);
 
     const reloadMonthly = async () => {
         setError(null);
         try {
             const base = `/api/tamkoko/sales`;
-            const [o, t, ch, dt, mp, ct] = await Promise.all([
+            const [o, t, ch, dt, mp, ct, mt] = await Promise.all([
                 apiGet<OverviewRow[]>(`${base}/overview?store=${storeCode}&month=${month}`),
                 apiGet<OverviewRow[]>(`${base}/trend?store=${storeCode}&months=12`),
                 apiGet<ChannelRow[]>(`${base}/channel?store=${storeCode}&month=${month}`),
                 apiGet<DineRow[]>(`${base}/dine-takeaway?store=${storeCode}&month=${month}`),
                 apiGet<MealRow[]>(`${base}/meal-period?store=${storeCode}&month=${month}`),
                 apiGet<ChannelRow[]>(`${base}/channel?store=${storeCode}`), // 12 月 channel trend(全月)
+                apiGet<CombinedRow[]>(`${base}/combined?dim1=meal_period&dim2=order_type&store=${storeCode}&month=${month}`), // 餐段×堂食/外卖
             ]);
             setOverview(o ?? null);
             setTrend(t ?? null);
@@ -91,6 +103,7 @@ export default function TamkokoSalesPage() {
             setDine(dt ?? null);
             setMeal(mp ?? null);
             setChannelTrend(ct ?? null);
+            setMealByType(mt ?? null);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'fetch failed');
         }
@@ -156,16 +169,24 @@ export default function TamkokoSalesPage() {
     })();
 
     // 渠道 12 月趋势:按月 × order_source 矩阵
-    const channelMonths = Array.from(new Set((channelTrend ?? []).map(c => String(c.month).slice(0, 7)))).sort();
     const channelSources = Array.from(new Set((channelTrend ?? []).map(c => c.order_source)));
-    const channelTrendData = channelMonths.map(m => {
-        const row: Record<string, string | number> = { month: m };
-        for (const s of channelSources) {
-            const r = (channelTrend ?? []).find(c => String(c.month).slice(0, 7) === m && c.order_source === s);
-            row[s] = r ? Number(r.gross_amt) : 0;
+    // 固定 12 个月 X 轴(从 11 个月前到当前月),空月填 0,避免布局抖动
+    const channelTrendData = (() => {
+        const months: string[] = [];
+        const now = new Date();
+        for (let i = 11; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
         }
-        return row;
-    });
+        return months.map(m => {
+            const row: Record<string, string | number> = { month: m };
+            for (const s of channelSources) {
+                const r = (channelTrend ?? []).find(c => String(c.month).slice(0, 7) === m && c.order_source === s);
+                row[s] = r ? Number(r.gross_amt) : 0;
+            }
+            return row;
+        });
+    })();
 
     // 日级 drill-down
     const dailyData = (daily ?? []).map(d => ({
@@ -175,21 +196,21 @@ export default function TamkokoSalesPage() {
         order_cnt: Number(d.order_cnt),
     }));
 
-    // meal-period 数据按 metric 切换
-    const mealChartData = (() => {
-        if (!meal) return [];
-        if (mealMetric === 'dine_takeaway') {
-            // 从 dine 视图取该月数据(每个 meal_period 对应堂食/外卖数)
-            return dine ? dine.map(d => ({
-                name: d.order_type,
-                value: Number(d.gross_amt),
-            })) : [];
+    // 餐段×堂食/外卖 交叉数据 pivot:X 轴=餐段,两条线=堂食/外卖
+    // 数据源 combined?dim1=meal_period&dim2=order_type(已按 month 过滤)
+    const mealByTypeData = (() => {
+        if (!mealByType) return [];
+        const byMeal = new Map<string, Record<string, string | number>>();
+        for (const r of mealByType) {
+            const mp = r.dim1_value || '未分类';
+            const ot = r.dim2_value || '未知';
+            if (!byMeal.has(mp)) byMeal.set(mp, { meal_period: mp });
+            byMeal.get(mp)![ot] = Number(r.gross_amt) || 0;
         }
-        return meal.map(m => ({
-            meal_period: m.meal_period,
-            [mealMetric]: Number(m[mealMetric]),
-        }));
+        return Array.from(byMeal.values())
+            .sort((a, b) => mealPeriodRank(String(a.meal_period)) - mealPeriodRank(String(b.meal_period)));
     })();
+
 
     return (
         <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -427,17 +448,17 @@ export default function TamkokoSalesPage() {
                     </label>
                 </div>
                 {mealMetric === 'dine_takeaway' ? (
-                    dine && dine.length > 0 ? (
+                    mealByTypeData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={220}>
-                            <BarChart data={dine}>
+                            <LineChart data={mealByTypeData}>
                                 <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="order_type" />
-                                <YAxis />
+                                <XAxis dataKey="meal_period" tickFormatter={(v) => (MEAL_PERIOD_LABELS[v as string] || v)} />
+                                <YAxis tickFormatter={(v) => fmtNum(v, 0)} />
                                 <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
                                 <Legend />
-                                <Bar dataKey="gross_amt" name="营业额" fill={CHART_COLORS[0]} />
-                                <Bar dataKey="order_cnt" name="订单数" fill={CHART_COLORS[2]} />
-                            </BarChart>
+                                <Line type="monotone" dataKey="堂食" name="堂食" stroke={CHART_COLORS[3]} strokeWidth={2} dot={{ r: 3 }} />
+                                <Line type="monotone" dataKey="外卖" name="外卖" stroke={CHART_COLORS[1]} strokeWidth={2} dot={{ r: 3 }} />
+                            </LineChart>
                         </ResponsiveContainer>
                     ) : <Empty />
                 ) : meal && meal.length > 0 ? (
