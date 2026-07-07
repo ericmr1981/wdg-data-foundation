@@ -226,8 +226,11 @@ export default function TamkokoSalesPage() {
         return months.map(m => {
             const row: Record<string, string | number> = { month: m };
             for (const s of channelSources) {
-                const r = (channelTrend ?? []).find(c => String(c.month).slice(0, 7) === m && c.order_source === s);
-                row[s] = r ? Number(r.gross_amt) : 0;
+                // SUM 所有门店相同 (month, order_source) 的营业额(单店模式下也只有 1 行)
+                const total = (channelTrend ?? [])
+                    .filter(c => String(c.month).slice(0, 7) === m && c.order_source === s)
+                    .reduce((sum, c) => sum + Number(c.gross_amt || 0), 0);
+                row[s] = total;
             }
             return row;
         });
@@ -573,28 +576,20 @@ export default function TamkokoSalesPage() {
 
             {/* 底部 12 月渠道趋势 */}
             <Section title="4. 渠道 12 个月趋势(近 12 月营业额)">
-                {multiMode ? (
-                    <MultiStoreTrendChart
-                        data={pivotTrendByStore((channelTrend ?? []) as unknown as OverviewRow[], 'gross_amt', FIXED_12_MONTHS)}
-                        metric="gross_amt"
-                        height={260}
-                    />
-                ) : (
-                    channelTrendData.length > 0 && channelSources.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={260}>
-                            <LineChart data={channelTrendData}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="month" />
-                                <YAxis />
-                                <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
-                                <Legend />
-                                {channelSources.map((s, i) => (
-                                    <Line key={s} type="monotone" dataKey={s} name={s} stroke={CHART_COLORS[i % CHART_COLORS.length]} strokeWidth={2} />
-                                ))}
-                            </LineChart>
-                        </ResponsiveContainer>
-                    ) : <Empty />
-                )}
+                {channelTrendData.length > 0 && channelSources.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={260}>
+                        <LineChart data={channelTrendData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="month" />
+                            <YAxis />
+                            <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
+                            <Legend />
+                            {channelSources.map((s, i) => (
+                                <Line key={s} type="monotone" dataKey={s} name={s} stroke={CHART_COLORS[i % CHART_COLORS.length]} strokeWidth={2} />
+                            ))}
+                        </LineChart>
+                    </ResponsiveContainer>
+                ) : <Empty />}
             </Section>
         </div>
     );
