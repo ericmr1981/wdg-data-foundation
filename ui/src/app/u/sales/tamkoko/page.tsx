@@ -121,7 +121,7 @@ export default function TamkokoSalesPage() {
     ] : [];
 
     // 趋势折线:始终生成最近 12 个月的 X 轴,空月填 0(避免布局抖动)
-    const trendData: Array<{ month: string; gross_amt: number; revenue_amt: number; order_cnt: number; cash_in_rate: number }> = (() => {
+    const trendData: Array<{ month: string; gross_amt: number; revenue_amt: number; order_cnt: number; cash_in_rate: number; avg_order_amt: number }> = (() => {
         const months: string[] = [];
         const now = new Date();
         // 从 11 个月前到当前月,共 12 个
@@ -129,23 +129,30 @@ export default function TamkokoSalesPage() {
             const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
             months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
         }
-        const byMonth = new Map<string, { gross_amt: number; revenue_amt: number; order_cnt: number; cash_in_rate: number }>();
+        const byMonth = new Map<string, { gross_amt: number; revenue_amt: number; order_cnt: number; cash_in_rate: number; avg_order_amt: number }>();
         for (const t of (trend ?? [])) {
             const m = String(t.month).slice(0, 7);
+            const gross = Number(t.gross_amt) || 0;
+            const orderCnt = Number(t.order_cnt) || 0;
             byMonth.set(m, {
-                gross_amt: Number(t.gross_amt) || 0,
+                gross_amt: gross,
                 revenue_amt: Number(t.revenue_amt) || 0,
-                order_cnt: Number(t.order_cnt) || 0,
+                order_cnt: orderCnt,
                 cash_in_rate: (Number(t.cash_in_rate) || 0) * 100,
+                avg_order_amt: orderCnt > 0 ? gross / orderCnt : 0,
             });
         }
-        return months.map(m => ({
-            month: m,
-            gross_amt: byMonth.get(m)?.gross_amt ?? 0,
-            revenue_amt: byMonth.get(m)?.revenue_amt ?? 0,
-            order_cnt: byMonth.get(m)?.order_cnt ?? 0,
-            cash_in_rate: byMonth.get(m)?.cash_in_rate ?? 0,
-        }));
+        return months.map(m => {
+            const row = byMonth.get(m);
+            return {
+                month: m,
+                gross_amt: row?.gross_amt ?? 0,
+                revenue_amt: row?.revenue_amt ?? 0,
+                order_cnt: row?.order_cnt ?? 0,
+                cash_in_rate: row?.cash_in_rate ?? 0,
+                avg_order_amt: row?.avg_order_amt ?? 0,
+            };
+        });
     })();
 
     // 渠道 12 月趋势:按月 × order_source 矩阵
@@ -235,36 +242,80 @@ export default function TamkokoSalesPage() {
                 }
             >
                 {!selectedDrillMonth ? (<>
-                    <div className="text-xs text-gray-500 mb-1">12 月趋势(左轴:金额/订单数,右轴:比率)</div>
-                    <ResponsiveContainer width="100%" height={320}>
-                        <LineChart data={trendData} onClick={(e: { activeLabel?: string | number }) => {
-                            if (e?.activeLabel != null) {
-                                const label = String(e.activeLabel);
-                                const m = label + '-01';
-                                // 只对有数据的月份触发 drill(空月 = gross=0 不 drill)
-                                const found = trendData.find(d => d.month === label);
-                                if (found && (found.gross_amt > 0 || found.order_cnt > 0)) {
-                                    setSelectedDrillMonth(m);
+                    {/* 图 1:金额趋势(营业额 + 营业收入) */}
+                    <div>
+                        <div className="text-xs text-gray-500 mb-1">① 营业额 / 营业收入(最近 12 月)</div>
+                        <ResponsiveContainer width="100%" height={220}>
+                            <LineChart data={trendData} onClick={(e: { activeLabel?: string | number }) => {
+                                if (e?.activeLabel != null) {
+                                    const label = String(e.activeLabel);
+                                    const m = label + '-01';
+                                    const found = trendData.find(d => d.month === label);
+                                    if (found && (found.gross_amt > 0 || found.order_cnt > 0)) {
+                                        setSelectedDrillMonth(m);
+                                    }
                                 }
-                            }
-                        }}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="month" interval={0} />
-                            <YAxis yAxisId="left" tickFormatter={(v: number) => fmtNum(v, 0)} />
-                            <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v: number) => `${v.toFixed(0)}%`} />
-                            <Tooltip formatter={(v: unknown, name?: string | number) => {
-                                if (name === '实收率' || name === '实收率(%)') return fmtPct(Number(v), 2);
-                                return fmtNum(v, 2);
-                            }} />
-                            <Legend />
-                            {/* 金额类:左轴 */}
-                            <Line yAxisId="left" type="monotone" dataKey="gross_amt"   name="营业额"   stroke={CHART_COLORS[0]} strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
-                            <Line yAxisId="left" type="monotone" dataKey="revenue_amt" name="营业收入" stroke={CHART_COLORS[1]} strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
-                            <Line yAxisId="left" type="monotone" dataKey="order_cnt"  name="订单数"   stroke={CHART_COLORS[3]} strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
-                            {/* 比率类:右轴 */}
-                            <Line yAxisId="right" type="monotone" dataKey="cash_in_rate" name="实收率(%)" stroke={CHART_COLORS[2]} strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
-                        </LineChart>
-                    </ResponsiveContainer>
+                            }}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="month" interval={0} />
+                                <YAxis tickFormatter={(v: number) => fmtNum(v, 0)} width={80} />
+                                <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
+                                <Legend />
+                                <Line type="monotone" dataKey="gross_amt"   name="营业额"   stroke={CHART_COLORS[0]} strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
+                                <Line type="monotone" dataKey="revenue_amt" name="营业收入" stroke={CHART_COLORS[1]} strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                    {/* 图 2:实收率柱状 */}
+                    <div>
+                        <div className="text-xs text-gray-500 mb-1">② 实收率(柱状,0-100%)</div>
+                        <ResponsiveContainer width="100%" height={160}>
+                            <BarChart data={trendData} onClick={(e: { activeLabel?: string | number }) => {
+                                if (e?.activeLabel != null) {
+                                    const label = String(e.activeLabel);
+                                    const m = label + '-01';
+                                    const found = trendData.find(d => d.month === label);
+                                    if (found && found.cash_in_rate > 0) {
+                                        setSelectedDrillMonth(m);
+                                    }
+                                }
+                            }}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="month" interval={0} />
+                                <YAxis domain={[0, 100]} tickFormatter={(v: number) => `${v.toFixed(0)}%`} width={50} />
+                                <Tooltip formatter={(v: unknown) => fmtPct(Number(v), 2)} />
+                                <Bar dataKey="cash_in_rate" name="实收率" fill={CHART_COLORS[2]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                    {/* 图 3:订单量 + 客单价 */}
+                    <div>
+                        <div className="text-xs text-gray-500 mb-1">③ 订单量 + 客单价(双 Y:左订单数,右客单价元)</div>
+                        <ResponsiveContainer width="100%" height={200}>
+                            <LineChart data={trendData} onClick={(e: { activeLabel?: string | number }) => {
+                                if (e?.activeLabel != null) {
+                                    const label = String(e.activeLabel);
+                                    const m = label + '-01';
+                                    const found = trendData.find(d => d.month === label);
+                                    if (found && found.order_cnt > 0) {
+                                        setSelectedDrillMonth(m);
+                                    }
+                                }
+                            }}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="month" interval={0} />
+                                <YAxis yAxisId="left"  tickFormatter={(v: number) => fmtNum(v, 0)} width={70} />
+                                <YAxis yAxisId="right" orientation="right" tickFormatter={(v: number) => fmtNum(v, 2)} width={70} />
+                                <Tooltip formatter={(v: unknown, name?: string | number) => {
+                                    if (name === '客单价') return fmtNum(Number(v), 2);
+                                    return fmtNum(v, 0);
+                                }} />
+                                <Legend />
+                                <Line yAxisId="left"  type="monotone" dataKey="order_cnt"     name="订单数" stroke={CHART_COLORS[3]} strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
+                                <Line yAxisId="right" type="monotone" dataKey="avg_order_amt" name="客单价" stroke={CHART_COLORS[5]} strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
                 </>) : (<>
                     <div className="text-xs text-gray-500 mb-1">月内日级趋势(左轴:金额/订单数,右轴:实收率)</div>
                     <ResponsiveContainer width="100%" height={320}>
