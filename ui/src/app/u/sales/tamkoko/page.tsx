@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-    BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell,
+    BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell, LabelList,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 
@@ -339,11 +339,16 @@ export default function TamkokoSalesPage() {
                                         cy="50%"
                                         innerRadius={50}
                                         outerRadius={90}
-                                        label={({ payload }: { payload?: { order_source?: string; gross_amt?: number; cash_in_rate?: number } }) => {
-                                            const p = payload;
-                                            return `${p?.order_source ?? ''}\n${fmtNum(p?.gross_amt, 0)}元\n${fmtPct((p?.cash_in_rate ?? 0) * 100, 1)}`;
-                                        }}
+                                        label={false}
+                                        labelLine={false}
                                     >
+                                        <LabelList
+                                            dataKey="gross_amt"
+                                            position="inside"
+                                            fontSize={11}
+                                            fill="#fff"
+                                            formatter={(value: unknown) => fmtNum(value, 0)}
+                                        />
                                         {channel.map((c, i) => <Cell key={c.order_source} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                                     </Pie>
                                     <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
@@ -386,11 +391,16 @@ export default function TamkokoSalesPage() {
                                         cy="50%"
                                         innerRadius={50}
                                         outerRadius={90}
-                                        label={({ payload }: { payload?: { order_type?: string; gross_amt?: number; order_cnt?: number } }) => {
-                                            const p = payload;
-                                            return `${p?.order_type ?? ''}\n${fmtNum(p?.gross_amt, 0)}元\n${fmtNum(p?.order_cnt, 0)}单`;
-                                        }}
+                                        label={false}
+                                        labelLine={false}
                                     >
+                                        <LabelList
+                                            dataKey="gross_amt"
+                                            position="inside"
+                                            fontSize={11}
+                                            fill="#fff"
+                                            formatter={(value: unknown) => fmtNum(value, 0)}
+                                        />
                                         {dine.map((d, i) => <Cell key={d.order_type} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                                     </Pie>
                                     <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
