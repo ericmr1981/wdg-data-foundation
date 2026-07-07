@@ -191,9 +191,9 @@ export default function TamkokoSalesPage() {
             {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded">错误: {error}</div>}
 
             {/* 5 KPI cards */}
-            <div className="grid grid-cols-5 gap-4">
+            <div className="grid grid-cols-5 gap-4" data-testid="kpi-grid">
                 {kpis.map(k => (
-                    <div key={k.label} className={`bg-${k.color}-50 rounded-lg p-4`}>
+                    <div key={k.label} data-testid={`kpi-card-${k.label}`} className={`bg-${k.color}-50 rounded-lg p-4`}>
                         <div className="text-xs text-gray-500">{k.label}</div>
                         <div className="text-2xl font-bold mt-1">{k.value}</div>
                     </div>
