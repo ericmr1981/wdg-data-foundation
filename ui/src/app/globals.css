@@ -26,3 +26,9 @@ body.pdf-mode .no-pdf {
     animation: none !important;
   }
 }
+
+/* Recharts pie label font size override (default SVG 16px too crowded) */
+.recharts-pie-label-text {
+  font-size: 12px;
+  fill: #374151;
+}

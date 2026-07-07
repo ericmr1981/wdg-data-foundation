@@ -63,6 +63,15 @@ import { listRuleGroupsTool } from './tools/list-rule-groups';
 import { listCategoriesTool } from './tools/list-categories';
 import { rerunMatchByFileTool } from './tools/rerun-match-by-file';
 import { createStoreTool } from './tools/create-store';
+import { uploadTamkokoCashRegisterTool } from './tools/upload-tamkoko-cash-register';
+import { queryTamkokoSalesOverviewTool } from './tools/query-tamkoko-sales-overview';
+import { queryTamkokoSalesChannelTool } from './tools/query-tamkoko-sales-channel';
+import { queryTamkokoSalesDineTakeawayTool } from './tools/query-tamkoko-sales-dine-takeaway';
+import { queryTamkokoSalesMealPeriodTool } from './tools/query-tamkoko-sales-meal-period';
+import { queryTamkokoSalesWeekdayTool } from './tools/query-tamkoko-sales-weekday';
+import { queryTamkokoSalesMultiStoreTool } from './tools/query-tamkoko-sales-multi-store';
+import { queryTamkokoSalesTrendTool } from './tools/query-tamkoko-sales-trend';
+import { queryTamkokoSalesDailyTool } from './tools/query-tamkoko-sales-daily';
 
 type ToolModule = {
   name: string;
@@ -129,6 +138,15 @@ const TOOLS: Record<string, ToolModule> = {
   list_categories:                     listCategoriesTool,
   rerun_match_by_file:                 rerunMatchByFileTool,
   create_store:                        createStoreTool,
+  upload_tamkoko_cash_register:       uploadTamkokoCashRegisterTool,
+  query_tamkoko_sales_overview:       queryTamkokoSalesOverviewTool,
+  query_tamkoko_sales_channel:        queryTamkokoSalesChannelTool,
+  query_tamkoko_sales_dine_takeaway:  queryTamkokoSalesDineTakeawayTool,
+  query_tamkoko_sales_meal_period:    queryTamkokoSalesMealPeriodTool,
+  query_tamkoko_sales_weekday:        queryTamkokoSalesWeekdayTool,
+  query_tamkoko_sales_multi_store:    queryTamkokoSalesMultiStoreTool,
+  query_tamkoko_sales_trend:         queryTamkokoSalesTrendTool,
+  query_tamkoko_sales_daily:         queryTamkokoSalesDailyTool,
 };
 
 /** Try short-name match, then long-name match */

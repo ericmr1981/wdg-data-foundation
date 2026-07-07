@@ -111,6 +111,7 @@ function NavBar() {
               {salesOpen && (
                 <div className="absolute left-0 top-full mt-1 w-36 bg-white border rounded shadow-lg z-50">
                   <Link href="/u/sales" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">销售报表</Link>
+                  <Link href="/u/sales/tamkoko" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">泰柯销售</Link>
                   <Link href="/u/sales/details" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">销售明细</Link>
                   <Link href="/u/inventory" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">库存盘点</Link>
                 </div>

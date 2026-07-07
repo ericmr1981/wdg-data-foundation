@@ -23,6 +23,15 @@ export interface ConversationMessage {
   createdAt: Date
 }
 
+export interface ConversationSummary {
+  conversationId: string
+  brand: string | null
+  title: string
+  status: 'active' | 'archived'
+  createdAt: Date
+  lastActiveAt: Date
+}
+
 export class ConversationManager {
   constructor(
     private db: Pool,
@@ -93,6 +102,69 @@ export class ConversationManager {
       `UPDATE agent.conversations SET last_active_at = NOW() WHERE conversation_id = $1`,
       [msg.conversationId],
     )
+  }
+
+  async listByUser(userId: string, limit: number = 50): Promise<ConversationSummary[]> {
+    const { rows } = await this.db.query(`
+      SELECT conversation_id, brand, title, status, created_at, last_active_at
+      FROM agent.conversations
+      WHERE user_id = $1 AND status = 'active'
+      ORDER BY last_active_at DESC
+      LIMIT $2
+    `, [userId, limit])
+    return rows.map((r: any) => ({
+      conversationId: r.conversation_id,
+      brand: r.brand,
+      title: r.title,
+      status: r.status,
+      createdAt: r.created_at,
+      lastActiveAt: r.last_active_at,
+    }))
+  }
+
+  async getOne(conversationId: string, userId: string): Promise<ConversationSummary | null> {
+    const { rows } = await this.db.query(`
+      SELECT conversation_id, brand, title, status, created_at, last_active_at
+      FROM agent.conversations
+      WHERE conversation_id = $1 AND user_id = $2
+    `, [conversationId, userId])
+    if (rows.length === 0) return null
+    const r = rows[0]
+    return {
+      conversationId: r.conversation_id,
+      brand: r.brand,
+      title: r.title,
+      status: r.status,
+      createdAt: r.created_at,
+      lastActiveAt: r.last_active_at,
+    }
+  }
+
+  async createEmpty(userId: string, brand: string | null, title?: string): Promise<{ conversationId: string; title: string }> {
+    const { rows } = await this.db.query(`
+      INSERT INTO agent.conversations (user_id, brand, channel_id, title)
+      VALUES ($1, $2, 'web', $3)
+      RETURNING conversation_id, title
+    `, [userId, brand, title ?? '新会话'])
+    return { conversationId: rows[0].conversation_id, title: rows[0].title }
+  }
+
+  async rename(conversationId: string, userId: string, title: string): Promise<boolean> {
+    const { rowCount } = await this.db.query(`
+      UPDATE agent.conversations
+      SET title = $3, last_active_at = NOW()
+      WHERE conversation_id = $1 AND user_id = $2
+    `, [conversationId, userId, title])
+    return (rowCount ?? 0) > 0
+  }
+
+  async archive(conversationId: string, userId: string): Promise<boolean> {
+    const { rowCount } = await this.db.query(`
+      UPDATE agent.conversations
+      SET status = 'archived', last_active_at = NOW()
+      WHERE conversation_id = $1 AND user_id = $2
+    `, [conversationId, userId])
+    return (rowCount ?? 0) > 0
   }
 
   async maybeCompress(conversationId: string): Promise<void> {
