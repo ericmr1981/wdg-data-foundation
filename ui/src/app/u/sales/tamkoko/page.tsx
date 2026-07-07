@@ -6,6 +6,9 @@ import {
     BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
+import { STORE_OPTIONS, storeName } from './stores';
+import { aggregateKpiTotal, type OverviewRow } from './aggregation';
+import { StoreCompareTable, type MultiStoreRow } from './components/StoreCompareTable';
 
 const CHART_COLORS = ['#2563eb', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
@@ -27,12 +30,6 @@ async function apiGet<T>(url: string): Promise<T | null> {
     return j.data;
 }
 
-interface OverviewRow {
-    store_code: string; month: string; gross_amt: string; revenue_amt: string;
-    net_amt: string; discount_amt: string; qty: string; order_cnt: string;
-    cash_in_rate: string; profit_rate: string; avg_order_amt: string;
-    cash_in_rate_pct: string; prev_gross_amt: string | null;
-}
 interface DailyRow {
     store_code: string; biz_date: string; gross_amt: string; revenue_amt: string;
     order_cnt: string; cash_in_rate_pct: string;
@@ -83,19 +80,23 @@ export default function TamkokoSalesPage() {
     const [meal, setMeal] = useState<MealRow[] | null>(null);
     const [mealMetric, setMealMetric] = useState<MealMetric>('gross_amt');
     const [mealByType, setMealByType] = useState<CombinedRow[] | null>(null);
+    const [multiStore, setMultiStore] = useState<MultiStoreRow[] | null>(null);
+    const multiMode = storeCode === 'all';
 
     const reloadMonthly = async () => {
         setError(null);
         try {
             const base = `/api/tamkoko/sales`;
-            const [o, t, ch, dt, mp, ct, mt] = await Promise.all([
-                apiGet<OverviewRow[]>(`${base}/overview?store=${storeCode}&month=${month}`),
-                apiGet<OverviewRow[]>(`${base}/trend?store=${storeCode}&months=12`),
-                apiGet<ChannelRow[]>(`${base}/channel?store=${storeCode}&month=${month}`),
-                apiGet<DineRow[]>(`${base}/dine-takeaway?store=${storeCode}&month=${month}`),
-                apiGet<MealRow[]>(`${base}/meal-period?store=${storeCode}&month=${month}`),
-                apiGet<ChannelRow[]>(`${base}/channel?store=${storeCode}`), // 12 月 channel trend(全月)
-                apiGet<CombinedRow[]>(`${base}/combined?dim1=meal_period&dim2=order_type&store=${storeCode}&month=${month}`), // 餐段×堂食/外卖
+            const storeQs = multiMode ? '' : `store=${storeCode}&`;
+            const [o, t, ch, dt, mp, ct, mt, ms] = await Promise.all([
+                apiGet<OverviewRow[]>(`${base}/overview?${storeQs}month=${month}`),
+                apiGet<OverviewRow[]>(`${base}/trend?${storeQs}months=12`),
+                apiGet<ChannelRow[]>(`${base}/channel?${storeQs}month=${month}`),
+                apiGet<DineRow[]>(`${base}/dine-takeaway?${storeQs}month=${month}`),
+                apiGet<MealRow[]>(`${base}/meal-period?${storeQs}month=${month}`),
+                apiGet<ChannelRow[]>(`${base}/channel?${storeQs}`),
+                apiGet<CombinedRow[]>(`${base}/combined?dim1=meal_period&dim2=order_type&${storeQs}month=${month}`),
+                apiGet<MultiStoreRow[]>(`${base}/multi-store?month=${month}`),
             ]);
             setOverview(o ?? null);
             setTrend(t ?? null);
@@ -104,6 +105,7 @@ export default function TamkokoSalesPage() {
             setMeal(mp ?? null);
             setChannelTrend(ct ?? null);
             setMealByType(mt ?? null);
+            setMultiStore(ms ?? null);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'fetch failed');
         }
@@ -111,7 +113,8 @@ export default function TamkokoSalesPage() {
 
     const reloadDaily = async (drillMonth: string) => {
         try {
-            const d = await apiGet<DailyRow[]>(`/api/tamkoko/sales/daily?store=${storeCode}&month=${drillMonth}`);
+            const storeQs = multiMode ? '' : `store=${storeCode}&`;
+            const d = await apiGet<DailyRow[]>(`/api/tamkoko/sales/daily?${storeQs}month=${drillMonth}`);
             setDaily(d ?? null);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'fetch daily failed');
@@ -123,8 +126,10 @@ export default function TamkokoSalesPage() {
         if (selectedDrillMonth) reloadDaily(selectedDrillMonth);
     }, [storeCode, selectedDrillMonth]);
 
-    // 5 KPI
-    const cur = overview?.[0];
+    // 5 KPI:单店取首行,多店取 SUM 总计
+    const cur = multiMode && overview && overview.length > 0
+        ? aggregateKpiTotal(overview)
+        : overview?.[0];
     const kpis = cur ? [
         { label: '营业额',   value: fmtNum(cur.gross_amt, 2),    color: 'blue'   as const, key: 'gross_amt'   as const },
         { label: '营业收入', value: fmtNum(cur.revenue_amt, 2),  color: 'green'  as const, key: 'revenue_amt' as const },
@@ -223,9 +228,9 @@ export default function TamkokoSalesPage() {
                     <label className="text-xs">
                         <div className="text-gray-500 mb-1">门店</div>
                         <select className="border rounded px-2 py-1 text-sm" value={storeCode} onChange={e => setStoreCode(e.target.value)}>
-                            <option value="sh_sjh">上海世纪汇店</option>
-                            <option value="hz_fuyang">杭州富阳店</option>
-                            <option value="wz_bjwxc">温州滨江万象城店</option>
+                            {STORE_OPTIONS.map(opt => (
+                                <option key={opt.code} value={opt.code}>{opt.name}</option>
+                            ))}
                         </select>
                     </label>
                     <label className="text-xs">
@@ -247,6 +252,12 @@ export default function TamkokoSalesPage() {
                     </div>
                 ))}
             </div>
+
+            {multiMode && multiStore && multiStore.length > 0 && (
+                <div className="bg-white border rounded-lg p-4">
+                    <StoreCompareTable rows={multiStore} />
+                </div>
+            )}
 
             {/* 顶部 12 月趋势 + drill-down 切换 */}
             <Section
