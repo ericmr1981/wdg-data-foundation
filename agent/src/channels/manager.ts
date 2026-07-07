@@ -3,6 +3,7 @@ import type { IncomingMsg, OutgoingMsg } from './types.js'
 import type { AgentRunner } from '../agent/runner.js'
 import type { TaskScheduler } from '../tasks/scheduler.js'
 import type { WebChannel } from './web.js'
+import type { RunnerStep } from '../agent/runner.js'
 
 export class ChannelManager {
   constructor(
@@ -22,15 +23,28 @@ export class ChannelManager {
       return
     }
 
-    // 2. 即时对话, 走 AgentRunner
-    const result = await this.runner.handle(msg)
+    // 2. 即时对话, 走 AgentRunner; 收集 steps 同时通过 task_update 增量推送
+    const steps: RunnerStep[] = []
+    const pushStep = async (s: RunnerStep) => {
+      steps.push(s)
+      if (msg.channelId === 'web') {
+        await this.webChannel.send({
+          channelId: msg.channelId,
+          conversationId: null,
+          type: 'task_update',
+          payload: { kind: 'step', step: s },
+        })
+      }
+    }
 
-    // 3. 回推给原 channel
+    const result = await this.runner.handle(msg, pushStep)
+
+    // 3. 终态: task_done 带回完整 steps 列表 + 文本
     const reply: OutgoingMsg = {
       channelId: msg.channelId,
       conversationId: result.conversationId,
       type: 'task_done',
-      payload: { content: result.text },
+      payload: { content: result.text, steps },
     }
     await this.webChannel.send(reply)
   }
