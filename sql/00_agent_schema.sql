@@ -11,10 +11,13 @@ CREATE TABLE IF NOT EXISTS agent.conversations (
   brand             TEXT,
   channel_id        TEXT NOT NULL,                -- 'web' | 'cron'
   status            TEXT NOT NULL DEFAULT 'active',  -- 'active' | 'archived'
+  title             TEXT NOT NULL DEFAULT '新会话',  -- UI 显示名
   summary           TEXT,                          -- LLM 压缩
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_active_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- 兼容已建表的 DB
+ALTER TABLE agent.conversations ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '新会话';
 CREATE INDEX IF NOT EXISTS idx_conv_user_active
   ON agent.conversations(user_id, last_active_at DESC);
 

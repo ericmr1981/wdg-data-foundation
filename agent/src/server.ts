@@ -23,6 +23,7 @@ import { registerAdminCronRoutes } from './api/admin/cron.js'
 import { registerTestConnectionRoute } from './api/admin/test-connection.js'
 import { registerAdminSkillRoutes } from './api/admin/skills.js'
 import { registerAdminToolRoutes } from './api/admin/tools.js'
+import { registerConversationRoutes } from './api/conversations.js'
 import { getMetrics } from './metrics/server.js'
 
 const PORT = parseInt(process.env.WS_PORT ?? '4101', 10)
@@ -97,6 +98,9 @@ async function main() {
   // Admin API (tasks / cron, 依赖 scheduler + cronChannel)
   registerAdminTaskRoutes(app, scheduler)
   registerAdminCronRoutes(app, cronChannel)
+
+  // User-facing SDK (供 portal 调; 依赖 conversation)
+  registerConversationRoutes(app, conversation)
 
   await webChannel.start()
   await cronChannel.start()
