@@ -57,6 +57,12 @@ export class WebChannel implements Channel {
             attachments: data.attachments,
             metadata: data.metadata,
           }
+          // Sync client conversationId to the in-flight message so the
+          // later reply (sent after getOrCreate / new conversationId) reaches this socket.
+          if (data.conversationId) {
+            const c = this.clients.get(ws)
+            if (c) c.conversationId = data.conversationId
+          }
           if (this.manager) {
             await this.manager.onIncoming(msg)
           }

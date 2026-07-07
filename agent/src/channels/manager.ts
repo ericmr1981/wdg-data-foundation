@@ -29,8 +29,8 @@ export class ChannelManager {
     const reply: OutgoingMsg = {
       channelId: msg.channelId,
       conversationId: result.conversationId,
-      type: 'system_error',
-      payload: { text: result.text },
+      type: 'task_done',
+      payload: { content: result.text },
     }
     await this.webChannel.send(reply)
   }
