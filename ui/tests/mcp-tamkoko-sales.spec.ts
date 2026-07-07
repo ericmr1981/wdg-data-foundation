@@ -88,3 +88,32 @@ test('upload_tamkoko_cash_register: SHA256 hit returns skipped:true', async () =
     expect(data.skipped).toBe(true);
     expect(data.sourceFileId).toBeGreaterThan(0);
 });
+
+test('query_tamkoko_sales_overview without store returns multi-store data', async () => {
+    const r = await callMcpTool(ctx, 'query_tamkoko_sales_overview', { month: '2026-06-01' });
+    const data = unwrap(r);
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThan(1); // 多店
+    const stores = new Set(data.map((r: any) => r.store_code));
+    expect(stores.size).toBeGreaterThan(1);
+});
+
+test('query_tamkoko_sales_combined is removed from tools/list', async () => {
+    const r = await ctx.post(MCP_PATH, {
+        headers: MCP_HEADERS,
+        data: { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+    });
+    const tools = (await r.json()).result.tools;
+    const names = tools.map((t: any) => t.name);
+    expect(names).not.toContain('query_tamkoko_sales_combined');
+});
+
+test('query_tamkoko_sales_multi_store description mentions 多店比对', async () => {
+    const r = await ctx.post(MCP_PATH, {
+        headers: MCP_HEADERS,
+        data: { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+    });
+    const tools = (await r.json()).result.tools;
+    const ms = tools.find((t: any) => t.name === 'query_tamkoko_sales_multi_store');
+    expect(ms.description).toContain('多店比对');
+});

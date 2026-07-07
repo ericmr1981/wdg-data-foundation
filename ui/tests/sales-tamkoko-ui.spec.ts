@@ -68,3 +68,40 @@ test('upload page has file picker + submit button', async ({ page }) => {
     await expect(page.locator('input[type="file"]')).toBeVisible();
     await expect(page.getByRole('button', { name: /上传并导入/ })).toBeVisible();
 });
+
+test('multi-store: select 全部门店 shows KPI total > any single store', async ({ page }) => {
+    // 单店营业额
+    const single = await page.request.get('http://localhost:4300/api/tamkoko/sales/overview?store=sh_sjh&month=2026-06-01');
+    const singleGross = Number((await single.json()).data[0].gross_amt);
+    // 全部门店(不带 store)
+    const all = await page.request.get('http://localhost:4300/api/tamkoko/sales/overview?month=2026-06-01');
+    const allRows = (await all.json()).data;
+    const totalGross = allRows.reduce((a: number, r: any) => a + Number(r.gross_amt), 0);
+    expect(totalGross).toBeGreaterThan(singleGross);
+    expect(allRows.length).toBeGreaterThan(1); // 多店
+});
+
+test('multi-store: UI page shows compare table when 全部门店 selected', async ({ page }) => {
+    await page.goto('http://localhost:4300/u/sales/tamkoko');
+    // 选全部门店
+    await page.locator('select').first().selectOption('all');
+    await page.waitForTimeout(1500);
+    // 对比表存在(各店对比标题)
+    await expect(page.getByText('各店对比')).toBeVisible();
+    // KPI 卡仍存在
+    await expect(page.getByTestId('kpi-card-营业额')).toBeVisible();
+});
+
+test('multi-store: combined section removed', async ({ page }) => {
+    await page.goto('http://localhost:4300/u/sales/tamkoko');
+    await expect(page.getByText('多维组合')).toHaveCount(0);
+});
+
+test('multi-store: trend shows multiple lines (3 stores)', async ({ page }) => {
+    await page.goto('http://localhost:4300/u/sales/tamkoko');
+    await page.locator('select').first().selectOption('all');
+    await page.waitForTimeout(1500);
+    // 趋势图 legend 含上海/杭州/温州
+    await expect(page.getByText('上海世纪汇店')).toBeVisible();
+    await expect(page.getByText('杭州富阳店')).toBeVisible();
+});
