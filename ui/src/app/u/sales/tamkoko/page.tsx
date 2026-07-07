@@ -324,14 +324,24 @@ export default function TamkokoSalesPage() {
             <Section title="1. 渠道分布(订单来源)">
                 {channel && channel.length > 0 ? (
                     <div className="grid grid-cols-2 gap-4">
-                        <ResponsiveContainer width="100%" height={240}>
-                            <PieChart>
-                                <Pie data={channel} dataKey="gross_amt" nameKey="order_source" cx="50%" cy="50%" innerRadius={60} outerRadius={90} label={(e: { order_source?: string; percent?: number }) => `${e.order_source ?? ''} ${((e.percent ?? 0) * 100).toFixed(0)}%`}>
-                                    {channel.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                                </Pie>
-                                <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
-                            </PieChart>
-                        </ResponsiveContainer>
+                        <div className="min-w-0">
+                            <ResponsiveContainer width="100%" height={240}>
+                                <PieChart>
+                                    <Pie
+                                        data={channel.map(c => ({ order_source: c.order_source, gross_amt: Number(c.gross_amt) || 0 }))}
+                                        dataKey="gross_amt"
+                                        nameKey="order_source"
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={50}
+                                        outerRadius={90}
+                                    >
+                                        {channel.map((c, i) => <Cell key={c.order_source} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                                    </Pie>
+                                    <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
                         <table className="w-full text-sm">
                             <thead><tr className="text-left text-gray-500"><th>渠道</th><th>订单数</th><th>营业额</th><th>实收率</th></tr></thead>
                             <tbody>
@@ -353,15 +363,25 @@ export default function TamkokoSalesPage() {
             <Section title="2. 堂食 vs 外卖">
                 {dine && dine.length > 0 ? (
                     <div className="grid grid-cols-2 gap-4">
-                        <ResponsiveContainer width="100%" height={240}>
-                            <PieChart>
-                                <Pie data={dine} dataKey="gross_amt" nameKey="order_type" cx="50%" cy="50%" innerRadius={60} outerRadius={90} label={(e: { order_type?: string; percent?: number }) => `${e.order_type ?? ''} ${((e.percent ?? 0) * 100).toFixed(0)}%`}>
-                                    {dine.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                                </Pie>
-                                <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
-                                <Legend />
-                            </PieChart>
-                        </ResponsiveContainer>
+                        <div className="min-w-0">
+                            <ResponsiveContainer width="100%" height={240}>
+                                <PieChart>
+                                    <Pie
+                                        data={dine.map(d => ({ order_type: d.order_type, gross_amt: Number(d.gross_amt) || 0 }))}
+                                        dataKey="gross_amt"
+                                        nameKey="order_type"
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={50}
+                                        outerRadius={90}
+                                    >
+                                        {dine.map((d, i) => <Cell key={d.order_type} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
+                                    </Pie>
+                                    <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
+                                    <Legend />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
                         <table className="w-full text-sm">
                             <thead><tr className="text-left text-gray-500"><th>类型</th><th>订单数</th><th>营业额</th><th>营业收入</th></tr></thead>
                             <tbody>
