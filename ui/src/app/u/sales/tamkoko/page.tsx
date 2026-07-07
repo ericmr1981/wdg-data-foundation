@@ -216,46 +216,106 @@ export default function TamkokoSalesPage() {
                 }
             >
                 {!selectedDrillMonth ? (
-                    trendData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={260}>
-                            <LineChart data={trendData} onClick={(e: { activeLabel?: string | number }) => {
-                                if (e?.activeLabel != null) {
-                                    const label = String(e.activeLabel);
-                                    const m = label + '-01';
-                                    if (trendData.find(d => d.month === label)) {
-                                        setSelectedDrillMonth(m);
+                    <div className="space-y-3">
+                        {/* 主图:金额(营业额 + 营业收入) */}
+                        <div>
+                            <div className="text-xs text-gray-500 mb-1">营业额 / 营业收入(左 Y 轴)</div>
+                            <ResponsiveContainer width="100%" height={200}>
+                                <LineChart data={trendData} onClick={(e: { activeLabel?: string | number }) => {
+                                    if (e?.activeLabel != null) {
+                                        const label = String(e.activeLabel);
+                                        const m = label + '-01';
+                                        if (trendData.find(d => d.month === label)) {
+                                            setSelectedDrillMonth(m);
+                                        }
                                     }
-                                }
-                            }}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="month" />
-                                <YAxis yAxisId="left" />
-                                <YAxis yAxisId="right" orientation="right" />
-                                <Tooltip />
-                                <Legend />
-                                <Line yAxisId="left" type="monotone" dataKey="gross_amt"   name="营业额"   stroke={CHART_COLORS[0]} />
-                                <Line yAxisId="left" type="monotone" dataKey="revenue_amt" name="营业收入" stroke={CHART_COLORS[1]} />
-                                <Line yAxisId="right" type="monotone" dataKey="order_cnt"  name="订单数"   stroke={CHART_COLORS[3]} />
-                                <Line yAxisId="right" type="monotone" dataKey="cash_in_rate" name="实收率(%)" stroke={CHART_COLORS[2]} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    ) : <Empty />
+                                }}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="month" />
+                                    <YAxis yAxisId="left" tickFormatter={(v: number) => fmtNum(v, 0)} />
+                                    <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
+                                    <Legend />
+                                    <Line yAxisId="left" type="monotone" dataKey="gross_amt"   name="营业额"   stroke={CHART_COLORS[0]} strokeWidth={2} dot={{ r: 3 }} />
+                                    <Line yAxisId="left" type="monotone" dataKey="revenue_amt" name="营业收入" stroke={CHART_COLORS[1]} strokeWidth={2} dot={{ r: 3 }} />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                        {/* 副图:实收率(固定 0-100) */}
+                        <div>
+                            <div className="text-xs text-gray-500 mb-1">实收率(右 Y 轴 domain=[0,100])</div>
+                            <ResponsiveContainer width="100%" height={160}>
+                                <LineChart data={trendData} onClick={(e: { activeLabel?: string | number }) => {
+                                    if (e?.activeLabel != null) {
+                                        const label = String(e.activeLabel);
+                                        const m = label + '-01';
+                                        if (trendData.find(d => d.month === label)) {
+                                            setSelectedDrillMonth(m);
+                                        }
+                                    }
+                                }}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="month" />
+                                    <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v: number) => `${v.toFixed(0)}%`} />
+                                    <Tooltip formatter={(v: unknown) => fmtPct(Number(v), 2)} />
+                                    <Legend />
+                                    <Line yAxisId="right" type="monotone" dataKey="cash_in_rate" name="实收率" stroke={CHART_COLORS[2]} strokeWidth={2} dot={{ r: 3 }} />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                        {/* 副图:订单数 */}
+                        <div>
+                            <div className="text-xs text-gray-500 mb-1">订单数</div>
+                            <ResponsiveContainer width="100%" height={140}>
+                                <LineChart data={trendData} onClick={(e: { activeLabel?: string | number }) => {
+                                    if (e?.activeLabel != null) {
+                                        const label = String(e.activeLabel);
+                                        const m = label + '-01';
+                                        if (trendData.find(d => d.month === label)) {
+                                            setSelectedDrillMonth(m);
+                                        }
+                                    }
+                                }}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="month" />
+                                    <YAxis tickFormatter={(v: number) => fmtNum(v, 0)} />
+                                    <Tooltip formatter={(v: unknown) => fmtNum(v, 0)} />
+                                    <Legend />
+                                    <Line type="monotone" dataKey="order_cnt" name="订单数" stroke={CHART_COLORS[3]} strokeWidth={2} dot={{ r: 3 }} />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
                 ) : (
-                    dailyData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={260}>
-                            <LineChart data={dailyData}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="date" />
-                                <YAxis yAxisId="left" />
-                                <YAxis yAxisId="right" orientation="right" />
-                                <Tooltip />
-                                <Legend />
-                                <Line yAxisId="left" type="monotone" dataKey="gross_amt"   name="营业额"   stroke={CHART_COLORS[0]} />
-                                <Line yAxisId="left" type="monotone" dataKey="revenue_amt" name="营业收入" stroke={CHART_COLORS[1]} />
-                                <Line yAxisId="right" type="monotone" dataKey="order_cnt"  name="订单数"   stroke={CHART_COLORS[3]} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    ) : <Empty />
+                    <div className="space-y-3">
+                        <div>
+                            <div className="text-xs text-gray-500 mb-1">营业额 / 营业收入</div>
+                            <ResponsiveContainer width="100%" height={200}>
+                                <LineChart data={dailyData}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="date" />
+                                    <YAxis tickFormatter={(v: number) => fmtNum(v, 0)} />
+                                    <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
+                                    <Legend />
+                                    <Line type="monotone" dataKey="gross_amt"   name="营业额"   stroke={CHART_COLORS[0]} strokeWidth={2} dot={{ r: 3 }} />
+                                    <Line type="monotone" dataKey="revenue_amt" name="营业收入" stroke={CHART_COLORS[1]} strokeWidth={2} dot={{ r: 3 }} />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                        <div>
+                            <div className="text-xs text-gray-500 mb-1">订单数</div>
+                            <ResponsiveContainer width="100%" height={140}>
+                                <LineChart data={dailyData}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis dataKey="date" />
+                                    <YAxis tickFormatter={(v: number) => fmtNum(v, 0)} />
+                                    <Tooltip formatter={(v: unknown) => fmtNum(v, 0)} />
+                                    <Legend />
+                                    <Line type="monotone" dataKey="order_cnt" name="订单数" stroke={CHART_COLORS[3]} strokeWidth={2} dot={{ r: 3 }} />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                        {dailyData.length === 0 && <div className="text-xs text-gray-400 text-center py-2">该月暂无日级数据</div>}
+                    </div>
                 )}
             </Section>
 
