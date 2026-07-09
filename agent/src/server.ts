@@ -6,7 +6,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import cors from '@fastify/cors'
 
 import { getPool } from './db.js'
-import { getAgentConfig } from './config/store.js'
+import { getAgentConfig, initAgentConfig } from './config/store.js'
 import { initRegistry } from './skills/registry.js'
 import { McpBridge } from './mcp/bridge.js'
 import { ConversationManager } from './conversation/manager.js'
@@ -34,7 +34,11 @@ async function main() {
   await getPool().query('SELECT 1')
   initRegistry()
 
+  // Phase 1: 从 DB 读 config (env fallback); 必须在 Anthropic 客户端实例化前完成
+  await initAgentConfig()
   const cfg = getAgentConfig()
+  console.log(`[config] loaded source=${cfg.source} model=${cfg.model} hasApiKey=${cfg.apiKey !== null}`)
+
   const anthropic = new Anthropic({
     apiKey: cfg.apiKey ?? process.env.ANTHROPIC_API_KEY,
     baseURL: cfg.baseURL ?? undefined,
