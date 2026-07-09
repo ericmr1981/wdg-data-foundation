@@ -26,6 +26,11 @@ export default async function Page() {
         </p>
       </header>
       <main className="mx-auto max-w-5xl">
+        <div className="px-6 pt-3 text-right">
+          <a href="/u/admin/agent-config/test" className="text-xs text-blue-600 hover:underline">
+            调试页: Test Chat →
+          </a>
+        </div>
         <ClientAgentConfig initial={initial as any} defaultParams={initialParams} />
       </main>
     </div>
