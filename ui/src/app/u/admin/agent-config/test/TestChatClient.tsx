@@ -45,21 +45,36 @@ export function TestChatClient() {
   async function callAgent(path: string, body: object) {
     setLoading(true);
     setResult(null);
+    // Client-level abort: 90s 全栈 (LLM + 工具循环); 30s simple (单 LLM)
+    // 否则浏览器会一直 pending, 用户体验像"卡死"
+    const ms = path.endsWith('test-run') ? 90_000 : 30_000;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
     try {
       const res = await fetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: ctrl.signal,
       });
       const data: ChatResult = await res.json();
       setResult(data);
-    } catch (e) {
-      setResult({
-        success: false,
-        error: 'fetch_failed',
-        message: (e as Error).message,
-      });
+    } catch (e: any) {
+      if (e?.name === 'AbortError') {
+        setResult({
+          success: false,
+          error: 'client_timeout',
+          message: `客户端在 ${ms / 1000}s 内未收到响应 (UI 端可能有请求堆积)`,
+        });
+      } else {
+        setResult({
+          success: false,
+          error: 'fetch_failed',
+          message: (e as Error).message,
+        });
+      }
     } finally {
+      clearTimeout(timer);
       setLoading(false);
     }
   }

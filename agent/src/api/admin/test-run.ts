@@ -16,6 +16,9 @@ import { isToolEnabled } from '../admin/tools.js'
 import { McpBridge } from '../../mcp/bridge.js'
 import { mapAnthropicError } from '../../errors.js'
 
+// 单次 LLM 调用超时 — 测试用, 不让坏 LLM 卡死整个 agent 进程
+const LLM_CALL_TIMEOUT_MS = 60_000
+
 interface ToolCallRecord {
   name: string
   input: Record<string, unknown>
@@ -111,7 +114,13 @@ export function registerTestRunRoute(app: FastifyInstance, deps: {
         } as any,
       ]
 
-      const client = new Anthropic({ apiKey, baseURL: baseURL ?? undefined })
+      const client = new Anthropic({
+        apiKey,
+        baseURL: baseURL ?? undefined,
+        // Phase 7.1: 单次 LLM 调用超时 — 防止坏 LLM / 网络卡死整个 agent
+        // (用户看到 Failed (agent_unreachable) 上层会重定向到 detail="client_timeout")
+        timeout: LLM_CALL_TIMEOUT_MS,
+      } as any)
 
       // 2. 准备消息 + 系统提示
       const messages: Anthropic.MessageParam[] = [
@@ -135,7 +144,9 @@ export function registerTestRunRoute(app: FastifyInstance, deps: {
       while (iter < maxIter) {
         iter++
 
-        const resp = await client.messages.create({
+        // Promise.race 防御: 万一 Anthropic SDK 的 client.timeout 不工作 (老版本),
+        // 用 setTimeout 强制 60s 到期, 出错就中止这次 iter 抛给外层 catch
+        const llmPromise = client.messages.create({
           model: cfg.model,
           max_tokens: body.maxTokens ?? cfg.params.maxTokens ?? 4096,
           temperature: cfg.params.temperature,
@@ -143,6 +154,16 @@ export function registerTestRunRoute(app: FastifyInstance, deps: {
           tools: toolsForClaude as any,
           messages,
         })
+        let llmTimer: NodeJS.Timeout | undefined
+        const llmTimeoutPromise = new Promise<never>((_, reject) => {
+          llmTimer = setTimeout(
+            () => reject(new Error(`LLM call timeout after ${LLM_CALL_TIMEOUT_MS}ms (iter ${iter})`)),
+            LLM_CALL_TIMEOUT_MS,
+          )
+        })
+        const resp = await Promise.race([llmPromise, llmTimeoutPromise]).finally(
+          () => { if (llmTimer) clearTimeout(llmTimer) },
+        ) as Anthropic.Message
         inputTokensTotal += resp.usage.input_tokens
         outputTokensTotal += resp.usage.output_tokens
 
