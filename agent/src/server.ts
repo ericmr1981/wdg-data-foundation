@@ -103,9 +103,10 @@ async function main() {
   // (单进程无法让 2 个 server 共享 1 个端口, 临时方案: 分两个端口)
   const HTTP_PORT = PORT
   const WS_PORT = PORT + 1  // 4102 (如果 HTTP_PORT=4101)
-  const webChannel = new WebChannel(WS_PORT, null)
+  // R5: 把 manager 直接 inject 进 WebChannel constructor(不再用 (webChannel as any).manager hack)
+  const webChannel = new WebChannel(WS_PORT, null)  // 先传 null,manager 建好后再 wire
   const manager = new ChannelManager(webChannel, runner, scheduler)
-  ;(webChannel as any).manager = manager  // inject
+  webChannel.setManager(manager)  // 安全 wire — 见 WebChannel
 
   const cronChannel = new CronChannel(manager, process.env.CRON_TIMEZONE ?? 'Asia/Shanghai')
 

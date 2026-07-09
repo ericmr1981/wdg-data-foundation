@@ -4,6 +4,13 @@ import type { AgentRunner } from '../agent/runner.js'
 import type { TaskScheduler } from '../tasks/scheduler.js'
 import type { WebChannel } from './web.js'
 import type { RunnerStep } from '../agent/runner.js'
+import type { ContentBlock } from './chat-types.js'
+
+/** R5.5 extension: web channel passes block-array + messageId extras. */
+export type IncomingMsgExt = IncomingMsg & {
+  rawContent?: ContentBlock[]
+  messageId?: string
+}
 
 export class ChannelManager {
   constructor(
@@ -12,7 +19,7 @@ export class ChannelManager {
     private scheduler?: TaskScheduler,
   ) {}
 
-  async onIncoming(msg: IncomingMsg): Promise<void> {
+  async onIncoming(msg: IncomingMsgExt): Promise<void> {
     // 1. Cron 触发的, 走任务队列
     if (msg.channelId === 'cron' && typeof msg.metadata?.taskType === 'string' && this.scheduler) {
       await this.scheduler.enqueue({
