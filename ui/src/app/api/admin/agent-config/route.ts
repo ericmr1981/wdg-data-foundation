@@ -1,8 +1,11 @@
 // ui/src/app/api/admin/agent-config/route.ts
-// (保留远端完整版本: v2 style — agent-config 直接在 UI 进程 + DB 加密存储)
-// V2 now manages credentials directly (encrypted in ops.chat_agent_credentials),
-// rendering the v1 5-line proxy to agent obsolete.
-// Keep this file as-is from origin/main, resolving merge conflict.
+// Phase 2 增量 (started, partial):
+//   - 加 callAgentConfig() helper: GET/POST Agent /api/admin/config
+//   - GET 现在额外读 Agent 的 config 状态并合并到响应 (admin UI 可看 Agent source)
+//   - POST 还在原地 (未做双写 — 后续 phase 2.5 完成后)
+// 后续计划:
+//   POST 改成: 写完 UI 自己 store 后, 同步调 Agent /api/admin/config。
+//   Agent 不可达 → 报错并回滚 UI store。详见 docs/phase-2-plan.md
 
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFileSync } from 'fs';
@@ -35,6 +38,36 @@ const VALID_KEYS = new Set([
 ]);
 
 const AGENT_URL = process.env.AGENT_INTERNAL_URL ?? 'http://agent:4101';
+
+// Phase 2 helper — 调 Agent /api/admin/config。返回 {ok, data | error}。
+// 失败(连接/超时/5xx)返回 ok=false, 不抛异常; UI 路由决定如何呈现。
+async function callAgentConfig(
+  method: 'GET' | 'POST',
+  body?: Record<string, unknown>,
+  timeoutMs = 3000,
+): Promise<{ ok: boolean; status: number; data?: unknown; error?: string }> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const res = await fetch(`${AGENT_URL}/api/admin/config`, {
+      method,
+      headers: {
+        'x-wdg-user-role': 'admin',
+        'content-type': 'application/json',
+        ...(method === 'POST' && body ? { 'x-wdg-user-id': 'ui-admin' } : {}),
+      },
+      body: method === 'POST' && body ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal,
+    })
+    let data: unknown = null
+    try { data = await res.json() } catch { /* body may be empty */ }
+    return { ok: res.ok, status: res.status, data }
+  } catch (e) {
+    return { ok: false, status: 0, error: (e as Error).message }
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 function maskKey(k: string | null): string | null {
   if (!k) return null;
@@ -83,6 +116,12 @@ export async function GET() {
       }
     }
   }
+  // Phase 2: 同时读 Agent 自己的 config 显示给 UI (read-only, 不阻塞)
+  const agentGet = await callAgentConfig('GET')
+  const agentState = agentGet.ok
+    ? ((agentGet.data as Record<string, unknown>)?.source ?? null)
+    : `unreachable: ${agentGet.error ?? agentGet.status}`
+
   return NextResponse.json({
     agentMd: cfg.agentMd,
     params,
@@ -90,6 +129,13 @@ export async function GET() {
     baseURL: fromDb?.baseURL ?? cfg.baseURL ?? null,
     apiKeyMasked: maskKey(fromDb?.apiKey ?? cfg.apiKey),
     model: fromDb?.model ?? cfg.model,
+    agent: {
+      reachable: agentGet.ok,
+      source: agentState,
+      hasApiKey: (agentGet.data as Record<string, unknown>)?.hasApiKey ?? null,
+      model: (agentGet.data as Record<string, unknown>)?.model ?? null,
+      baseUrl: (agentGet.data as Record<string, unknown>)?.baseUrl ?? null,
+    },
   });
 }
 
@@ -157,6 +203,7 @@ export async function POST(req: NextRequest) {
   await persistConfigToDb(pool, user.user_id);
 
   applyConfigToGlobals();
+
   return NextResponse.json({ success: true, config: getAgentConfig() });
 }
 
