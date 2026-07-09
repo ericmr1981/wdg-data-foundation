@@ -1,7 +1,7 @@
 // agent/src/api/chat/upload.ts
 // Files API — Portal 调这里把附件 upload 到 Anthropic,拿到 file_id 后填 user.message.attachments
 //
-// 流程: Portal 上传 multipart → agent 调 anthropic.beta.files.create → 返 {file_id, filename, mime_type, size}
+// 流程: Portal 上传 multipart → agent 调 anthropic.beta.files.upload → 返 {file_id, filename, mime_type, size}
 // Portal 拿 file_id 后,在 user.message.attachments 里引用。
 //
 // 50MB cap + mime whitelist;超限返 file_too_large / unsupported_mime。
@@ -41,7 +41,7 @@ export async function registerChatUploadRoutes(app: FastifyInstance, anthropic: 
       })
     } catch (e: any) {
       const code = e?.status === 413 ? 'file_too_large' : 'unknown'
-      req.log.error({ err: e }, 'files.create failed')
+      req.log.error({ err: e }, 'files.upload failed')
       return reply.code(e?.status ?? 500).send({ error: code, message: e?.message })
     }
   })
