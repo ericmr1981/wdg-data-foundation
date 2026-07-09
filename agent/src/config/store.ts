@@ -1,8 +1,22 @@
 // agent/src/config/store.ts
-// ConfigStore — Agent 进程内配置存储 (复制自 v0 ui/src/lib/chat/agent-config-store.ts)
-// Phase 1 升级: 加 DB 路径 (env 退路)
-// 读取优先级: agent.config (DB) → process.env (legacy fallback) → default
-// 加密: encrypted_key 列用 AGENT_CRED_ENCRYPTION_KEY AES-256-GCM 加密
+// ConfigStore — Agent 进程内配置存储
+// Phase 1: DB-first
+// Phase R: env-only 留 AGENT_CRED_ENCRYPTION_KEY (解密 DB 那把 api key)
+//         ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL / ANTHROPIC_MODEL 不再从 env 读,
+//         完全靠 agent.config DB 表 (admin 页面管理)
+//
+// 来源策略:
+//   - config 来自 DB (agent.config 表,id=1)
+//   - 解密种子 AGENT_CRED_ENCRYPTION_KEY 来自 env (systemd EnvironmentFile = /etc/wdg/agent.env)
+//   - DB 没行 / DB 读不到 → startAgentConfig 抛错, server.ts 选择 fast-fail (启动失败)
+//
+// 跟生产部署的关系: 生产 systemd unit 写 /etc/wdg/agent.env, 里面**只放**:
+//   DATABASE_URL=postgresql://agent:...
+//   AGENT_CRED_ENCRYPTION_KEY=<随机 32+ 字符>
+//   MCP_ENDPOINT, ANTHROPIC_MODEL 等已废字段不需要 (默认值在 DEFAULT_PARAMS)
+// new install 流程:
+//   1. createdb + 建表 (sql/*.sql)
+//   2. INSERT agent.config 一次 (seed script) — admin 在 UI 里改 key 也行
 
 import { loadDefaultAgentMd } from './agent-md-loader.js'
 import { decrypt } from '../crypto/secret-crypto.js'
@@ -59,12 +73,11 @@ export interface AgentConfig {
   apiKey: string | null
   model: string
   /**
-   * config 来源 (admin API 用来判断是否可编辑 / 是否缺 key)
-   * - 'db'    : 从 agent.config 表读出来
-   * - 'env'   : DB 没行或读失败,fallback 到 process.env
-   * - 'default' : 啥也没有,初始化默认值 (apiKey=null, 需要去 admin 配)
+   * 配置来源 (admin API 用来判断是否可编辑 / 是否缺 key)
+   * - 'db'      : 从 agent.config 表读出来
+   * - 'missing' : DB 没 row 或读不出, 启动应该 fail (R 设计下不允许)
    */
-  source: 'db' | 'env' | 'default'
+  source: 'db' | 'missing'
 }
 
 // ─── defaults ───────────────────────
@@ -76,18 +89,7 @@ function defaultConfig(): AgentConfig {
     baseURL: null,
     apiKey: null,
     model: 'claude-opus-4-8',
-    source: 'default',
-  }
-}
-
-function envConfig(): AgentConfig {
-  return {
-    agentMd: loadDefaultAgentMd(),
-    params: { ...DEFAULT_PARAMS },
-    baseURL: process.env.ANTHROPIC_BASE_URL ?? null,
-    apiKey: process.env.ANTHROPIC_API_KEY ?? null,
-    model: process.env.ANTHROPIC_MODEL ?? 'claude-opus-4-8',
-    source: 'env',
+    source: 'missing',
   }
 }
 
@@ -102,8 +104,8 @@ interface DbConfigRow {
 }
 
 /**
- * 同步尝试从 DB 读 config;若 DB 不可用或无行,返回 null。
- * 函数是 async 因为 DB 调用本质异步。
+ * 严格从 DB 读;DB 不可用或没行 → 返回 null。
+ * R 设计: 不再读 ANTHROPIC_* env 兜底。
  */
 async function loadFromDb(): Promise<AgentConfig | null> {
   try {
@@ -119,13 +121,17 @@ async function loadFromDb(): Promise<AgentConfig | null> {
     const encKey = process.env.AGENT_CRED_ENCRYPTION_KEY
     if (row.encrypted_key) {
       if (!encKey) {
-        console.warn('[config] agent.config has encrypted_key but AGENT_CRED_ENCRYPTION_KEY env not set')
-      } else {
-        try {
-          apiKey = decrypt(row.encrypted_key, encKey)
-        } catch (e) {
-          console.error('[config] decrypt failed (wrong key?):', (e as Error).message)
-        }
+        throw new Error(
+          'agent.config.encrypted_key exists but AGENT_CRED_ENCRYPTION_KEY env not set — ' +
+          'env 必须含解密钥',
+        )
+      }
+      try {
+        apiKey = decrypt(row.encrypted_key, encKey)
+      } catch (e) {
+        throw new Error(
+          `decrypt failed (AGENT_CRED_ENCRYPTION_KEY 与 DB 加密时的不一致): ${(e as Error).message}`,
+        )
       }
     }
 
@@ -160,21 +166,16 @@ export function getConfigSource(): AgentConfig['source'] { return slot.current.s
 
 /**
  * server.ts 启动时必须 await 这个函数。
- * 读取顺序: agent.config (DB) → process.env (fallback) → default
+ * R 设计: DB-only。失败抛错由 server.ts 决定要不要 fast-fail。
  */
 export async function initAgentConfig(): Promise<void> {
-  // 1. Try DB
   const dbCfg = await loadFromDb()
   if (dbCfg) {
     slot.current = dbCfg
     return
   }
-  // 2. Fallback env
-  if (process.env.ANTHROPIC_API_KEY) {
-    slot.current = envConfig()
-    return
-  }
-  // 3. Default (key=null, admin UI 应引导配)
+  // DB 读不到 (没 row / 解密失败 / DB 不可达) → 留 defaultConfig() 让 server 决定
+  // server.ts 在 main() 开头判断 source==='missing' → 直接退出
   slot.current = defaultConfig()
 }
 
@@ -185,8 +186,14 @@ export async function reloadFromDb(): Promise<AgentConfig | null> {
   return cfg
 }
 
-// ─── 写 (in-memory + 同步, 不写 DB) ──
-// 注: admin/config.ts 路由负责把 setCredentialConfig + 写 DB 的语义包成原子操作。
+/**
+ * server.ts 启动检查用: 如果 in-memory 是 missing 状态, server 应该 fail-fast
+ */
+export function isConfigReady(): boolean {
+  return slot.current.source === 'db' && !!slot.current.apiKey
+}
+
+// ─── 写 (in-memory, admin/config.ts 路由负责把这个写 DB) ──
 
 export function setAgentMd(content: string): void {
   slot.current = { ...slot.current, agentMd: content }

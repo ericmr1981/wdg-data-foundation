@@ -10,19 +10,19 @@ export function registerTestConnectionRoute(app: FastifyInstance) {
   app.post('/api/admin/test-connection', async (req, reply) => {
     const cfg = getAgentConfig()
 
-    // 1. 检查 API key 是否配
-    if (!cfg.apiKey && !process.env.ANTHROPIC_API_KEY) {
+    // R 设计: config 严格走 DB, 不读 env fallback
+    if (!cfg.apiKey) {
       return reply.code(400).send({
         success: false,
         error: 'no_api_key',
-        message: 'ANTHROPIC_API_KEY not configured. Set it in .env or admin/config.',
+        message: 'agent.config DB row has no api_key (or decrypt failed). Set it in /u/admin/agent-config.',
       })
     }
 
-    // 2. 试发一个最小消息
+    // 试发一个最小消息
     try {
       const client = new Anthropic({
-        apiKey: cfg.apiKey ?? process.env.ANTHROPIC_API_KEY!,
+        apiKey: cfg.apiKey,
         baseURL: cfg.baseURL ?? undefined,
       })
 

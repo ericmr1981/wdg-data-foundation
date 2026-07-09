@@ -6,7 +6,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import cors from '@fastify/cors'
 
 import { getPool } from './db.js'
-import { getAgentConfig, initAgentConfig } from './config/store.js'
+import { getAgentConfig, initAgentConfig, isConfigReady } from './config/store.js'
 import { initRegistry } from './skills/registry.js'
 import { McpBridge } from './mcp/bridge.js'
 import { ConversationManager } from './conversation/manager.js'
@@ -36,13 +36,21 @@ async function main() {
   await getPool().query('SELECT 1')
   initRegistry()
 
-  // Phase 1: 从 DB 读 config (env fallback); 必须在 Anthropic 客户端实例化前完成
+  // R 设计: config 严格走 DB, 不读 ANTHROPIC_* env
   await initAgentConfig()
   const cfg = getAgentConfig()
   console.log(`[config] loaded source=${cfg.source} model=${cfg.model} hasApiKey=${cfg.apiKey !== null}`)
 
+  // fast-fail: 没读到 DB config (没 row / 解密失败 / DB 不可达)
+  // → 服务起不来,让 systemd restart 重试,直到 ops 跑 seed 脚本
+  if (!isConfigReady()) {
+    console.error('[config] FATAL: agent.config DB row missing or api_key cannot be decrypted.')
+    console.error('[config]   检查: (1) DB 是否有 row (2) AGENT_CRED_ENCRYPTION_KEY 与加密时一致')
+    process.exit(1)
+  }
+
   const anthropic = new Anthropic({
-    apiKey: cfg.apiKey ?? process.env.ANTHROPIC_API_KEY,
+    apiKey: cfg.apiKey!,  // isConfigReady() 已保证非空
     baseURL: cfg.baseURL ?? undefined,
   })
 

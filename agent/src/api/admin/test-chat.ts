@@ -24,20 +24,18 @@ export function registerTestChatRoute(app: FastifyInstance) {
       })
     }
     const cfg = getAgentConfig()
-    const baseURL = getBaseURL()
-    const apiKey = cfg.apiKey ?? process.env.ANTHROPIC_API_KEY
-    if (!apiKey) {
+    if (!cfg.apiKey) {
       return reply.code(400).send({
         success: false,
         error: 'no_api_key',
-        message: 'ANTHROPIC_API_KEY not configured',
+        message: 'agent.config DB row has no api_key (admin must configure it)',
       })
     }
 
     try {
       const client = new Anthropic({
-        apiKey,
-        baseURL: baseURL ?? undefined,
+        apiKey: cfg.apiKey,
+        baseURL: cfg.baseURL ?? undefined,
       })
       const start = Date.now()
       const res = await client.messages.create({
