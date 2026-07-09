@@ -51,7 +51,7 @@ export function registerTestChatRoute(app: FastifyInstance) {
       return {
         success: true,
         model: cfg.model,
-        baseURL: baseURL ?? '(default)',
+        baseURL: cfg.baseURL ?? '(default)',
         text,
         input_tokens: res.usage.input_tokens,
         output_tokens: res.usage.output_tokens,

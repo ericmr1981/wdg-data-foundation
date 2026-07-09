@@ -1,8 +1,11 @@
 // agent/src/api/admin/config.ts
-// Admin config endpoints — Phase 1 升级:
-// - GET 同时返回 source (db/env/default) 给 UI 提示
-// - POST 写 DB (UPSERT),key 用 AGENT_CRED_ENCRYPTION_KEY 加密
-// - 重置按钮改成 "回退到 env" 而不是 "default",避免误删 DB 数据
+// Admin config endpoints — Phase R (DB as sole source).
+//
+// GET:  返回全量 config (in-memory 缓存)
+// POST: 写 in-memory + 写 DB (persistent)
+// /reset:  清空 credentials (api_key=null, base_url=null), model 复位
+// /reload: 从 DB 重读
+
 import type { FastifyInstance } from 'fastify'
 import {
   getAgentConfig, setAgentMd, setParams, setCredentialConfig,
@@ -33,7 +36,7 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
       baseUrl: cfg.baseURL,
       hasApiKey: cfg.apiKey !== null,
       dirty: false,
-      source: getConfigSource(),  // 'db' | 'env' | 'default'
+      source: getConfigSource(),
     }
   })
 
@@ -47,48 +50,65 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
   }>('/api/admin/config', async (req) => {
     const { agentMd, params, credentials } = req.body
 
-    // 1. 写 in-memory (立即生效)
     const oldCfg = getAgentConfig()
+
+    // 1. 计算新值（部分提交语义）
+    let newApiKey: string | null | undefined = undefined
+    let newBaseURL: string | null | undefined = undefined
+    let newModel: string | undefined = undefined
+
+    if (credentials) {
+      if (credentials.hasOwnProperty('apiKey')) {
+        newApiKey = credentials.apiKey ?? null
+      }
+      if (credentials.hasOwnProperty('baseURL')) {
+        newBaseURL = credentials.baseURL ?? null
+      }
+      if (credentials.hasOwnProperty('model') && credentials.model) {
+        newModel = credentials.model
+      }
+    }
+
+    // 2. 写 in-memory (立即生效)
     if (agentMd !== undefined) {
       setAgentMd(agentMd)
-      try {
-        writeFileSync(AGENT_MD_FILE_PATH, agentMd, 'utf-8')
-      } catch (e) {
+      try { writeFileSync(AGENT_MD_FILE_PATH, agentMd, 'utf-8') } catch (e) {
         console.error('[admin/config] write agent.md failed:', e)
       }
     }
     if (params) setParams(params)
     if (credentials) {
-      setCredentialConfig(
-        credentials.baseURL ?? null,
-        credentials.apiKey ?? null,
-        credentials.model ?? oldCfg.model ?? 'claude-opus-4-8',
-      )
+      // 合并 in-memory: 用提交的值 or in-memory 旧值
+      const finalBaseURL = newBaseURL !== undefined ? newBaseURL : oldCfg.baseURL
+      const finalApiKey = newApiKey !== undefined ? newApiKey : oldCfg.apiKey
+      const finalModel = newModel ?? oldCfg.model ?? 'claude-opus-4-8'
+      setCredentialConfig(finalBaseURL, finalApiKey, finalModel)
     }
+
     const newCfg = getAgentConfig()
 
-    // 2. 写 DB (持久化)
+    // 3. 写 DB (持久化)
     const encKey = process.env.AGENT_CRED_ENCRYPTION_KEY
     if (!encKey) {
       console.warn('[admin/config] AGENT_CRED_ENCRYPTION_KEY env not set — DB write skipped')
     } else {
       try {
         const updated_by = String(req.headers['x-wdg-user-id'] ?? 'unknown')
-        // 加密 apiKey (如果提交了); 否则保留旧值
-        let encryptedKey: string | null = null
-        if (credentials && credentials.apiKey) {
-          encryptedKey = encrypt(credentials.apiKey, encKey)
+
+        // 加密 apiKey: 只有当 POST body 里给了 apiKey 才写,否则保留 DB 原值
+        let dbEncryptedKey: string | null = null
+        if (newApiKey !== undefined) {
+          dbEncryptedKey = newApiKey ? encrypt(newApiKey, encKey) : null
         }
-        const baseUrl = credentials?.baseURL ?? newCfg.baseURL
-        const model = credentials?.model ?? newCfg.model
+        const dbBaseUrl = newBaseURL !== undefined ? newBaseURL : oldCfg.baseURL
+        const dbModel = newModel ?? newCfg.model
 
         const upsertSql = `
           INSERT INTO agent.config (id, base_url, encrypted_key, model, params, agent_md, updated_at, updated_by)
-          VALUES (1, $1, COALESCE($2, (SELECT encrypted_key FROM agent.config WHERE id = 1)),
-                  $3, $4, $5, NOW(), $6)
+          VALUES (1, $1, $2, $3, $4, $5, NOW(), $6)
           ON CONFLICT (id) DO UPDATE SET
-            base_url    = EXCLUDED.base_url,
-            encrypted_key = COALESCE(EXCLUDED.encrypted_key, agent.config.encrypted_key),
+            base_url    = COALESCE(EXCLUDED.base_url, agent.config.base_url),
+            encrypted_key = EXCLUDED.encrypted_key,
             model       = EXCLUDED.model,
             params      = EXCLUDED.params,
             agent_md    = EXCLUDED.agent_md,
@@ -96,13 +116,14 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
             updated_by  = EXCLUDED.updated_by
         `
         await getPool().query(upsertSql, [
-          baseUrl,
-          encryptedKey,
-          model,
+          dbBaseUrl,
+          dbEncryptedKey,
+          dbModel,
           JSON.stringify(newCfg.params),
           newCfg.agentMd,
           updated_by,
         ])
+        console.log('[admin/config] DB saved: baseUrl=' + dbBaseUrl + ' model=' + dbModel + ' hasKey=' + (dbEncryptedKey !== null))
       } catch (e) {
         console.error('[admin/config] DB write failed:', (e as Error).message)
         return { success: false, error: 'DB write failed (in-memory change kept)' }
@@ -115,7 +136,6 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
   // ─── POST /reset (回退到 env) ─────
   app.post('/api/admin/config/reset', async () => {
     resetAgentConfig()
-    // DB 不删,但 cache 重置成 default; UI 改需要重新 init
     return { success: true, message: 'in-memory reset (DB row untouched)' }
   })
 
@@ -129,4 +149,3 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
     }
   })
 }
-

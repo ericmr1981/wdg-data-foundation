@@ -41,18 +41,16 @@ async function main() {
   const cfg = getAgentConfig()
   console.log(`[config] loaded source=${cfg.source} model=${cfg.model} hasApiKey=${cfg.apiKey !== null}`)
 
-  // fast-fail: 没读到 DB config (没 row / 解密失败 / DB 不可达)
-  // → 服务起不来,让 systemd restart 重试,直到 ops 跑 seed 脚本
-  if (!isConfigReady()) {
-    console.error('[config] FATAL: agent.config DB row missing or api_key cannot be decrypted.')
-    console.error('[config]   检查: (1) DB 是否有 row (2) AGENT_CRED_ENCRYPTION_KEY 与加密时一致')
-    process.exit(1)
-  }
-
+  // 如果 isConfigReady() 是 false(DB key 为空), Agent 应该继续跑
+  // (apiKey=null 不会 crash, 各个 endpoint 会返回 503)
   const anthropic = new Anthropic({
-    apiKey: cfg.apiKey!,  // isConfigReady() 已保证非空
+    apiKey: cfg.apiKey ?? undefined,
     baseURL: cfg.baseURL ?? undefined,
   })
+  if (!cfg.apiKey) {
+    console.warn('[config] WARN: agent.config 有 row 但 apiKey 为空 — admin 需要去 /u/admin/agent-config 配')
+    // 不 exit — Agent 继续跑, health 端点正常, 只是 LLM call 返回 400
+  }
 
   // Fastify
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } })
