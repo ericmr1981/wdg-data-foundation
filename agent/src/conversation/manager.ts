@@ -11,6 +11,8 @@ export interface IncomingMsg {
   brand: string | null
   conversationId: string | null
   content: string
+  /** R6 (Phase 2): abort signal from channel; runner passes to toolRunner */
+  signal?: AbortSignal
 }
 
 export interface ConversationMessage {

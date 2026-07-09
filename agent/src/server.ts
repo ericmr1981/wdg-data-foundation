@@ -4,6 +4,7 @@ import 'dotenv/config'
 import Fastify from 'fastify'
 import Anthropic from '@anthropic-ai/sdk'
 import cors from '@fastify/cors'
+import multipart from '@fastify/multipart'
 
 import { getPool } from './db.js'
 import { getAgentConfig, initAgentConfig, isConfigReady } from './config/store.js'
@@ -26,6 +27,7 @@ import { registerTestRunRoute } from './api/admin/test-run.js'
 import { registerAdminSkillRoutes } from './api/admin/skills.js'
 import { registerAdminToolRoutes } from './api/admin/tools.js'
 import { registerConversationRoutes } from './api/conversations.js'
+import { registerChatUploadRoutes } from './api/chat/upload.js'
 import { getMetrics } from './metrics/server.js'
 
 const PORT = parseInt(process.env.WS_PORT ?? '4101', 10)
@@ -55,6 +57,10 @@ async function main() {
   // Fastify
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } })
   await app.register(cors, { origin: true, credentials: true })
+  // Phase 2: multipart for /api/chat/upload (Files API)
+  await app.register(multipart, {
+    limits: { fileSize: 50 * 1024 * 1024 },
+  })
   // 不再 register @fastify/websocket plugin: WebChannel 自己起 ws.WebSocketServer
   // (plugin 接管所有 GET 转 WS upgrade, 跟 WebChannel 冲突)
 
@@ -116,6 +122,7 @@ async function main() {
 
   // User-facing SDK (供 portal 调; 依赖 conversation)
   registerConversationRoutes(app, conversation)
+  registerChatUploadRoutes(app, anthropic)
 
   await webChannel.start()
   await cronChannel.start()

@@ -32,6 +32,13 @@ export class WebChannel {
   channelId = 'web' as const
   private wss: WebSocketServer
   private clients = new Map<WebSocket, Client>()
+  /**
+   * R6 (Phase 2): per-conversation AbortController pool.
+   * key = conversationId; AC is created on user.message, looked up on user.interrupt,
+   * and cleared once consumed. signal is plumbed through manager → runner so SDK
+   * toolRunner aborts cleanly on user interrupt.
+   */
+  private abortControllers = new Map<string, AbortController>()
   /** Latest protocol version this build supports */
   readonly protocolVersion = PROTOCOL_VERSION
 
@@ -158,6 +165,10 @@ export class WebChannel {
       return
     }
 
+    // R6 (Phase 2): new AC per message; supersedes any stale AC for this conversation
+    const ac = new AbortController()
+    this.abortControllers.set(payload.conversationId, ac)
+
     const contentText = extractText(payload.content)
     await this.manager.onIncoming({
       channelId: 'web',
@@ -168,6 +179,7 @@ export class WebChannel {
       rawContent: payload.content,
       messageId: payload.messageId,
       attachments: payload.attachments,
+      signal: ac.signal,
     })
   }
 
@@ -175,6 +187,12 @@ export class WebChannel {
     client: Client,
     payload: Extract<ChatIncoming, { type: 'user.interrupt' }>['payload'],
   ): Promise<void> {
+    // R6 (Phase 2): abort in-flight SDK call → SDK throws AbortError → token usage stops
+    const ac = this.abortControllers.get(payload.conversationId)
+    if (ac) {
+      ac.abort()
+      this.abortControllers.delete(payload.conversationId)
+    }
     await client.emitter.send({
       type: 'interrupted',
       payload: { conversationId: payload.conversationId, reason: payload.reason ?? 'user' },

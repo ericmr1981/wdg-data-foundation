@@ -100,15 +100,21 @@ export class AgentRunner {
 
     if (useToolRunner) {
       // ── 新: Tool Runner 流式 ──
-      const iter = this.deps.anthropic.beta.messages.toolRunner({
-        model: cfg.model,
-        max_tokens: cfg.params.maxTokens,
-        system: system as any,
-        tools: tools as any,
-        messages: messages as any,
-        stream: true,
-        ...(thinkingCfg ?? {}),
-      })
+      // R6 (Phase 2): pass abort signal via options (second arg) — that's where
+      // BetaToolRunnerRequestOptions lives in SDK 0.110+. user.interrupt triggers
+      // ac.abort() in web.ts; SDK throws AbortError; token usage stops.
+      const iter = this.deps.anthropic.beta.messages.toolRunner(
+        {
+          model: cfg.model,
+          max_tokens: cfg.params.maxTokens,
+          system: system as any,
+          tools: tools as any,
+          messages: messages as any,
+          stream: true,
+          ...(thinkingCfg ?? {}),
+        },
+        msg.signal ? { signal: msg.signal } : undefined,
+      )
       for await (const message of iter) {
         await emitter.send({ type: 'message', payload: { message } } as any)
       }
@@ -121,7 +127,7 @@ export class AgentRunner {
         tools: tools as any,
         messages,
         ...(thinkingCfg ?? {}),
-      } as any)
+      } as any, msg.signal ? { signal: msg.signal } : undefined)
       await emitter.send({ type: 'message', payload: { message: response } } as any)
     }
 

@@ -12,6 +12,8 @@ export interface IncomingMsg {
   content: string
   attachments?: unknown
   metadata?: Record<string, unknown>
+  /** R6 (Phase 2): abort signal from channel; runner passes to toolRunner */
+  signal?: AbortSignal
 }
 
 export interface OutgoingMsg {
