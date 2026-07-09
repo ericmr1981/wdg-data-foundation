@@ -86,14 +86,14 @@ export class AgentRunner {
 
       let response: Anthropic.Message
       try {
+        const thinkingCfg = thinkingConfigFor(cfg.params.thinkingLevel)
         response = await this.deps.anthropic.messages.create({
           model: cfg.model,
           max_tokens: cfg.params.maxTokens,
-          temperature: cfg.params.temperature,
           system,
           tools: tools as any,
           messages,
-          ...(thinkingConfigFor(cfg.params.thinkingLevel) ? { thinking: thinkingConfigFor(cfg.params.thinkingLevel)! } : {}),
+          ...(thinkingCfg ?? {}),
         })
       } catch (e) {
         onStep?.({ phase: 'thinking', label: 'Claude 调用失败', ok: false, ts: Date.now() })

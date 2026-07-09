@@ -5,17 +5,23 @@
 
 import type { FastifyInstance } from 'fastify'
 import Anthropic from '@anthropic-ai/sdk'
-import { getAgentConfig, getBaseURL } from '../../config/store.js'
+import { getAgentConfig, getBaseURL, thinkingConfigFor } from '../../config/store.js'
 
 interface TestChatBody {
   prompt: string
   system?: string
   maxTokens?: number
+  thinkingLevel?: 'off' | 'low' | 'medium' | 'high'
+  model?: string
 }
 
-export function registerTestChatRoute(app: FastifyInstance) {
+interface TestChatDeps {
+  anthropic?: any
+}
+
+export function registerTestChatRoute(app: FastifyInstance, deps?: TestChatDeps) {
   app.post<{ Body: TestChatBody }>('/api/admin/test-chat', async (req, reply) => {
-    const { prompt, system, maxTokens } = (req.body ?? {}) as TestChatBody
+    const { prompt, system, maxTokens, thinkingLevel, model: bodyModel } = (req.body ?? {}) as TestChatBody
     if (!prompt || typeof prompt !== 'string' || prompt.trim() === '') {
       return reply.code(400).send({
         success: false,
@@ -24,7 +30,8 @@ export function registerTestChatRoute(app: FastifyInstance) {
       })
     }
     const cfg = getAgentConfig()
-    if (!cfg.apiKey) {
+    // When deps.anthropic is provided (for testing), skip apiKey check
+    if (!deps?.anthropic && !cfg.apiKey) {
       return reply.code(400).send({
         success: false,
         error: 'no_api_key',
@@ -32,25 +39,34 @@ export function registerTestChatRoute(app: FastifyInstance) {
       })
     }
 
+    // Allow override from request body (for testing) or fall back to config
+    const model = bodyModel ?? cfg.model
+    const thinking = thinkingConfigFor(thinkingLevel ?? cfg.params.thinkingLevel)
+
     try {
-      const client = new Anthropic({
+      const client = deps?.anthropic ?? new Anthropic({
         apiKey: cfg.apiKey,
         baseURL: cfg.baseURL ?? undefined,
       })
       const start = Date.now()
-      const res = await client.messages.create({
-        model: cfg.model,
+      const requestParams: any = {
+        model,
         max_tokens: maxTokens ?? 256,
         system: system || 'You are a test responder. Reply briefly and helpfully.',
         messages: [{ role: 'user', content: prompt }],
-      })
+      }
+      if (thinking) {
+        requestParams.thinking = thinking.thinking
+        requestParams.output_config = thinking.output_config
+      }
+      const res = await client.messages.create(requestParams)
       const text = res.content
         .filter((b: any) => b.type === 'text')
         .map((b: any) => b.text)
         .join('\n')
       return {
         success: true,
-        model: cfg.model,
+        model,
         baseURL: cfg.baseURL ?? '(default)',
         text,
         input_tokens: res.usage.input_tokens,
@@ -64,7 +80,7 @@ export function registerTestChatRoute(app: FastifyInstance) {
         success: false,
         error: 'llm_call_failed',
         message: e.message ?? String(e),
-        details: { model: cfg.model, statusCode: code },
+        details: { model, statusCode: code },
       })
     }
   })

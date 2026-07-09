@@ -9,7 +9,7 @@
 
 import type { FastifyInstance } from 'fastify'
 import Anthropic from '@anthropic-ai/sdk'
-import { getAgentConfig, getBaseURL } from '../../config/store.js'
+import { getAgentConfig, getBaseURL, thinkingConfigFor } from '../../config/store.js'
 import { buildSystemPrompt } from '../../agent/prompt.js'
 import { handleLoadSkill, LOAD_SKILL_NAME } from '../../skills/load-skill-tool.js'
 import { isToolEnabled } from '../admin/tools.js'
@@ -146,13 +146,14 @@ export function registerTestRunRoute(app: FastifyInstance, deps: {
 
         // Promise.race 防御: 万一 Anthropic SDK 的 client.timeout 不工作 (老版本),
         // 用 setTimeout 强制 60s 到期, 出错就中止这次 iter 抛给外层 catch
+        const thinkingCfg = thinkingConfigFor(cfg.params.thinkingLevel)
         const llmPromise = client.messages.create({
           model: cfg.model,
           max_tokens: body.maxTokens ?? cfg.params.maxTokens ?? 4096,
-          temperature: cfg.params.temperature,
           system,
           tools: toolsForClaude as any,
           messages,
+          ...(thinkingCfg ?? {}),
         })
         let llmTimer: NodeJS.Timeout | undefined
         const llmTimeoutPromise = new Promise<never>((_, reject) => {

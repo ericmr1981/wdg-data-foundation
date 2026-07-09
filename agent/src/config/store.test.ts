@@ -4,7 +4,7 @@ import { strict as assert } from 'node:assert'
 import {
   getAgentConfig, setAgentMd, setParam, setParams,
   setCredentialConfig, resetAgentConfig, DEFAULT_PARAMS,
-  thinkingConfigFor, THINKING_BUDGET,
+  thinkingConfigFor,
 } from './store.ts'
 
 test('DEFAULT_PARAMS has expected values', () => {
@@ -17,9 +17,7 @@ test('DEFAULT_PARAMS has expected values', () => {
 })
 
 test('THINKING_BUDGET maps correctly', () => {
-  assert.equal(THINKING_BUDGET.low, 1024)
-  assert.equal(THINKING_BUDGET.medium, 8192)
-  assert.equal(THINKING_BUDGET.high, 16384)
+  // Removed - now uses thinking.type='adaptive' + output_config.effort instead
 })
 
 test('thinkingConfigFor returns null for off', () => {
@@ -28,7 +26,7 @@ test('thinkingConfigFor returns null for off', () => {
 
 test('thinkingConfigFor returns config for medium', () => {
   const c = thinkingConfigFor('medium')
-  assert.deepEqual(c, { type: 'enabled', budget_tokens: 8192 })
+  assert.deepEqual(c, { thinking: { type: 'adaptive' }, output_config: { effort: 'medium' } })
 })
 
 test('defaultConfig initializes with DEFAULT_PARAMS', () => {

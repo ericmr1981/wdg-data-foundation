@@ -26,24 +26,28 @@ import { getPool } from '../db.js'
 
 export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high'
 
-export const THINKING_BUDGET: Record<Exclude<ThinkingLevel, 'off'>, number> = {
-  low: 1024,
-  medium: 8192,
-  high: 16384,
+export interface ThinkingConfig {
+  thinking: { type: 'adaptive' }
+  output_config: { effort: 'low' | 'medium' | 'high' }
 }
 
-export interface ThinkingConfigParam {
-  type: 'enabled'
-  budget_tokens: number
+const EFFORT_BY_LEVEL: Record<Exclude<ThinkingLevel, 'off'>, 'low' | 'medium' | 'high'> = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
 }
 
-export function thinkingConfigFor(level: ThinkingLevel): ThinkingConfigParam | null {
+export function thinkingConfigFor(level: ThinkingLevel): ThinkingConfig | null {
   if (level === 'off') return null
-  return { type: 'enabled', budget_tokens: THINKING_BUDGET[level] }
+  return {
+    thinking: { type: 'adaptive' },
+    output_config: { effort: EFFORT_BY_LEVEL[level] },
+  }
 }
 
 export interface AgentConfigParams {
   maxTokens: number
+  /** @deprecated kept for legacy admin UI; runner no longer passes temperature to SDK */
   temperature: number
   topP: number | null
   maxToolChainDepth: number
