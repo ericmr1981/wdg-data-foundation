@@ -3,7 +3,7 @@ import { getSessionUser } from '@/lib/auth-server';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser();
-  if (!user) redirect('/login?next=/u/admin/agent-config');
+  if (!user) redirect('/login?next=/u/admin');
   if (user.role !== 'admin') {
     return (
       <div className="m-8 rounded border border-red-200 bg-red-50 p-4 text-red-800">
@@ -16,7 +16,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <>
       <nav className="border-b border-gray-200 bg-gray-100 px-6 py-2 text-xs">
         <div className="mx-auto flex max-w-6xl gap-4">
-          <a href="/u/admin/agent-config" className="text-gray-700 hover:text-blue-600">Agent 配置</a>
+          {/* Agent 配置: 已经从顶部主菜单的"管理 ▼"下拉进入,这里不再显示 */}
           <a href="/u/admin/skills" className="text-gray-700 hover:text-blue-600">Skill</a>
           <a href="/u/admin/tasks" className="text-gray-700 hover:text-blue-600">任务</a>
           <a href="/u/admin/cron" className="text-gray-700 hover:text-blue-600">Cron</a>
