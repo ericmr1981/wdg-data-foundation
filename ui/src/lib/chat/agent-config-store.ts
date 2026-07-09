@@ -98,11 +98,18 @@ function loadDefaultAgentMd(): string {
 // chat route reads them. Using globalThis as the backing store keeps a
 // single instance across the whole Node process.
 //
-// v2: All params are also persisted to ops.chat_agent_credentials.params (JSONB)
-// and restored on process startup. The globalThis singleton is the primary
-// runtime store; DB is the source of truth loaded once at startup and synced
-// on every admin save.
-type AgentConfigSlot = { current: AgentConfig; loadedFromDb: boolean };
+// Phase 4 / Phase 2 收敛:
+//   UI 端不再维护自己的加密 key 存储。
+//   Agent (Fastify) 有自己的 agent.config 表 — 是 LLM API key 的 source of truth。
+//   UI 这边的 in-memory cache 只用来:
+//     - 读 in-process 调整过的 params (temperature/maxTokens 等)
+//     - 这进程没设 env 时 fallback 到 env
+//   重启 UI 进程,params 重新读 DEFAULT_PARAMS;key 重新从 env 读。
+//
+// 历史注释 (v2):
+//   v2 把 params + 加密 key 写到 ops.chat_agent_credentials.params (JSONB),
+//   在 process startup 时 hydrate。Phase 4 删表,这段逻辑也跟着删了。
+type AgentConfigSlot = { current: AgentConfig };
 
 const SLOT_KEY = '__wdg_agent_config__';
 const g = globalThis as unknown as { [SLOT_KEY]?: AgentConfigSlot };
@@ -117,64 +124,25 @@ function defaultConfig(): AgentConfig {
   };
 }
 
-const slot: AgentConfigSlot = (g[SLOT_KEY] ??= { current: defaultConfig(), loadedFromDb: false });
+const slot: AgentConfigSlot = (g[SLOT_KEY] ??= { current: defaultConfig() });
 
-/** Call once at process startup to hydrate the runtime store from DB. */
-export async function hydrateConfigFromDb(pool: any): Promise<void> {
-  if (slot.loadedFromDb) return;
-  try {
-    const { rows } = await pool.query(
-      'SELECT base_url, encrypted_api_key, model, params FROM ops.chat_agent_credentials WHERE id = 1',
-    );
-    if (rows.length > 0) {
-      const row = rows[0];
-      const encKey = process.env.AGENT_CRED_ENCRYPTION_KEY;
-      if (encKey && row.encrypted_api_key) {
-        const { decrypt } = await import('./secret-crypto');
-        try {
-          slot.current.apiKey = decrypt(row.encrypted_api_key as string, encKey);
-        } catch { /* leave as-is */ }
-      }
-      if (row.base_url) slot.current.baseURL = row.base_url as string;
-      if (row.model) slot.current.model = row.model as string;
-      if (row.params && typeof row.params === 'object') {
-        const dbParams = row.params as Record<string, unknown>;
-        for (const [k, v] of Object.entries(dbParams)) {
-          if (k in DEFAULT_PARAMS && typeof v === typeof (DEFAULT_PARAMS as any)[k]) {
-            (slot.current.params as any)[k] = v;
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('[agent-config-store] DB hydration failed, using defaults:', (err as Error).message);
-  }
-  slot.loadedFromDb = true;
+/**
+ * Phase 4: ops.chat_agent_credentials 已删。保留这个 hook 是为了不破坏 import
+ * signature,内部什么都不做。
+ */
+export async function hydrateConfigFromDb(_pool?: any): Promise<void> {
+  // no-op
 }
 
-/** Persist params and creds to the DB row (called by admin POST handler). */
+/**
+ * Phase 4: UI 端不再持久化 params/creds 到 DB。配置由 Agent 端的 agent.config 管理
+ * (Phase 1 引入)。UI 修改只活在 in-memory,UI 重启后会回到 DEFAULT_PARAMS / env。
+ */
 export async function persistConfigToDb(
-  pool: any,
-  userId: string,
+  _pool?: any,
+  _userId?: string,
 ): Promise<void> {
-  const encKey = process.env.AGENT_CRED_ENCRYPTION_KEY;
-  if (!encKey) {
-    console.warn('[agent-config-store] AGENT_CRED_ENCRYPTION_KEY unset — params saved in-memory only');
-    return;
-  }
-  const { encrypt } = await import('./secret-crypto');
-  const encryptedKey = slot.current.apiKey ? encrypt(slot.current.apiKey, encKey) : null;
-  await pool.query(
-    `INSERT INTO ops.chat_agent_credentials (id, base_url, encrypted_api_key, model, params, updated_by)
-     VALUES (1, $1, $2, $3, $4, $5)
-     ON CONFLICT (id) DO UPDATE SET
-       base_url = EXCLUDED.base_url,
-       encrypted_api_key = EXCLUDED.encrypted_api_key,
-       model = EXCLUDED.model,
-       params = EXCLUDED.params,
-       updated_by = EXCLUDED.updated_by`,
-    [slot.current.baseURL, encryptedKey, slot.current.model, JSON.stringify(slot.current.params), userId],
-  );
+  // no-op (ops.chat_agent_credentials removed in Phase 4)
 }
 
 export function getAgentConfig(): AgentConfig {

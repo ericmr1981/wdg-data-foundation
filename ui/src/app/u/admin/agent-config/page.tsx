@@ -1,43 +1,24 @@
 import { getAgentConfig, DEFAULT_PARAMS } from '@/lib/chat/agent-config-store';
-import pool from '@/lib/db';
-import { decrypt } from '@/lib/chat/secret-crypto';
 import { ClientAgentConfig } from './ClientAgentConfig';
 
 export const dynamic = 'force-dynamic';
 
+// Phase 4: 简化 — UI 不再读 ops.chat_agent_credentials (表已删)。
+// 这里的 initial config 完全从 in-memory store + env fallback 来。
 async function loadInitialConfig() {
   const cfg = getAgentConfig();
-  let baseURL = cfg.baseURL;
-  let apiKeyMasked: string | null = null;
-  let model = cfg.model;
-  if (process.env.AGENT_CRED_ENCRYPTION_KEY) {
-    try {
-      const { rows } = await pool.query(
-        'SELECT base_url, encrypted_api_key, model FROM ops.chat_agent_credentials WHERE id = 1',
-      );
-      if (rows.length > 0) {
-        const row = rows[0];
-        if (row.base_url) baseURL = row.base_url as string;
-        if (row.encrypted_api_key) {
-          const k = decrypt(row.encrypted_api_key as string, process.env.AGENT_CRED_ENCRYPTION_KEY);
-          apiKeyMasked = maskKey(k);
-        }
-        if (row.model) model = row.model as string;
-      }
-    } catch (err) {
-      console.warn('[admin/agent-config page] DB load failed:', (err as Error).message);
-    }
-  }
+  const apiKey = cfg.apiKey || process.env.ANTHROPIC_API_KEY || null;
   return {
     agentMd: cfg.agentMd,
     params: cfg.params,
-    baseURL,
-    apiKeyMasked,
-    model,
+    baseURL: cfg.baseURL,
+    apiKeyMasked: maskKey(apiKey),
+    model: cfg.model,
   };
 }
 
-function maskKey(k: string): string {
+function maskKey(k: string | null): string | null {
+  if (!k) return null;
   if (k.length <= 8) return '***';
   return k.slice(0, 4) + '***' + k.slice(-4);
 }

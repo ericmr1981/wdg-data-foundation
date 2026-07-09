@@ -13,8 +13,7 @@ import { callMcpWithRetry, McpCallError } from '@/lib/chat/mcp-bridge';
 import { encodeSseEvent } from '@/lib/chat/stream';
 import { checkRateLimit } from '@/lib/chat/rate-limit';
 import { createTokenTracker } from '@/lib/chat/token-tracker';
-import { getAgentConfig, applyConfigToGlobals, thinkingConfigFor, THINKING_BUDGET, hydrateConfigFromDb } from '@/lib/chat/agent-config-store';
-import { decrypt } from '@/lib/chat/secret-crypto';
+import { getAgentConfig, applyConfigToGlobals, thinkingConfigFor, THINKING_BUDGET } from '@/lib/chat/agent-config-store';
 import { splitSentences } from '@/lib/chat/sentence-splitter';
 import { processStream } from '@/lib/chat/stream-processor';
 import { mkdirSync, writeFileSync } from 'fs';
@@ -45,11 +44,11 @@ export async function POST(req: NextRequest) {
   }
 
   // ---------- 1.6 apply runtime config to module-level globals ----------
-  // Hydrate from DB on first request if not already loaded.
-  await hydrateConfigFromDb(pool);
+  // Phase 4: hydrateConfigFromDb 现在是 no-op (ops.chat_agent_credentials 已删),
+  // 实际调用已不需要。保留注释供 git blame 理解 history。
   // (token limits + rate limit max). Call per-request so /api/admin/agent-config
   // updates take effect on the next request.
-  applyConfigToGlobals();
+  applyConfigToGlobals()
 
   // ---------- 2. parse body (text or multipart) ----------
   const contentType = req.headers.get('content-type') ?? '';
@@ -151,32 +150,14 @@ export async function POST(req: NextRequest) {
   const cookieHeader = req.headers.get('cookie');
   const baseUrl = getBaseUrl(req);
 
-  // Load credentials: prefer in-memory store, then DB (decrypted), then env.
-  // Per-request so admin UI changes (or DELETE) take effect immediately.
+  // Phase 4 简化: credentials 只来自 in-memory store + process.env fallback。
+  // ops.chat_agent_credentials 已删,统一从 agent.config(DB)走,UI 这边是 mirror reader。
   const cfg = getAgentConfig();
-  let credApiKey: string | null = cfg.apiKey;
-  let credBaseURL: string | null = cfg.baseURL;
-  if (process.env.AGENT_CRED_ENCRYPTION_KEY) {
-    try {
-      const { rows } = await pool.query(
-        'SELECT base_url, encrypted_api_key, model FROM ops.chat_agent_credentials WHERE id = 1',
-      );
-      if (rows.length > 0) {
-        const row = rows[0];
-        if (row.base_url) credBaseURL = row.base_url as string;
-        if (row.encrypted_api_key) {
-          credApiKey = decrypt(row.encrypted_api_key as string, process.env.AGENT_CRED_ENCRYPTION_KEY);
-        }
-      }
-    } catch (err) {
-      console.warn('[chat] DB credential load failed, falling back to store/env:', (err as Error).message);
-    }
-  }
-  const apiKey = credApiKey || process.env.ANTHROPIC_API_KEY;
+  const apiKey = cfg.apiKey || process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return new Response('AI service not configured (no ANTHROPIC_API_KEY)', { status: 503 });
   }
-  const anthropicBaseURL = credBaseURL || process.env.ANTHROPIC_BASE_URL || undefined;
+  const anthropicBaseURL = cfg.baseURL || process.env.ANTHROPIC_BASE_URL || undefined;
   const anthropicModel = cfg.model || process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
   const client = new Anthropic({
     apiKey,
