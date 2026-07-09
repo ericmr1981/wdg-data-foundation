@@ -46,6 +46,9 @@ export async function callAgent(
         'x-wdg-user-role': 'admin',
         'content-type': 'application/json',
       },
+      // Agent config 必须实时读;Next 14 App Router 默认缓存 server-component fetch,
+      // 不加 no-store 会导致 /u/admin/agent-config 保存后 reload 仍显示旧值。
+      cache: 'no-store',
       signal: ctrl.signal,
     });
   } catch (e) {

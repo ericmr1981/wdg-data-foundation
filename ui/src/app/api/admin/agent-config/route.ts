@@ -35,22 +35,27 @@ export async function POST(req: NextRequest) {
   };
 
   // 适配 UI form 字段 → Agent 期望的 credentials 嵌套
-  const agentBody: Record<string, unknown> = {};
-  if (typeof body.agentMd === 'string') agentBody.agentMd = body.agentMd;
-  if (body.params && typeof body.params === 'object') agentBody.params = body.params;
+  // 但保留部分提交语义: 如果客户端没提交 baseURL/apiKey/model,
+  // 那我们在 POST body 里也不带 (Agent 端会保留旧值)
+  const agentBody: Record<string, unknown> = {}
+  if (typeof body.agentMd === 'string') agentBody.agentMd = body.agentMd
+  if (body.params && typeof body.params === 'object') agentBody.params = body.params
+  // credentials 部分提交: 只带客户端明确提交了的字段
   if (body.baseURL !== undefined || body.apiKey !== undefined || body.model !== undefined) {
-    const credentials: Record<string, unknown> = {};
-    if (body.baseURL !== undefined) {
-      credentials.baseURL =
-        typeof body.baseURL === 'string' && body.baseURL.trim() ? body.baseURL.trim() : null;
+    const credentials: Record<string, unknown> = {}
+    const sentByUser = (body as any)
+    if (sentByUser.hasOwnProperty('baseURL')) {
+      credentials.baseURL = body.baseURL
+        ? (typeof body.baseURL === 'string' && body.baseURL.trim() ? body.baseURL.trim() : null)
+        : null
     }
-    if (body.apiKey !== undefined) {
-      credentials.apiKey = body.apiKey === '' ? null : body.apiKey;
+    if (sentByUser.hasOwnProperty('apiKey')) {
+      credentials.apiKey = (typeof body.apiKey === 'string' && body.apiKey !== '') ? body.apiKey : null
     }
-    if (body.model !== undefined) {
-      credentials.model = body.model || 'claude-opus-4-8';
+    if (sentByUser.hasOwnProperty('model')) {
+      credentials.model = (typeof body.model === 'string' && body.model.trim()) ? body.model.trim() : 'claude-opus-4-8'
     }
-    agentBody.credentials = credentials;
+    agentBody.credentials = credentials
   }
 
   const result = await callAgent('/api/admin/config', {
