@@ -41,3 +41,39 @@ ${toolList}
 
 ${forbidden}`
 }
+
+// ─── R4: system blocks + session context (for toolRunner / prompt caching) ───
+
+const AGENT_MD_CACHE_CONTROL: Anthropic.CacheControlEphemeral = {
+  type: 'ephemeral',
+  ttl: '1h',
+}
+
+/**
+ * Stable system content as a single cache-eligible text block.
+ * The first (and only) block carries cache_control ttl=1h so prompt caching
+ * kicks in across turns. Volatile per-turn context does NOT live here —
+ * it goes into the first user message via buildSessionContextMessage.
+ */
+export function buildSystemBlocks(agentMd: string): Anthropic.TextBlockParam[] {
+  return [{
+    type: 'text',
+    text: agentMd,
+    cache_control: AGENT_MD_CACHE_CONTROL,
+  }]
+}
+
+/**
+ * Per-turn session context, injected into the first user message (not system),
+ * so it never invalidates the cached system block.
+ */
+export function buildSessionContextMessage(ctx: {
+  today: string; brand: string | null; conversationId: string; channel: string;
+}): string {
+  return `# Session Context (auto-injected, do not mention to user)
+today: ${ctx.today}
+brand: ${ctx.brand ?? '<none>'}
+channel: ${ctx.channel}
+conversationId: ${ctx.conversationId}
+`
+}

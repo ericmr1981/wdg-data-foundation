@@ -14,7 +14,7 @@ import { buildSystemPrompt } from '../../agent/prompt.js'
 import { handleLoadSkill, LOAD_SKILL_NAME } from '../../skills/load-skill-tool.js'
 import { isToolEnabled } from '../admin/tools.js'
 import { McpBridge } from '../../mcp/bridge.js'
-import { mapAnthropicError } from '../../errors.js'
+import { mapAnthropicStatusError } from '../../errors.js'
 
 // 单次 LLM 调用超时 — 测试用, 不让坏 LLM 卡死整个 agent 进程
 const LLM_CALL_TIMEOUT_MS = 60_000
@@ -290,7 +290,7 @@ export function registerTestRunRoute(app: FastifyInstance, deps: {
         iterations: 0,
         model: cfg.model,
         durationMs: Date.now() - start,
-        error: mapAnthropicError(e) ?? 'llm_call_failed',
+        error: mapAnthropicStatusError(e) ?? 'llm_call_failed',
         message: e?.message ?? String(e),
         details: code ? { statusCode: code } : undefined,
       } as TestRunResponse)
