@@ -1,71 +1,43 @@
 // ui/src/app/api/admin/agent-config/route.ts
-// Phase 4: 简化
-// - 删 ops.chat_agent_credentials 引用 (表已删)
-// - agent-config-store 的 persist/hydrate 已经是 no-op
-// - GET 仍然调 Agent /api/admin/config 拉 source 状态给 admin UI 显示
-// - POST 仍然只更新 UI 端 in-memory;真正的 key 配置走 Agent 端
+// Phase 5: 整个路由变成 Agent /api/admin/config 的 thin proxy。
+// UI 端不再持有自己的 LLM 配置存储 — 所有配置直接转发给 Agent (Phase 1)。
+// Agent 是 source of truth (agent.config DB 表 + Agent in-memory)。
 
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFileSync } from 'fs';
 import { getSessionUser } from '@/lib/auth-server';
-import {
-  getAgentConfig,
-  setAgentMd,
-  setParams,
-  setCredentialConfig,
-  resetAgentConfig,
-  applyConfigToGlobals,
-  AGENT_MD_FILE_PATH,
-  DEFAULT_PARAMS,
-} from '@/lib/chat/agent-config-store';
-
-const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-opus-4-8';
 
 function isAdmin(user: any): boolean {
   return user?.role === 'admin';
 }
 
-const VALID_KEYS = new Set([
-  'maxTokens', 'temperature', 'topP', 'maxToolChainDepth',
-  'rateLimitMaxPerMinute', 'tokenSoftLimit', 'tokenHardLimit',
-  'mcpRetryMaxAttempts', 'thinkingLevel',
-]);
-
 const AGENT_URL = process.env.AGENT_INTERNAL_URL ?? 'http://agent:4101';
 
-// Phase 2 保留:调 Agent /api/admin/config。失败返回 ok=false 不抛异常。
-async function callAgentConfig(
-  method: 'GET' | 'POST',
-  body?: Record<string, unknown>,
-  timeoutMs = 3000,
-): Promise<{ ok: boolean; status: number; data?: unknown; error?: string }> {
+// helper: 转给 Agent,带 admin 鉴权 header + 3s 超时
+async function callAgent(
+  path: string,
+  init: RequestInit,
+): Promise<{ status: number; body: unknown; detail?: string }> {
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  const timer = setTimeout(() => ctrl.abort(), 5000)
+  let r: Response | null = null
   try {
-    const res = await fetch(`${AGENT_URL}/api/admin/config`, {
-      method,
+    r = await fetch(`${AGENT_URL}${path}`, {
+      ...init,
       headers: {
+        ...(init.headers || {}),
         'x-wdg-user-role': 'admin',
         'content-type': 'application/json',
-        ...(method === 'POST' && body ? { 'x-wdg-user-id': 'ui-admin' } : {}),
       },
-      body: method === 'POST' && body ? JSON.stringify(body) : undefined,
       signal: ctrl.signal,
     })
-    let data: unknown = null
-    try { data = await res.json() } catch { /* body may be empty */ }
-    return { ok: res.ok, status: res.status, data }
   } catch (e) {
-    return { ok: false, status: 0, error: (e as Error).message }
+    return { status: 0, body: null, detail: (e as Error).message }
   } finally {
     clearTimeout(timer)
   }
-}
-
-function maskKey(k: string | null): string | null {
-  if (!k) return null;
-  if (k.length <= 8) return '***';
-  return k.slice(0, 4) + '***' + k.slice(-4);
+  let body: unknown = null
+  try { body = await r.json() } catch { /* non-JSON body */ }
+  return { status: r.status, body }
 }
 
 export async function GET() {
@@ -74,94 +46,98 @@ export async function GET() {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  const cfg = getAgentConfig();
-  // Phase 2 保留:Agent 端的 source 显示给 admin (Agent 是真正 key 持有者)
-  const agentGet = await callAgentConfig('GET')
-  const agentState = agentGet.ok
-    ? ((agentGet.data as Record<string, unknown>)?.source ?? null)
-    : `unreachable: ${agentGet.error ?? agentGet.status}`
-
+  const res = await callAgent('/api/admin/config', { method: 'GET' })
+  if (res.detail && res.status === 0) {
+    // network / abort error — agent 无法连通
+    return NextResponse.json(
+      { error: 'agent unreachable', detail: res.detail },
+      { status: 503 },
+    )
+  }
+  const body = (res.body ?? {}) as Record<string, unknown>
   return NextResponse.json({
-    agentMd: cfg.agentMd,
-    params: cfg.params,
-    defaultParams: DEFAULT_PARAMS,
-    baseURL: cfg.baseURL,
-    apiKeyMasked: maskKey(cfg.apiKey),
-    model: cfg.model,
+    agentMd: body.agentMdContent ?? '',
+    params: body.params ?? {},
+    defaultParams: body.defaultParams ?? {},
+    baseURL: body.baseUrl ?? null,
+    apiKeyMasked: body.hasApiKey ? '***' : null,
+    model: body.model ?? 'claude-opus-4-8',
     agent: {
-      reachable: agentGet.ok,
-      source: agentState,
-      hasApiKey: (agentGet.data as Record<string, unknown>)?.hasApiKey ?? null,
-      model: (agentGet.data as Record<string, unknown>)?.model ?? null,
-      baseUrl: (agentGet.data as Record<string, unknown>)?.baseUrl ?? null,
+      reachable: res.status >= 200 && res.status < 300,
+      source: body.source ?? null,
+      hasApiKey: body.hasApiKey ?? null,
+      model: body.model ?? null,
+      baseUrl: body.baseUrl ?? null,
     },
-  });
+  })
 }
 
 export async function POST(req: NextRequest) {
-  const user = await getSessionUser();
+  const user = await getSessionUser()
   if (!isAdmin(user) || !user) {
-    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
+
   const body = (await req.json().catch(() => ({}))) as {
-    agentMd?: unknown;
-    params?: Record<string, unknown>;
-    baseURL?: unknown;
-    apiKey?: unknown;
-    model?: unknown;
-  };
-
-  if (typeof body.agentMd === 'string') {
-    setAgentMd(body.agentMd);
-    try {
-      writeFileSync(AGENT_MD_FILE_PATH, body.agentMd, 'utf-8');
-    } catch (err) {
-      console.warn('[agent-config] writeFileSync failed; in-memory update only:', err);
-    }
+    agentMd?: string
+    params?: Record<string, unknown>
+    baseURL?: string | null
+    apiKey?: string | null
+    model?: string
   }
 
-  if (body.params && typeof body.params === 'object') {
-    const validated: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(body.params)) {
-      if (!VALID_KEYS.has(k)) continue;
-      validated[k] = v;
-    }
-    setParams(validated as Partial<Parameters<typeof setParams>[0]>);
-  }
-
-  // Phase 4: 这里只更新 UI in-memory store。真正的 credentials 配置
-  // 走 Agent (在 Agent admin UI /api/admin/config 那边写 agent.config 表)
+  // Phase 5: 把 UI 提交的全部转给 Agent。Agent 端对应字段:
+  //   agentMd       → Agent in-memory (写文件 + in-memory)
+  //   params        → Agent in-memory + DB (JSONB)
+  //   credentials   → Agent in-memory + DB (加密)
+  // UI 端的 user.user_id 作为 updated_by 透传给 Agent
+  const agentBody: Record<string, unknown> = {}
+  if (typeof body.agentMd === 'string') agentBody.agentMd = body.agentMd
+  if (body.params && typeof body.params === 'object') agentBody.params = body.params
   if (body.baseURL !== undefined || body.apiKey !== undefined || body.model !== undefined) {
-    const newBaseURL =
-      body.baseURL !== undefined
-        ? typeof body.baseURL === 'string' && body.baseURL.trim()
-          ? body.baseURL.trim()
-          : null
-        : null
-    let newApiKey: string | null
-    if (typeof body.apiKey === 'string') {
-      newApiKey = body.apiKey === '' ? null : body.apiKey
-    } else {
-      newApiKey = null  // 不从 DB 拉了
+    agentBody.credentials = {}
+    if (body.baseURL !== undefined) {
+      ;(agentBody.credentials as Record<string, unknown>).baseURL =
+        typeof body.baseURL === 'string' && body.baseURL.trim() ? body.baseURL.trim() : null
     }
-    const newModel =
-      typeof body.model === 'string' && body.model.trim()
-        ? body.model.trim()
-        : DEFAULT_MODEL
-
-    setCredentialConfig(newBaseURL, newApiKey, newModel)
+    if (body.apiKey !== undefined) {
+      ;(agentBody.credentials as Record<string, unknown>).apiKey =
+        body.apiKey === '' ? null : body.apiKey
+    }
+    if (body.model !== undefined) {
+      ;(agentBody.credentials as Record<string, unknown>).model = body.model || 'claude-opus-4-8'
+    }
   }
 
-  applyConfigToGlobals()
-  return NextResponse.json({ success: true, config: getAgentConfig() })
+  const res = await callAgent('/api/admin/config', {
+    method: 'POST',
+    headers: { 'x-wdg-user-id': user.user_id },
+    body: JSON.stringify(agentBody),
+  })
+  if (res.detail && res.status === 0) {
+    return NextResponse.json(
+      { error: 'agent unreachable', detail: res.detail },
+      { status: 503 },
+    )
+  }
+  return NextResponse.json(res.body ?? {}, { status: res.status })
 }
 
 export async function DELETE() {
-  const user = await getSessionUser();
+  const user = await getSessionUser()
   if (!isAdmin(user) || !user) {
-    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
-  resetAgentConfig()
-  applyConfigToGlobals()
-  return NextResponse.json({ success: true, config: getAgentConfig() })
+  // Phase 5: 重置 = Agent 自己的 /api/admin/config/reset
+  const res = await callAgent('/api/admin/config/reset', { method: 'POST' })
+  if (res.detail && res.status === 0) {
+    return NextResponse.json(
+      { error: 'agent unreachable', detail: res.detail },
+      { status: 503 },
+    )
+  }
+  if (res.status >= 200 && res.status < 300) {
+    return NextResponse.json({ success: true, ...(res.body ?? {}) })
+  }
+  return NextResponse.json(res.body ?? {}, { status: res.status })
 }

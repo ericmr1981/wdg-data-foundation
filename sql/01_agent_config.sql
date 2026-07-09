@@ -2,7 +2,7 @@
 -- 储存 base_url / api_key / model / params 等
 -- api_key 用 AGENT_CRED_ENCRYPTION_KEY (AES-256-GCM) 加密
 --
--- 由 phase-1 合并方案引入: 让 Agent config 走 DB 而不是 env
+-- 由 phase-1 引入: 让 Agent config 走 DB 而不是 env
 -- 倒序读取优先级: DB → env(legacy) → null (503)
 --
 -- 跑这个文件:
@@ -18,24 +18,19 @@ CREATE TABLE IF NOT EXISTS agent.config (
   params          JSONB,            -- AgentConfigParams (maxTokens/temperature/...)
   agent_md        TEXT,             -- 当前活跃的 agent.md 内容(可选,文件仍是 source of truth)
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_by      TEXT,             -- 谁改的(admin user id 或 'seed' / 'env-import')
+  updated_by      TEXT,
   CONSTRAINT single_row CHECK (id = 1)
 );
 
--- 单例 trigger: 防止插入第二行
-CREATE OR REPLACE FUNCTION agent.config_single_row_guard()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
-BEGIN
-  IF TG_OP = 'INSERT' AND (SELECT count(*) FROM agent.config) >= 1 THEN
-    RAISE EXCEPTION 'agent.config 只能有一行';
-  END IF;
-  RETURN NEW;
-END $$;
-
-DROP TRIGGER IF EXISTS config_single_row ON agent.config;
-CREATE TRIGGER config_single_row
-  BEFORE INSERT ON agent.config
-  FOR EACH ROW EXECUTE FUNCTION agent.config_single_row_guard();
+-- 单行 trigger 设计 NOTES:
+-- 单行的 强制 是由 CHECK (id = 1) 提供的(主键 + check 不可重复),
+-- 不需要 trigger。Phase 1 的版本有 BEFORE INSERT 单行 trigger,会错误
+-- 阻止 ON CONFLICT (id) DO UPDATE 的 INSERT 阶段 (VALUES 里若用到
+-- (SELECT ... FROM agent.config WHERE id = 1) 会触发 INSERT → trigger 抛错)。
+-- 保留 trigger function 注释为历史,但不创建 trigger,避免再次踩坑。
+--
+-- DROP TRIGGER IF EXISTS config_single_row ON agent.config;  -- no-op
+-- DROP FUNCTION IF EXISTS agent.config_single_row_guard();   -- no-op
 
 -- updated_at 自动维护
 CREATE OR REPLACE FUNCTION agent.config_set_updated_at()

@@ -1,26 +1,37 @@
-import { getAgentConfig, DEFAULT_PARAMS } from '@/lib/chat/agent-config-store';
+// ui/src/app/u/admin/agent-config/page.tsx
+// Phase 5: initial config 改为 SSR 时 fetch /api/admin/agent-config (那个 endpoint 会代理 Agent)
+// 这意味着所有 admin 配置读写全在 Agent 端, UI 是只调试用的 admin UI。
+
 import { ClientAgentConfig } from './ClientAgentConfig';
 
 export const dynamic = 'force-dynamic';
 
-// Phase 4: 简化 — UI 不再读 ops.chat_agent_credentials (表已删)。
-// 这里的 initial config 完全从 in-memory store + env fallback 来。
 async function loadInitialConfig() {
-  const cfg = getAgentConfig();
-  const apiKey = cfg.apiKey || process.env.ANTHROPIC_API_KEY || null;
+  // server component fetch 自己的 API (SSR 阶段)
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://127.0.0.1:3001'
+  // 注意: SSR 阶段调用 /api/admin/agent-config 需要 admin session cookie,
+  // 这里走服务端到 Agent 的代理 fetch (不走 cookie,但还是要 admin role 校验)
+  const res = await fetch(
+    `${baseUrl}/api/admin/agent-config`,
+    { headers: { 'x-wdg-user-role': 'admin' }, cache: 'no-store' },
+  )
+  if (!res.ok) {
+    return {
+      agentMd: '',
+      params: {},
+      baseURL: null,
+      apiKeyMasked: null,
+      model: 'claude-opus-4-8',
+    }
+  }
+  const data = await res.json()
   return {
-    agentMd: cfg.agentMd,
-    params: cfg.params,
-    baseURL: cfg.baseURL,
-    apiKeyMasked: maskKey(apiKey),
-    model: cfg.model,
-  };
-}
-
-function maskKey(k: string | null): string | null {
-  if (!k) return null;
-  if (k.length <= 8) return '***';
-  return k.slice(0, 4) + '***' + k.slice(-4);
+    agentMd: data.agentMd ?? '',
+    params: data.params ?? {},
+    baseURL: data.baseURL ?? null,
+    apiKeyMasked: data.apiKeyMasked ?? null,
+    model: data.model ?? 'claude-opus-4-8',
+  }
 }
 
 export default async function Page() {
@@ -29,10 +40,13 @@ export default async function Page() {
     <div className="min-h-screen bg-gray-50">
       <header className="border-b border-gray-200 bg-white px-6 py-4">
         <h1 className="text-lg font-semibold text-gray-900">Agent 配置 (Admin)</h1>
-        <p className="text-xs text-gray-500">编辑 agent.md 自定义提示词 · 调整调试参数 · 配置 Anthropic API · 变更热生效</p>
+        <p className="text-xs text-gray-500">
+          调试 / 管理 Agent 进程配置。改动直接写到 Agent (Fastify :4101),
+          持久化在 agent.config 表里。
+        </p>
       </header>
       <main className="mx-auto max-w-5xl">
-        <ClientAgentConfig initial={initial} defaultParams={DEFAULT_PARAMS} />
+        <ClientAgentConfig initial={initial} defaultParams={initial.params} />
       </main>
     </div>
   );
