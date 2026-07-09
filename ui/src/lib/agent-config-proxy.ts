@@ -33,9 +33,10 @@ export interface AgentConfigView {
 export async function callAgent(
   path: string,
   init: RequestInit,
+  timeoutMs = 120000,
 ): Promise<AgentCallResult> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 5000);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   let r: Response | null = null;
   try {
     r = await fetch(`${AGENT_URL}${path}`, {

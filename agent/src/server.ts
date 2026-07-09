@@ -22,6 +22,7 @@ import { registerAdminTaskRoutes } from './api/admin/tasks.js'
 import { registerAdminCronRoutes } from './api/admin/cron.js'
 import { registerTestConnectionRoute } from './api/admin/test-connection.js'
 import { registerTestChatRoute } from './api/admin/test-chat.js'
+import { registerTestRunRoute } from './api/admin/test-run.js'
 import { registerAdminSkillRoutes } from './api/admin/skills.js'
 import { registerAdminToolRoutes } from './api/admin/tools.js'
 import { registerConversationRoutes } from './api/conversations.js'
@@ -88,6 +89,7 @@ async function main() {
   registerAdminConfigRoutes(app)
   registerTestConnectionRoute(app)
   registerTestChatRoute(app)
+  registerTestRunRoute(app, { mcpBridge })
   registerAdminSkillRoutes(app)
   registerAdminToolRoutes(app)
 
