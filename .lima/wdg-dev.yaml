@@ -1,0 +1,54 @@
+# WDG local dev VM — Ubuntu 24.04, runs systemd, mirrors production
+# 启动: limactl start --name=wdg-dev .lima/wdg-dev.yaml
+# 进 VM: limactl shell wdg-dev
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/noble/release-20260615/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+  - location: "https://cloud-images.ubuntu.com/releases/noble/release-20260615/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+
+cpus: 4
+memory: "4GiB"
+disk: "20GiB"
+
+# 端口转发 (与生产 systemd 单元一致)
+portForwards:
+  - guestPort: 3001
+    hostPort: 3001
+    proto: tcp
+  - guestPort: 4101
+    hostPort: 4101
+    proto: tcp
+  - guestPort: 4102
+    hostPort: 4102
+    proto: tcp
+  - guestPort: 5432
+    hostPort: 5432
+    proto: tcp
+  - guestPort: 5433
+    hostPort: 5433
+    proto: tcp
+
+# 共享项目目录 + SSH(供 git pull deploy 用)
+mounts:
+  - location: "/Users/ericmr/Documents/GitHub/wdg-data-foundation"
+    mountPoint: "/opt/wdg"
+    writable: true
+  - location: "~/.ssh"
+    mountPoint: "/home/ubuntu/.ssh"
+    writable: true
+
+ssh:
+  loadDotSSHPubKeys: true
+  forwardAgent: false
+
+# cloud-init: 安装最基础工具 (PG/Node 留给 systemd unit 内的服务自己装)
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install -y curl wget git ca-certificates gnupg lsb-release sudo
+      apt-get clean
