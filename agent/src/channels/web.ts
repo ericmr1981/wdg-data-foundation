@@ -138,7 +138,10 @@ export class WebChannel {
         if (client.authTimer) clearTimeout(client.authTimer)
         this.clients.delete(ws)
       })
-      ws.on('error', () => { this.clients.delete(ws) })
+      ws.on('error', () => {
+        if (client.authTimer) clearTimeout(client.authTimer)
+        this.clients.delete(ws)
+      })
     })
   }
 
