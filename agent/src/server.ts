@@ -12,7 +12,7 @@ import { initRegistry } from './skills/registry.js'
 import { McpBridge } from './mcp/bridge.js'
 import { ConversationManager } from './conversation/manager.js'
 import { AgentRunner } from './agent/runner.js'
-import { NullNotifier } from './notifications/notifier.js'
+import { Notifier } from './notifications/notifier.js'  // R7: NullNotifier removed entirely; Notifier wraps WebChannel
 import { WebChannel } from './channels/web.js'
 import { CronChannel } from './channels/cron.js'
 import { ChannelManager } from './channels/manager.js'
@@ -27,6 +27,7 @@ import { registerTestRunRoute } from './api/admin/test-run.js'
 import { registerAdminSkillRoutes } from './api/admin/skills.js'
 import { registerAdminToolRoutes } from './api/admin/tools.js'
 import { registerConversationRoutes } from './api/conversations.js'
+import { registerChatEventsRoutes } from './api/chat/events.js'
 import { registerChatUploadRoutes } from './api/chat/upload.js'
 import { getMetrics } from './metrics/server.js'
 
@@ -80,9 +81,11 @@ async function main() {
   })
 
   // 业务模块 wire-up
+  // R7: 真正的 pub/sub — Notifier 需要 WebChannel;这里稍后 wire(构造顺序问题)
+  const notifier: Notifier = new Notifier(null)
+
   const mcpBridge = new McpBridge(MCP_URL, cfg)
-  const conversation = new ConversationManager(getPool(), anthropic)
-  const notifier = new NullNotifier()
+  const conversation = new ConversationManager(getPool())
   const runner = new AgentRunner({ anthropic, mcpBridge, conversation, notifier })
 
   // 注册任务 handler
@@ -114,6 +117,9 @@ async function main() {
   const manager = new ChannelManager(webChannel, runner, scheduler)
   webChannel.setManager(manager)  // 安全 wire — 见 WebChannel
 
+  // R7: 注入 webChannel 到 notifier,做真 pub/sub
+  notifier.webChannel = webChannel
+
   const cronChannel = new CronChannel(manager, process.env.CRON_TIMEZONE ?? 'Asia/Shanghai')
 
   // Admin API (tasks / cron, 依赖 scheduler + cronChannel)
@@ -122,6 +128,7 @@ async function main() {
 
   // User-facing SDK (供 portal 调; 依赖 conversation)
   registerConversationRoutes(app, conversation)
+  registerChatEventsRoutes(app, conversation)
   registerChatUploadRoutes(app, anthropic)
 
   await webChannel.start()

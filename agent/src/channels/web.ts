@@ -71,6 +71,19 @@ export class WebChannel {
       }
       this.clients.set(ws, client)
 
+      // 步骤 0: R7 — 协议版本不匹配立即 close(4000 protocol_error)
+      // env AGENT_PROTOCOL_VERSION 默认 = 内建 PROTOCOL_VERSION (= 1)
+      // 升级切新版本时可临时设 AGENT_PROTOCOL_VERSION=0 → 强制关老客户端
+      const envVersion = process.env.AGENT_PROTOCOL_VERSION
+        ? parseInt(process.env.AGENT_PROTOCOL_VERSION, 10)
+        : PROTOCOL_VERSION
+      if (envVersion !== PROTOCOL_VERSION) {
+        console.error(`[web] AGENT_PROTOCOL_VERSION=${envVersion} mismatches built-in ${PROTOCOL_VERSION}`)
+        emitter.close(4000, 'protocol_mismatch')
+        this.clients.delete(ws)
+        return
+      }
+
       // 步骤 1: 立即发 hello
       void emitter.send({
         type: 'hello',
@@ -100,7 +113,7 @@ export class WebChannel {
           if (frame.type !== 'auth') return
 
           try {
-            const claims = verifyAgentToken(frame.payload.token)
+            const claims = await verifyAgentToken(frame.payload.token)
             client.userId = claims.sub
             client.authed = true
             if (client.authTimer) {
@@ -201,6 +214,33 @@ export class WebChannel {
 
   async stop(): Promise<void> {
     await new Promise<void>((resolve) => this.wss.close(() => resolve()))
+  }
+
+  /**
+   * R7: 广播一条 frame 给 conversationId 绑定的所有 ws client。
+   * 给 Notifier(Cron → task_update / task_done / task_failed / cron_fired) 用。
+   * 设计:
+   *  - 接受泛型 frame(用 ChatOutgoing 形状,但 caller 包 envelope 保持老 OutgoingMsg 兼容)
+   *  - 不写 DB(replay 端点已持久化每条 chat frame;legacy envelope 不必双重写)
+   *  - 没有匹配 client 时静默 drop — cron 任务触发时用户可能没连 ws
+   */
+  async sendToConversation(conversationId: string, frame: any): Promise<void> {
+    let sent = 0
+    for (const client of this.clients.values()) {
+      if (client.conversationId === conversationId) {
+        try {
+          await client.emitter.send(frame)
+          sent++
+        } catch (e) {
+          // 单 client 失败不影响其他
+          console.warn(`[web] sendToConversation client error: ${(e as Error).message}`)
+        }
+      }
+    }
+    if (sent === 0) {
+      // 不算错 — cron 触发时 portal 可能未登录
+      console.log(`[web] sendToConversation(${conversationId}): no clients`)
+    }
   }
 }
 
