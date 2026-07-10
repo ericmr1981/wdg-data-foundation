@@ -120,63 +120,63 @@ export class WebChannel {
       ws.on('error', teardown)
 
       // 步骤 3: 处理 incoming frames
-      ws.on('message', (raw) => {
-        Promise.resolve().then(async () => {
+      ws.on('message', (raw: any) => {
+        setTimeout(async () => {
           let frame: ChatIncoming
-        try {
-          frame = JSON.parse(raw.toString()) as ChatIncoming
-        } catch {
-          // bad json — silently drop
-          return
-        }
-
-        if (!client.authed) {
-          // auth 之前收到别的 → 丢
-          if (frame.type !== 'auth') return
-
           try {
-            const claims = await verifyAgentToken(frame.payload.token)
-            client.userId = claims.sub
-            client.authed = true
-            if (client.authTimer) {
-              clearTimeout(client.authTimer)
-              client.authTimer = null
-            }
-          } catch (e) {
-            const msg = (e as Error).message
-            console.error('[ws] auth failed:', msg, (e as Error).stack?.slice(0, 200))
-            const reason = msg.startsWith('EXPIRED_TOKEN') ? 'expired_token' : 'invalid_token'
-            emitter.close(1008, reason)
-            this.clients.delete(ws)
+            frame = JSON.parse(raw.toString()) as ChatIncoming
+          } catch {
+            // bad json — silently drop
             return
           }
-          return // auth 已处理,等下一帧 user.message
-        }
 
-        // authed 之后,按 type 路由
-        if (frame.type === 'auth') return // 重发不处理
+          if (!client.authed) {
+            // auth 之前收到别的 → 丢
+            if (frame.type !== 'auth') return
 
-        if (frame.type === 'ping') {
-          await emitter.send({ type: 'pong', payload: { ts: frame.payload.ts } })
-          return
-        }
+            try {
+              const claims = await verifyAgentToken(frame.payload.token)
+              client.userId = claims.sub
+              client.authed = true
+              if (client.authTimer) {
+                clearTimeout(client.authTimer)
+                client.authTimer = null
+              }
+            } catch (e) {
+              const msg = (e as Error).message
+              console.error('[ws] auth failed:', msg, (e as Error).stack?.slice(0, 200))
+              const reason = msg.startsWith('EXPIRED_TOKEN') ? 'expired_token' : 'invalid_token'
+              emitter.close(1008, reason)
+              this.clients.delete(ws)
+              return
+            }
+            return // auth 已处理,等下一帧 user.message
+          }
 
-        if (frame.type === 'user.message') {
-          // 立即回 ack(≤200ms)— messageId 必须原样回
-          await emitter.send({
-            type: 'ack',
-            payload: { messageId: frame.payload.messageId, ts: Date.now() },
-          })
-          await this.onUserMessage(client, frame.payload)
-          return
-        }
+          // authed 之后,按 type 路由
+          if (frame.type === 'auth') return // 重发不处理
 
-        if (frame.type === 'user.interrupt') {
-          await this.onUserInterrupt(client, frame.payload)
-          return
-        }
-      }).catch((e) => console.error('[ws] handler error:', (e as Error)?.message ?? e))
-      }, 0)
+          if (frame.type === 'ping') {
+            await emitter.send({ type: 'pong', payload: { ts: frame.payload.ts } })
+            return
+          }
+
+          if (frame.type === 'user.message') {
+            // 立即回 ack(≤200ms)— messageId 必须原样回
+            await emitter.send({
+              type: 'ack',
+              payload: { messageId: frame.payload.messageId, ts: Date.now() },
+            })
+            await this.onUserMessage(client, frame.payload)
+            return
+          }
+
+          if (frame.type === 'user.interrupt') {
+            await this.onUserInterrupt(client, frame.payload)
+            return
+          }
+        }, 0)
+      })
     })
   }
 
