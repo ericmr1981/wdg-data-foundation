@@ -1,16 +1,15 @@
 // agent/src/api/conversations.ts
 // user-facing SDK routes for portal — list/create/rename/archive + messages history
 import type { FastifyInstance } from 'fastify'
-import jwt from 'jsonwebtoken'
+import { verifyAgentToken } from '../channels/auth.js'
 import type { ConversationManager } from '../conversation/manager.js'
+import { reconstructContentBlocks } from '../conversation/content-blocks.js'
 
-function getUserId(req: any): string | null {
+async function getUserId(req: any): Promise<string | null> {
   const auth = req.headers['authorization']
   if (typeof auth === 'string' && auth.startsWith('Bearer ')) {
     try {
-      const secret = process.env.AGENT_JWT_SECRET
-      if (!secret) return null
-      const claims = jwt.verify(auth.slice(7), secret, { algorithms: ['HS256'] }) as any
+      const claims = await verifyAgentToken(auth.slice(7))
       return claims.sub ?? null
     } catch {
       return null
@@ -23,7 +22,7 @@ export function registerConversationRoutes(app: FastifyInstance, conversation: C
   // 鉴权: 所有路由都需要 Bearer JWT
   app.addHook('preHandler', async (req, reply) => {
     if (!req.url.startsWith('/api/conversations')) return
-    const uid = getUserId(req)
+    const uid = await getUserId(req)
     if (!uid) return reply.code(401).send({ error: 'unauthorized' })
     ;(req as any).userId = uid
   })
@@ -80,11 +79,18 @@ export function registerConversationRoutes(app: FastifyInstance, conversation: C
       const limit = Math.min(parseInt(req.query.limit ?? '100', 10) || 100, 500)
       const msgs = await conversation.getMessages(req.params.id, limit)
       return msgs.map((m) => ({
-        id: m.messageId,
+        messageId: `msg_${m.messageId}`,
         role: m.role,
-        content: m.content,
-        status: m.role === 'assistant' ? 'done' : null,
-        createdAt: m.createdAt,
+        content: reconstructContentBlocks({
+          content: m.content,
+          tool_calls: (m as any).toolCalls,
+          tool_results: (m as any).toolResults,
+          thinking: (m as any).thinking,
+        }),
+        status: 'done',
+        stop_reason: (m as any).stop_reason ?? 'end_turn',
+        usage: (m as any).usage ?? null,
+        createdAt: m.createdAt instanceof Date ? m.createdAt.toISOString() : m.createdAt,
       }))
     },
   )
