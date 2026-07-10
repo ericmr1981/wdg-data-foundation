@@ -24,7 +24,12 @@ export async function verifyAgentToken(token: string): Promise<AgentClaims> {
     throw new Error('INVALID_TOKEN')
   }
   try {
-    const { payload } = await jwtVerify(token, jwks(), { algorithms: ['RS256'] })
+    // 路 1 (portal 自签): JWKS 双支持 RS256 (legacy) + ES256 (Supabase 默认)。
+    // 不强制 iss / aud 校验 — portal 自签的 token iss/aud 不规范,
+    // 强制会拒掉 portal 真实 token。后续切 Supabase Auth 再加回 issuer/audience。
+    const { payload } = await jwtVerify(token, jwks(), {
+      algorithms: ['RS256', 'ES256'],
+    })
     if (!payload.sub || typeof payload.sub !== 'string') {
       throw new Error('INVALID_TOKEN')
     }
