@@ -120,8 +120,9 @@ export class WebChannel {
       ws.on('error', teardown)
 
       // 步骤 3: 处理 incoming frames
-      ws.on('message', async (raw) => {
-        let frame: ChatIncoming
+      ws.on('message', (raw) => {
+        Promise.resolve().then(async () => {
+          let frame: ChatIncoming
         try {
           frame = JSON.parse(raw.toString()) as ChatIncoming
         } catch {
@@ -143,6 +144,7 @@ export class WebChannel {
             }
           } catch (e) {
             const msg = (e as Error).message
+            console.error('[ws] auth failed:', msg, (e as Error).stack?.slice(0, 200))
             const reason = msg.startsWith('EXPIRED_TOKEN') ? 'expired_token' : 'invalid_token'
             emitter.close(1008, reason)
             this.clients.delete(ws)
@@ -173,11 +175,13 @@ export class WebChannel {
           await this.onUserInterrupt(client, frame.payload)
           return
         }
-      })
+      }).catch((e) => console.error('[ws] handler error:', (e as Error)?.message ?? e))
+      }, 0)
     })
   }
 
-  /** Hook for ChannelManager — R5.5 完整注入 */
+  /**
+   * Hook for ChannelManager — R5.5 完整注入 */
   async onUserMessage(
     client: Client,
     payload: Extract<ChatIncoming, { type: 'user.message' }>['payload'],
