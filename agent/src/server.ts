@@ -12,7 +12,7 @@ import { initRegistry } from './skills/registry.js'
 import { McpBridge } from './mcp/bridge.js'
 import { ConversationManager } from './conversation/manager.js'
 import { AgentRunner } from './agent/runner.js'
-import { Notifier } from './notifications/notifier.js'  // R7: NullNotifier removed entirely; Notifier wraps WebChannel
+import { WebNotifier } from './notifications/notifier.js'  // R7 follow-up: WebNotifier 取代 NullNotifier
 import { WebChannel } from './channels/web.js'
 import { CronChannel } from './channels/cron.js'
 import { ChannelManager } from './channels/manager.js'
@@ -81,11 +81,15 @@ async function main() {
   })
 
   // 业务模块 wire-up
-  // R7: 真正的 pub/sub — Notifier 需要 WebChannel;这里稍后 wire(构造顺序问题)
-  const notifier: Notifier = new Notifier(null)
+  // R7 follow-up: WebNotifier 取代 NullNotifier;先传 null(避免构造顺序),
+  // 后续 WebChannel 建好后 wireWebChannel。
+  const notifier = new WebNotifier(null)
 
   const mcpBridge = new McpBridge(MCP_URL, cfg)
-  const conversation = new ConversationManager(getPool())
+  // R7 follow-up: ConversationManager 不再持有 anthropic; summarizer=null
+  // 让 maybeCompress 直接 short-circuit(没装 summarizer = 不压)。要 LLM
+  // 压缩的话调用方传 LlmSummarizer 进来(后续 server-side compaction 任务里挂)。
+  const conversation = new ConversationManager(getPool(), null)
   const runner = new AgentRunner({ anthropic, mcpBridge, conversation, notifier })
 
   // 注册任务 handler
@@ -109,7 +113,7 @@ async function main() {
   registerAdminToolRoutes(app)
 
   // Channels: WebChannel listen WS_PORT + 1, Fastify listen WS_PORT (HTTP)
-  // (单进程无法让 2 个 server 共享 1 个端口, 临时方案: 分两个端口)
+  // (单进程无法让 2 个 server 共享 1 个 端口, 临时方案: 分两个端口)
   const HTTP_PORT = PORT
   const WS_PORT = PORT + 1  // 4102 (如果 HTTP_PORT=4101)
   // R5: 把 manager 直接 inject 进 WebChannel constructor(不再用 (webChannel as any).manager hack)
@@ -117,8 +121,8 @@ async function main() {
   const manager = new ChannelManager(webChannel, runner, scheduler)
   webChannel.setManager(manager)  // 安全 wire — 见 WebChannel
 
-  // R7: 注入 webChannel 到 notifier,做真 pub/sub
-  notifier.webChannel = webChannel
+  // R7 follow-up: 把 webChannel 注入 notifier,cron → UI 走真 pub/sub
+  notifier.wireWebChannel(webChannel)
 
   const cronChannel = new CronChannel(manager, process.env.CRON_TIMEZONE ?? 'Asia/Shanghai')
 

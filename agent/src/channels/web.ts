@@ -23,22 +23,28 @@ interface Client {
  * ChannelManagerLike — R5 阶段把 ChannelManager 注入 web.ts 的最小契约。
  * web.ts 只需要 onIncoming 一条路径;manager 内部仍走 runner / scheduler。
  * rawContent 是可选字段(R5.5 透传 block array 给 runner 用)。
+ * R7 follow-up: 第二参数 emitter 由 web.ts 注入,manager 直接转发给 runner。
  */
 export interface ChannelManagerLike {
-  onIncoming(msg: IncomingMsg & { rawContent?: ContentBlock[]; messageId?: string }): Promise<void>
+  onIncoming(
+    msg: IncomingMsg & { rawContent?: ContentBlock[]; messageId?: string },
+    emitter: { send: (f: any) => Promise<void> },
+  ): Promise<void>
 }
 
 export class WebChannel {
   channelId = 'web' as const
   private wss: WebSocketServer
   private clients = new Map<WebSocket, Client>()
-  /**
-   * R6 (Phase 2): per-conversation AbortController pool.
-   * key = conversationId; AC is created on user.message, looked up on user.interrupt,
-   * and cleared once consumed. signal is plumbed through manager → runner so SDK
-   * toolRunner aborts cleanly on user interrupt.
+  /** R6 (Phase 2): per-conversation AbortController pool.
+   * key = conversationId (or `__new_<n>` 当 convId 暂未分配);AC is created on
+   * user.message, looked up on user.interrupt, and cleared once consumed. signal
+   * is plumbed through manager → runner so SDK toolRunner aborts cleanly on
+   * user interrupt.
    */
   private abortControllers = new Map<string, AbortController>()
+  /** Monotonic counter for synthetic AC keys when conversationId is null */
+  private nullConvCounter = 0
   /** Latest protocol version this build supports */
   readonly protocolVersion = PROTOCOL_VERSION
 
@@ -98,6 +104,21 @@ export class WebChannel {
         }
       }, 60_000)
 
+      // I2 fix: close/error → clean up AC pool + clients map (was: only clients.map)
+      // 防止 ws 断开时该 convId 上的 AC 残留,后续 user.interrupt 拿到一个过期 signal。
+      const teardown = () => {
+        if (client.authTimer) {
+          clearTimeout(client.authTimer)
+          client.authTimer = null
+        }
+        if (client.conversationId && this.abortControllers.has(client.conversationId)) {
+          this.abortControllers.delete(client.conversationId)
+        }
+        this.clients.delete(ws)
+      }
+      ws.on('close', teardown)
+      ws.on('error', teardown)
+
       // 步骤 3: 处理 incoming frames
       ws.on('message', async (raw) => {
         let frame: ChatIncoming
@@ -153,15 +174,6 @@ export class WebChannel {
           return
         }
       })
-
-      ws.on('close', () => {
-        if (client.authTimer) clearTimeout(client.authTimer)
-        this.clients.delete(ws)
-      })
-      ws.on('error', () => {
-        if (client.authTimer) clearTimeout(client.authTimer)
-        this.clients.delete(ws)
-      })
     })
   }
 
@@ -179,21 +191,27 @@ export class WebChannel {
     }
 
     // R6 (Phase 2): new AC per message; supersedes any stale AC for this conversation
+    // I3 fix: 旧的 `payload.conversationId` 直接当 key — 当 convId 为 null 时多个并发请求
+    // 会互相覆盖同一个 AC,sentinel 用 `__new_<n>` 区分;convId 真正来时切换。
+    const acKey = payload.conversationId ?? `__new_${++this.nullConvCounter}`
     const ac = new AbortController()
-    this.abortControllers.set(payload.conversationId, ac)
+    this.abortControllers.set(acKey, ac)
 
     const contentText = extractText(payload.content)
-    await this.manager.onIncoming({
-      channelId: 'web',
-      userId: client.userId!,
-      brand: payload.brand ?? null,
-      conversationId: payload.conversationId,
-      content: contentText,
-      rawContent: payload.content,
-      messageId: payload.messageId,
-      attachments: payload.attachments,
-      signal: ac.signal,
-    })
+    await this.manager.onIncoming(
+      {
+        channelId: 'web',
+        userId: client.userId!,
+        brand: payload.brand ?? null,
+        conversationId: payload.conversationId,
+        content: contentText,
+        rawContent: payload.content,
+        messageId: payload.messageId,
+        attachments: payload.attachments,
+        signal: ac.signal,
+      },
+      client.emitter,
+    )
   }
 
   async onUserInterrupt(

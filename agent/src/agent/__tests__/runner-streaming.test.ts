@@ -40,6 +40,7 @@ function makeDeps(responses: any[] = []) {
       getOrCreate: async () => ({ conversationId: 'conv-1' }),
       getMessages: async () => [],
       appendMessage: async () => {},
+      recordEvent: async () => {},
     } as any,
     notifier: { push: async () => {} } as any,
   }

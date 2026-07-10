@@ -1,9 +1,15 @@
 // agent/src/conversation/manager.ts
 // 短期记忆: conversation 生命周期 + LLM 压缩
 // getOrCreate / appendMessage / getMessages / maybeCompress (滑动窗口)
+//
+// R7 (Phase 3) follow-up:
+//   - anthropic 不再由 ConversationManager 持有(压缩改在 server 启动时由
+//     caller 注入 llm 的 LlmSummarizer);ConversationManager 只负责 DB I/O。
+//   - recordEvent / getEvents — agent.message_events 表 replay 端点用
+//     (id 形如 'evt_<base36ts>_<rand6>' 时间序排序,idx_message_events_conv_id
+//     让 (conversation_id, id) 范围扫命中)。
 
 import type { Pool } from 'pg'
-import type Anthropic from '@anthropic-ai/sdk'
 
 export interface IncomingMsg {
   channelId: string
@@ -34,10 +40,24 @@ export interface ConversationSummary {
   lastActiveAt: Date
 }
 
+export interface StoredEvent {
+  id: string
+  conversationId: string
+  type: string
+  payload: any
+  ts: number
+  createdAt: string
+}
+
+/** LlmSummarizer 抽象 — R7 把 LLM 依赖从 ConversationManager 移出 */
+export interface LlmSummarizer {
+  summarize(text: string): Promise<string>
+}
+
 export class ConversationManager {
   constructor(
     private db: Pool,
-    private anthropic: Anthropic,
+    private summarizer: LlmSummarizer | null = null,
     private windowSize: number = 10,
   ) {}
 
@@ -211,19 +231,61 @@ export class ConversationManager {
 
   private async summarize(text: string): Promise<string> {
     if (text.length < 100) return text
+    if (!this.summarizer) return '(summary disabled)'
     try {
-      const res = await this.anthropic.messages.create({
-        model: 'claude-haiku-4-5',
-        max_tokens: 500,
-        messages: [{
-          role: 'user',
-          content: `请用 200 字以内总结以下对话的关键事实 (业务数据、用户偏好、判断结论):\n\n${text}`,
-        }],
-      })
-      const block = res.content[0]
-      return block && block.type === 'text' ? block.text : ''
+      return await this.summarizer.summarize(text)
     } catch {
       return '(summary failed)'
     }
   }
+
+  // ── R7 (Phase 3): events replay ─────────────────────────────────────
+  // runner 每条 emitter.send 之前 recordEvent 落库;replay 端点 GET /events
+  // 按 id > $after 增量拉。失败也不抛,只 log — emitter 不应被 DB 拖垮。
+
+  async recordEvent(
+    conversationId: string,
+    type: string,
+    payload: any,
+  ): Promise<void> {
+    const id = makeEventId()
+    const ts = Date.now()
+    try {
+      await this.db.query(`
+        INSERT INTO agent.message_events (id, conversation_id, type, payload, ts)
+        VALUES ($1, $2, $3, $4, $5)
+      `, [id, conversationId, type, JSON.stringify(payload), ts])
+    } catch (e) {
+      console.warn(`[conversation] recordEvent failed: ${(e as Error).message}`)
+    }
+  }
+
+  async getEvents(
+    conversationId: string,
+    after: string = '',
+    limit: number = 100,
+  ): Promise<StoredEvent[]> {
+    const { rows } = await this.db.query(`
+      SELECT id, conversation_id, type, payload, ts, created_at
+      FROM agent.message_events
+      WHERE conversation_id = $1 AND id > $2
+      ORDER BY id ASC
+      LIMIT $3
+    `, [conversationId, after, limit])
+    return rows.map((r: any) => ({
+      id: r.id,
+      conversationId: r.conversation_id,
+      type: r.type,
+      payload: r.payload,
+      ts: Number(r.ts),
+      createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+    }))
+  }
+}
+
+/** 'evt_<base36ts>_<rand6>' — 时间序前缀让 `WHERE id > $after` 命中 B-tree */
+function makeEventId(): string {
+  const ts = Date.now().toString(36)
+  const rand = Math.random().toString(36).slice(2, 8).padEnd(6, '0')
+  return `evt_${ts}_${rand}`
 }

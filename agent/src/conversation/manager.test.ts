@@ -11,7 +11,7 @@ let mgr: ConversationManager
 
 before(async () => {
   pool = await createTestDb()
-  mgr = new ConversationManager(pool, {} as any, 10)
+  mgr = new ConversationManager(pool, null, 10)
 })
 
 after(async () => {

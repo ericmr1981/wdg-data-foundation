@@ -42,7 +42,7 @@ before(async () => {
   initRegistry()
   pool = await createTestDb()
   await cleanupTestDb(pool)
-  mgr = new ConversationManager(pool, {} as any, 10)
+  mgr = new ConversationManager(pool, null, 10)
   mcp = new MockMcpBridge()
   llm = new MockAnthropic()
   resetAgentConfig()

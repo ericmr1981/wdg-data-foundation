@@ -1,16 +1,29 @@
 // agent/src/channels/manager.ts
-import type { IncomingMsg, OutgoingMsg } from './types.js'
+// R7 (Phase 3) follow-up: drop legacy `OutgoingMsg` envelope dispatch.
+// Runner 直接通过 emitter 回推 ChatOutgoing frame(web.ts 的 ChatEmitter)。
+// Manager 只剩两个责任:
+//   1. cron → scheduler.enqueue
+//   2. 即时对话 → runner.handle(msg, emitter),emitter 由 caller 注入
+//
+// runner.handle 的返回签名简化为 { conversationId, messageId? } — `result.text`
+// 和 `steps` 不再需要,因为每条 frame 已经实时推到 emitter,且 recordEvent 已经
+// 落库(`runner` 内部完成)。
+
+import type { IncomingMsg } from './types.js'
 import type { AgentRunner } from '../agent/runner.js'
 import type { TaskScheduler } from '../tasks/scheduler.js'
 import type { WebChannel } from './web.js'
-import type { RunnerStep } from '../agent/runner.js'
 import type { ContentBlock } from './chat-types.js'
+import type { ChatEmitter } from './chat-emitter.js'
 
 /** R5.5 extension: web channel passes block-array + messageId extras. */
 export type IncomingMsgExt = IncomingMsg & {
   rawContent?: ContentBlock[]
   messageId?: string
 }
+
+/** Emitter 只要有 send 即可(测试用 fake / ChatEmitter 都行) */
+type EmitterLike = ChatEmitter | { send: (f: any) => Promise<void> }
 
 export class ChannelManager {
   constructor(
@@ -19,7 +32,10 @@ export class ChannelManager {
     private scheduler?: TaskScheduler,
   ) {}
 
-  async onIncoming(msg: IncomingMsgExt): Promise<void> {
+  async onIncoming(
+    msg: IncomingMsgExt,
+    emitter: EmitterLike,
+  ): Promise<void> {
     // 1. Cron 触发的, 走任务队列
     if (msg.channelId === 'cron' && typeof msg.metadata?.taskType === 'string' && this.scheduler) {
       await this.scheduler.enqueue({
@@ -30,29 +46,8 @@ export class ChannelManager {
       return
     }
 
-    // 2. 即时对话, 走 AgentRunner; 收集 steps 同时通过 task_update 增量推送
-    const steps: RunnerStep[] = []
-    const pushStep = async (s: RunnerStep) => {
-      steps.push(s)
-      if (msg.channelId === 'web') {
-        await this.webChannel.send({
-          channelId: msg.channelId,
-          conversationId: null,
-          type: 'task_update',
-          payload: { kind: 'step', step: s },
-        })
-      }
-    }
-
-    const result = await this.runner.handle(msg, pushStep)
-
-    // 3. 终态: task_done 带回完整 steps 列表 + 文本
-    const reply: OutgoingMsg = {
-      channelId: msg.channelId,
-      conversationId: result.conversationId,
-      type: 'task_done',
-      payload: { content: result.text, steps },
-    }
-    await this.webChannel.send(reply)
+    // 2. 即时对话, 走 AgentRunner;emitter 由 web.ts 注入(ChatEmitter)
+    await this.runner.handle(msg, emitter)
+    void this.webChannel  // webChannel 由 Notifier(WebNotifier) 用于 cron 推送;manager 不再直接 send
   }
 }

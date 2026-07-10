@@ -23,7 +23,7 @@ test('new jsonb content passes through', () => {
     thinking: null,
   })
   assert.strictEqual(blocks.length, 2)
-  assert.strictEqual(blocks[1].type, 'thinking')
+  assert.strictEqual(blocks[1]!.type, 'thinking')
 })
 
 test('concatenates thinking + content + tool_calls + tool_results in order', () => {

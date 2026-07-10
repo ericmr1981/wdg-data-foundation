@@ -2,6 +2,7 @@
 import cron from 'node-cron'
 import type { Channel, IncomingMsg } from './types.js'
 import type { ChannelManager } from './manager.js'
+import { NullEmitter } from './null-emitter.js'
 
 interface CronEntry {
   schedule: string
@@ -32,7 +33,7 @@ export class CronChannel implements Channel {
           content: `运行 ${entry.taskType}`,
           metadata: { ...entry.metadata, taskType: entry.taskType },
         }
-        await this.manager.onIncoming(msg)
+        await this.manager.onIncoming(msg, new NullEmitter())
       }, { timezone: this.timezone })
       this.tasks.push(task)
     }

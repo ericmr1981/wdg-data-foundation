@@ -116,7 +116,8 @@ export class AgentRunner {
         msg.signal ? { signal: msg.signal } : undefined,
       )
       for await (const message of iter) {
-        await emitter.send({ type: 'message', payload: { message } } as any)
+        const frame = { type: 'message', payload: { message } } as any
+        await this.recordAndSend(conv.conversationId, emitter, frame)
       }
     } else {
       // ── 旧: 非流式 messages.create(env 旁路,R4 回退验证用) ──
@@ -128,9 +129,22 @@ export class AgentRunner {
         messages,
         ...(thinkingCfg ?? {}),
       } as any, msg.signal ? { signal: msg.signal } : undefined)
-      await emitter.send({ type: 'message', payload: { message: response } } as any)
+      await this.recordAndSend(conv.conversationId, emitter, { type: 'message', payload: { message: response } } as any)
     }
 
     return { conversationId: conv.conversationId }
+  }
+
+  /**
+   * I5 fix: 每条 emitter.send 之前落 agent.message_events(replay 端点用)。
+   * recordEvent 内部 try/catch 静默失败,DB 故障不应拖垮流式输出。
+   */
+  private async recordAndSend(
+    conversationId: string,
+    emitter: EmitterLike,
+    frame: any,
+  ): Promise<void> {
+    await this.deps.conversation.recordEvent(conversationId, frame.type, frame.payload)
+    await emitter.send(frame)
   }
 }

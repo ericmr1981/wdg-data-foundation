@@ -21,7 +21,8 @@ test('send emits JSON-serialized frame', async () => {
   const emitter = new ChatEmitter(ws)
   await emitter.send({ type: 'ack', payload: { messageId: 'm1', ts: 1 } })
   assert.strictEqual(sent.length, 1)
-  assert.deepStrictEqual(JSON.parse(sent[0]), { type: 'ack', payload: { messageId: 'm1', ts: 1 } })
+  const parsed = JSON.parse(sent[0]!)
+  assert.deepStrictEqual(parsed, { type: 'ack', payload: { messageId: 'm1', ts: 1 } })
 })
 
 test('send drops frame if ws not OPEN', async () => {

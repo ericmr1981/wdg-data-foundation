@@ -11,7 +11,8 @@ export class MockMcpBridge extends McpBridge {
       baseURL: null,
       apiKey: null,
       model: 'mock',
-    })
+      source: 'mock',
+    } as any)
   }
 
   call = async (toolName: string, args: any, userId: string): Promise<McpCallResult> => {

@@ -1,5 +1,5 @@
 // ChatEmitter — 所有从 Agent 发往 Portal 的 ChatOutgoing 帧的唯一出口
-import type { WebSocket } from 'ws'
+import { WebSocket } from 'ws'
 import type { ChatOutgoing } from './chat-types.js'
 
 export class ChatEmitter {

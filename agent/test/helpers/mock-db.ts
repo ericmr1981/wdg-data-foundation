@@ -30,11 +30,15 @@ export async function createTestDb() {
   const here = dirname(fileURLToPath(import.meta.url))
   const ddlPath = join(here, '..', '..', '..', 'sql', '00_agent_schema.sql')
   const rawDdl = readFileSync(ddlPath, 'utf-8')
+  // R7 (Phase 3) follow-up: events replay 表
+  const eventsDdlPath = join(here, '..', '..', '..', 'sql', '00_message_events_ddl.sql')
+  const rawEventsDdl = readFileSync(eventsDdlPath, 'utf-8')
 
   // pg-mem 不真正实现 CREATE SCHEMA — 所有表都进 public
   // 测试里把 agent. 前缀剥掉,让表落在 public;cleanup 也对应调整
-  const ddl = rawDdl.replace(/CREATE SCHEMA IF NOT EXISTS agent;?/g, '')
-                     .replace(/agent\./g, '')
+  const ddl = (rawDdl + '\n' + rawEventsDdl)
+    .replace(/CREATE SCHEMA IF NOT EXISTS agent;?/g, '')
+    .replace(/agent\./g, '')
   await pool.query(ddl)
 
   // 包一层:应用代码 SQL 也带 agent. 前缀,运行时也剥掉
