@@ -52,7 +52,7 @@ export class WebChannel {
     private port: number,
     private manager: ChannelManagerLike | null,
   ) {
-    this.wss = new WebSocketServer({ port: this.port, host: '127.0.0.1' })
+    this.wss = new WebSocketServer({ port: this.port, host: '0.0.0.0' })
   }
 
   /**
