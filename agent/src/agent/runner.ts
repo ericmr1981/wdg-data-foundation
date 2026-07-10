@@ -203,15 +203,17 @@ export class AgentRunner {
   }
 
   /**
-   * I5 fix: 每条 emitter.send 之前落 agent.message_events(replay 端点用)。
-   * recordEvent 内部 try/catch 静默失败,DB 故障不应拖垮流式输出。
+   * 顺序: 先 emit 帧给 client(实时 UI 优先),再 recordEvent 写 DB(replay 端点)。
+   * recordEvent 失败(DB 缺表 / DB down) 静默吞掉,不影响流式体验。
+   * Portal 调试经验: 一旦 recordEvent 失败,UI 看不到任何 frame(整个 emit 被 catch 吞)。
    */
   private async recordAndSend(
     conversationId: string,
     emitter: EmitterLike,
     frame: any,
   ): Promise<void> {
-    await this.deps.conversation.recordEvent(conversationId, frame.type, frame.payload)
     await emitter.send(frame)
+    this.deps.conversation.recordEvent(conversationId, frame.type, frame.payload)
+      .catch((e: Error) => console.error('[runner] recordEvent failed (silent):', e?.message ?? e))
   }
 }
