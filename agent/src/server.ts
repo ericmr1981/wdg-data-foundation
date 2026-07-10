@@ -44,6 +44,13 @@ async function main() {
   const cfg = getAgentConfig()
   console.log(`[config] loaded source=${cfg.source} model=${cfg.model} hasApiKey=${cfg.apiKey !== null}`)
 
+  // 路 4: 预取 JWKS(启动时 fetch,不干扰 ws 事件循环)
+  // 必须在第一个 WS 连接到达前完成(否则 verifyAgentToken 会因 _pubKey=null 抛 INVALID_TOKEN)。
+  // fetch 成功→缓存 RSA KeyObject;失败→console.warn 但服务继续(健康/ready 端点仍正常)。
+  const { initAuth } = await import('./channels/auth.js')
+  await initAuth()
+  console.log('[auth] initAuth done')
+
   // 如果 isConfigReady() 是 false(DB key 为空), Agent 应该继续跑
   // (apiKey=null 不会 crash, 各个 endpoint 会返回 503)
   const anthropic = new Anthropic({

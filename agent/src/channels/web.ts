@@ -120,9 +120,9 @@ export class WebChannel {
       ws.on('error', teardown)
 
       // 步骤 3: 处理 incoming frames
+      // 路 4: sync crypto.verify handler
       ws.on('message', (raw: any) => {
-        setTimeout(async () => {
-          let frame: ChatIncoming
+        let frame: ChatIncoming
           try {
             frame = JSON.parse(raw.toString()) as ChatIncoming
           } catch {
@@ -135,7 +135,7 @@ export class WebChannel {
             if (frame.type !== 'auth') return
 
             try {
-              const claims = await verifyAgentToken(frame.payload.token)
+              const claims = verifyAgentToken(frame.payload.token)  // 路 4: 同步
               client.userId = claims.sub
               client.authed = true
               if (client.authTimer) {
@@ -157,25 +157,24 @@ export class WebChannel {
           if (frame.type === 'auth') return // 重发不处理
 
           if (frame.type === 'ping') {
-            await emitter.send({ type: 'pong', payload: { ts: frame.payload.ts } })
+            emitter.send({ type: 'pong', payload: { ts: frame.payload.ts } })
             return
           }
 
           if (frame.type === 'user.message') {
             // 立即回 ack(≤200ms)— messageId 必须原样回
-            await emitter.send({
+            emitter.send({
               type: 'ack',
               payload: { messageId: frame.payload.messageId, ts: Date.now() },
             })
-            await this.onUserMessage(client, frame.payload)
+            this.onUserMessage(client, frame.payload)
             return
           }
 
           if (frame.type === 'user.interrupt') {
-            await this.onUserInterrupt(client, frame.payload)
+            this.onUserInterrupt(client, frame.payload)
             return
           }
-        }, 0)
       })
     })
   }
