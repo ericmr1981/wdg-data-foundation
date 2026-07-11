@@ -167,12 +167,18 @@ export class WebChannel {
               type: 'ack',
               payload: { messageId: frame.payload.messageId, ts: Date.now() },
             })
-            this.onUserMessage(client, frame.payload)
+            this.onUserMessage(client, frame.payload).catch((e: unknown) => {
+              const m = (e as Error).message ?? String(e)
+              console.error('[ws] onUserMessage ERROR:', m, (e as Error).stack?.slice(0, 300))
+              emitter.send({ type: 'error', payload: { code: 'invalid_request' as any, http_status: 500, message: m } }).catch(() => {})
+            })
             return
           }
 
           if (frame.type === 'user.interrupt') {
-            this.onUserInterrupt(client, frame.payload)
+            this.onUserInterrupt(client, frame.payload).catch((e: unknown) => {
+              console.error('[ws] onUserInterrupt error:', (e as Error).message)
+            })
             return
           }
       })
@@ -185,6 +191,7 @@ export class WebChannel {
     client: Client,
     payload: Extract<ChatIncoming, { type: 'user.message' }>['payload'],
   ): Promise<void> {
+    console.log('[web] onUserMessage convId=' + (payload.conversationId ?? 'null') + ' manager=' + (this.manager ? 'yes' : 'no'))
     if (payload.conversationId) client.conversationId = payload.conversationId
 
     if (!this.manager) {

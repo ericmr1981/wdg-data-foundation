@@ -9,7 +9,7 @@ const PG_ERR_NO_VIEW = '42P01';
 
 export async function GET(request: Request) {
   try {
-    const user = await getSessionUser();
+    const user = await getSessionUser(request);
     if (!user) {
       return NextResponse.json<ApiResult<SnapshotResponse>>({ success: false, data: null, error: 'Unauthorized' }, { status: 401 });
     }

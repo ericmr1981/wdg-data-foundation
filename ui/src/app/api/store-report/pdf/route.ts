@@ -10,7 +10,7 @@ const RENDER_WAIT_MS = 3_000; // wait for recharts to settle
 
 export async function GET(request: Request) {
   try {
-    const user = await getSessionUser();
+    const user = await getSessionUser(request);
     if (!user) {
       return NextResponse.json({ success: false, data: null, error: 'Unauthorized' }, { status: 401 });
     }

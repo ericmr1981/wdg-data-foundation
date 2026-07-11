@@ -45,16 +45,21 @@ export class AgentRunner {
     emitter: EmitterLike,
   ): Promise<{ conversationId: string; messageId?: string }> {
     const cfg = getAgentConfig()
+    console.log('[runner] handle start convId=' + (msg.conversationId ?? 'null'))
 
     // 1. 解析会话
     const conv = await this.deps.conversation.getOrCreate(msg)
+    console.log('[runner] getOrCreate done convId=' + conv.conversationId)
 
     // 2. 加载历史
     const history = await this.deps.conversation.getMessages(conv.conversationId, 10)
+    console.log('[runner] getMessages done count=' + history.length)
 
     // 3. 工具集
+    console.log('[runner] listTools start...')
     const tools = (await this.deps.mcpBridge.listTools())
       .filter((t: any) => isToolEnabled(t.name))
+    console.log('[runner] listTools done count=' + tools.length)
     tools.push({
       name: LOAD_SKILL_NAME,
       description: '加载 skill 完整内容',
@@ -97,6 +102,7 @@ export class AgentRunner {
 
     // 7. 调用 Tool Runner / messages.create(env 旁路)
     const useToolRunner = process.env.RUNNER_USE_TOOL_RUNNER !== '0'
+    console.log('[runner] useToolRunner=' + useToolRunner + ' model=' + cfg.model)
 
     if (useToolRunner) {
       // ── 新 (post-fix-list 2026-07-10): Tool Runner 流式 → SDK 原生事件透传 ──
@@ -164,9 +170,11 @@ export class AgentRunner {
 
         stream.on('finalMessage', (finalMessage: any) => {
           // portal 可选消费 'message' 帧(完整 final payload);与 6 帧并存的语义是 final 汇总。
+          // ChatShell reducer 直接访问 payload.id / .content / .stop_reason / .usage,
+          // 不加 { message: ... } 包装(与 SDK event 的 message_start 格式对齐)。
           this.recordAndSend(conv.conversationId, emitter, {
             type: 'message',
-            payload: { message: finalMessage },
+            payload: finalMessage,
           } as any).catch(
             (e: Error) => console.error('[runner] recordAndSend final failed:', e),
           )
@@ -187,16 +195,197 @@ export class AgentRunner {
         stream.on('end', () => finish())
       })
     } else {
-      // ── 旧: 非流式 messages.create(env 旁路,R4 回退验证用) ──
-      const response = await this.deps.anthropic.messages.create({
-        model: cfg.model,
-        max_tokens: cfg.params.maxTokens,
-        system: system as any,
-        tools: tools as any,
-        messages,
-        ...(thinkingCfg ?? {}),
-      } as any, msg.signal ? { signal: msg.signal } : undefined)
-      await this.recordAndSend(conv.conversationId, emitter, { type: 'message', payload: { message: response } } as any)
+      // ── 手动 tool loop + 模拟流式推送 ──
+      // 非流式 messages.create 拿回完整 response,拆成 6 帧协议逐帧推送:
+      //   message_start → content_block_start → delta(分段) → content_block_stop
+      //   → …(tool execution)… → message_delta → message_stop
+      // Portal 侧 ChatShell reducer 逐帧消费,UI 逐块渲染。
+      console.log('[runner] starting manual tool loop, model=' + cfg.model)
+      const MAX_TOOL_TURNS = 10
+      const loopMessages = [...messages] as any[]
+
+      const emitFrame = async (frame: any, delayMs = 5) => {
+        await this.recordAndSend(conv.conversationId, emitter, frame)
+        if (delayMs > 0) await sleep(delayMs)
+      }
+
+      /**
+       * 把一条完整的 LLM response 拆成流式帧序列推送。
+       * toolResults 可选: 含 tool_use 的 turn 把 tool_result blocks 追加到同一条消息末尾。
+       */
+      const emitResponseStreaming = async (response: any, toolResults?: any[]) => {
+        const msgId = response.id
+        const blocks = (response.content || []) as any[]
+        const allBlocks = toolResults ? [...blocks, ...toolResults] : blocks
+
+        // 1. message_start — Portal 侧创建新的 streaming ChatMessage
+        await emitFrame({
+          type: 'message_start',
+          payload: {
+            message: {
+              id: msgId, type: 'message', role: 'assistant',
+              model: response.model, content: [], stop_reason: null,
+            },
+          },
+        }, 10)
+
+        // 2. 逐 block 推送
+        for (let i = 0; i < allBlocks.length; i++) {
+          const block = allBlocks[i]
+
+          if (block.type === 'text') {
+            // content_block_start: 先放空 text,Portal 侧会创建 Markdown 区域
+            await emitFrame({
+              type: 'content_block_start',
+              payload: { index: i, content_block: { type: 'text', text: '' } },
+            }, 10)
+
+            // 逐 chunk 推送 delta,模拟打字效果
+            const text = block.text as string
+            const CHUNK = 3  // 每次 3 个字符,更平滑的打字效果
+            for (let pos = 0; pos < text.length; pos += CHUNK) {
+              const chunk = text.slice(pos, pos + CHUNK)
+              await emitFrame({
+                type: 'content_block_delta',
+                payload: { index: i, delta: { type: 'text_delta', text: chunk } },
+              }, 18)  // ~167 chars/s, 更慢更自然
+            }
+
+            await emitFrame({
+              type: 'content_block_stop', payload: { index: i },
+            }, 5)
+          } else if (block.type === 'thinking') {
+            // thinking 块: Portal 渲染为可折叠面板,一次性推送完整内容
+            await emitFrame({
+              type: 'content_block_start',
+              payload: { index: i, content_block: { type: 'thinking', thinking: block.thinking } },
+            }, 10)
+            await emitFrame({
+              type: 'content_block_stop', payload: { index: i },
+            }, 5)
+          } else if (block.type === 'tool_use') {
+            // tool_use 块: 先展示工具头(名称+id),再逐段展示输入 JSON
+            await emitFrame({
+              type: 'content_block_start',
+              payload: {
+                index: i,
+                content_block: {
+                  type: 'tool_use', id: (block as any).id,
+                  name: (block as any).name, input: undefined, inputRaw: '',
+                },
+              },
+            }, 15)
+
+            const inputJson = JSON.stringify((block as any).input ?? {}, null, 2)
+            for (let pos = 0; pos < inputJson.length; pos += 8) {
+              await emitFrame({
+                type: 'content_block_delta',
+                payload: {
+                  index: i,
+                  delta: { type: 'input_json_delta', partial_json: inputJson.slice(pos, pos + 8) },
+                },
+              }, 5)
+            }
+
+            await emitFrame({
+              type: 'content_block_stop', payload: { index: i },
+            }, 10)
+          } else if (block.type === 'tool_result') {
+            await emitFrame({
+              type: 'content_block_start',
+              payload: { index: i, content_block: block },
+            }, 10)
+            await emitFrame({
+              type: 'content_block_stop', payload: { index: i },
+            }, 5)
+          }
+        }
+
+        // 3. message_delta + message_stop → Portal 标记消息为 done
+        await emitFrame({
+          type: 'message_delta',
+          payload: {
+            delta: { stop_reason: response.stop_reason ?? null },
+            usage: response.usage,
+          },
+        }, 5)
+        await emitFrame({
+          type: 'message_stop', payload: {},
+        }, 5)
+      }
+
+      // ── Tool loop ──
+      for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
+        console.log('[runner] tool loop turn ' + (turn + 1) + '/' + MAX_TOOL_TURNS)
+
+        const response = await this.deps.anthropic.messages.create({
+          model: cfg.model,
+          max_tokens: cfg.params.maxTokens,
+          system: system as any,
+          tools: tools as any,
+          messages: loopMessages,
+          ...(thinkingCfg ?? {}),
+        } as any, msg.signal ? { signal: msg.signal } : undefined)
+
+        console.log('[runner] turn ' + (turn + 1) + ' stop_reason=' + (response.stop_reason ?? '?'))
+
+        const toolUses = (response.content || []).filter((c: any) => c.type === 'tool_use')
+
+        if (toolUses.length > 0) {
+          console.log('[runner] turn ' + (turn + 1) + ' has ' + toolUses.length + ' tool_use(s)')
+
+          // 深拷贝存入对话历史
+          loopMessages.push({
+            role: 'assistant',
+            content: (response.content || []).map((c: any) => ({ ...c })),
+          } as any)
+
+          // 执行工具调用
+          const toolResults: any[] = []
+          for (const tu of toolUses) {
+            const toolName = (tu as any).name as string
+            const toolInput = (tu as any).input || {}
+            console.log('[runner] calling tool: ' + toolName)
+
+            let resultContent: string
+            let isError = false
+            try {
+              const result = await this.deps.mcpBridge.call(toolName, toolInput, msg.userId)
+              resultContent = result.success
+                ? (typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2))
+                : 'MCP error: ' + (result.error || 'unknown')
+              isError = !result.success
+            } catch (e: any) {
+              resultContent = 'Tool call failed: ' + (e?.message ?? String(e))
+              isError = true
+            }
+
+            const MAX_RESULT_LEN = 16000
+            if (resultContent.length > MAX_RESULT_LEN) {
+              resultContent = resultContent.slice(0, MAX_RESULT_LEN) + '\n…(truncated)'
+            }
+
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: (tu as any).id as string,
+              content: resultContent,
+              is_error: isError,
+            })
+          }
+
+          loopMessages.push({ role: 'user', content: toolResults } as any)
+
+          // 流式推送本 turn: thinking + tool_use + tool_result 依次出现
+          await emitResponseStreaming(response, toolResults)
+          continue
+        }
+
+        // 无 tool_use → 最终 text 回复
+        await emitResponseStreaming(response)
+        break
+      }
+
+      console.log('[runner] tool loop done')
     }
 
     return { conversationId: conv.conversationId }
@@ -217,3 +406,5 @@ export class AgentRunner {
       .catch((e: Error) => console.error('[runner] recordEvent failed (silent):', e?.message ?? e))
   }
 }
+
+function sleep(ms: number): Promise<void> { return new Promise(r => setTimeout(r, ms)) }

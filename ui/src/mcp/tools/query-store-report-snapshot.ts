@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { mcpFetch } from '@/lib/mcp-fetch';
+import { getMcpBaseUrl } from '@/lib/mcp-request-context';
 
 const QueryStoreReportSnapshotInput = z.object({
   brand: z.enum(['gelatomiiix', 'bonjur', 'tamkoko']).describe('Brand code'),
@@ -41,7 +42,7 @@ export const queryStoreReportSnapshotTool = {
     }
     const data = json.data ?? { note: json.note ?? 'no data' };
     // Attach download URLs so the agent can share them with the user
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || '';
+    const baseUrl = getMcpBaseUrl() || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const exportQ = new URLSearchParams({ brand, store, month }).toString();
     (data as any).download_urls = {
       excel: `${baseUrl}/api/store-report/export?${exportQ}`,

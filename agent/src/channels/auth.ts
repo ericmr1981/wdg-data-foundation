@@ -21,6 +21,31 @@ export interface AgentClaims {
 // 单个 RSA 公钥(预取后赋值),支持 RS256。
 let _pubKey: crypto.KeyObject | null = null
 let _initError: string | null = null
+/** 最近一次 JWKS fetch 的时间戳，防止并发 re-fetch 风暴 */
+let _lastFetchTs = 0
+/** 两次 re-fetch 之间的最小间隔 (ms) */
+const REFETCH_COOLDOWN_MS = 30_000
+
+/** 重新从 AGENT_JWKS_URL 拉取公钥（同步 verify 前的异步补救） */
+async function reFetchJwks(): Promise<boolean> {
+  const url = process.env.AGENT_JWKS_URL
+  if (!url) return false
+  const now = Date.now()
+  if (now - _lastFetchTs < REFETCH_COOLDOWN_MS) return false
+  _lastFetchTs = now
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return false
+    const jwks: any = await res.json()
+    const key = jwks?.keys?.[0]
+    if (!key || key.kty !== 'RSA') return false
+    _pubKey = crypto.createPublicKey({ key: { kty: 'RSA', n: key.n, e: key.e }, format: 'jwk' })
+    console.log('[auth] JWKS re-fetched, kid=' + (key.kid ?? '?'))
+    return true
+  } catch {
+    return false
+  }
+}
 
 /**
  * 启动时由 server.ts 的 main() 调用。
@@ -97,7 +122,12 @@ export function verifyAgentToken(token: string): AgentClaims {
   const sig = Buffer.from(p2, 'base64url')
 
   const ok = crypto.verify('sha256', data, _pubKey, sig)
-  if (!ok) throw new Error('INVALID_TOKEN')
+  if (!ok) {
+    // 验证失败可能是 Portal 重启导致密钥对轮换,
+    // 尝试异步 re-fetch JWKS 后标记本次失败(下次连接用新 key)
+    reFetchJwks().catch(() => {})
+    throw new Error('INVALID_TOKEN')
+  }
 
   return { sub: payload.sub, exp: payload.exp ?? 0 }
 }

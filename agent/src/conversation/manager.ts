@@ -63,11 +63,17 @@ export class ConversationManager {
 
   async getOrCreate(msg: IncomingMsg): Promise<{ conversationId: string }> {
     if (msg.conversationId) {
-      await this.db.query(
-        `UPDATE agent.conversations SET last_active_at = NOW() WHERE conversation_id = $1`,
-        [msg.conversationId],
-      )
-      return { conversationId: msg.conversationId }
+      // try UPDATE first — 如果 conversationId 不是有效 UUID,PostgreSQL 会抛 22P02,
+      // catch 后 fall through 到 INSERT
+      try {
+        const { rowCount } = await this.db.query(
+          `UPDATE agent.conversations SET last_active_at = NOW() WHERE conversation_id = $1`,
+          [msg.conversationId],
+        )
+        if (rowCount && rowCount > 0) return { conversationId: msg.conversationId }
+      } catch {
+        // 非 UUID 或不存在:走 INSERT
+      }
     }
     const { rows } = await this.db.query(`
       INSERT INTO agent.conversations (user_id, brand, channel_id)

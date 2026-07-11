@@ -141,7 +141,7 @@ async function loadFromDb(): Promise<AgentConfig | null> {
 
     return {
       agentMd: row.agent_md ?? loadDefaultAgentMd(),
-      params: row.params ?? { ...DEFAULT_PARAMS },
+      params: row.params ? { ...DEFAULT_PARAMS, ...row.params } : { ...DEFAULT_PARAMS },
       baseURL: row.base_url,
       apiKey,
       model: row.model ?? 'claude-opus-4-8',
