@@ -8,7 +8,7 @@
 
 import type { FastifyInstance } from 'fastify'
 import {
-  getAgentConfig, setAgentMd, setParams, setCredentialConfig,
+  getAgentConfig, setAgentMd, setParams, setCredentialConfig, setJwksUrl,
   resetAgentConfig, DEFAULT_PARAMS, reloadFromDb, getConfigSource,
   type AgentConfigParams,
 } from '../../config/store.js'
@@ -35,6 +35,7 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
       model: cfg.model,
       baseUrl: cfg.baseURL,
       hasApiKey: cfg.apiKey !== null,
+      jwksUrl: cfg.jwksUrl,
       dirty: false,
       source: getConfigSource(),
     }
@@ -46,9 +47,10 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
       agentMd?: string
       params?: Partial<AgentConfigParams>
       credentials?: { baseURL?: string | null; apiKey?: string | null; model?: string }
+      jwksUrl?: string | null
     }
   }>('/api/admin/config', async (req) => {
-    const { agentMd, params, credentials } = req.body
+    const { agentMd, params, credentials, jwksUrl } = req.body
 
     const oldCfg = getAgentConfig()
 
@@ -84,6 +86,9 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
       const finalModel = newModel ?? oldCfg.model ?? 'claude-opus-4-8'
       setCredentialConfig(finalBaseURL, finalApiKey, finalModel)
     }
+    if (jwksUrl !== undefined) {
+      setJwksUrl(jwksUrl)
+    }
 
     const newCfg = getAgentConfig()
 
@@ -102,16 +107,18 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
         }
         const dbBaseUrl = newBaseURL !== undefined ? newBaseURL : oldCfg.baseURL
         const dbModel = newModel ?? newCfg.model
+        const dbJwksUrl = jwksUrl !== undefined ? jwksUrl : oldCfg.jwksUrl
 
         const upsertSql = `
-          INSERT INTO agent.config (id, base_url, encrypted_key, model, params, agent_md, updated_at, updated_by)
-          VALUES (1, $1, $2, $3, $4, $5, NOW(), $6)
+          INSERT INTO agent.config (id, base_url, encrypted_key, model, params, agent_md, jwks_url, updated_at, updated_by)
+          VALUES (1, $1, $2, $3, $4, $5, $6, NOW(), $7)
           ON CONFLICT (id) DO UPDATE SET
             base_url    = COALESCE(EXCLUDED.base_url, agent.config.base_url),
             encrypted_key = EXCLUDED.encrypted_key,
             model       = EXCLUDED.model,
             params      = EXCLUDED.params,
             agent_md    = EXCLUDED.agent_md,
+            jwks_url    = EXCLUDED.jwks_url,
             updated_at  = NOW(),
             updated_by  = EXCLUDED.updated_by
         `
@@ -121,6 +128,7 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
           dbModel,
           JSON.stringify(newCfg.params),
           newCfg.agentMd,
+          dbJwksUrl,
           updated_by,
         ])
         console.log('[admin/config] DB saved: baseUrl=' + dbBaseUrl + ' model=' + dbModel + ' hasKey=' + (dbEncryptedKey !== null))

@@ -76,6 +76,7 @@ export interface AgentConfig {
   baseURL: string | null
   apiKey: string | null
   model: string
+  jwksUrl: string | null
   /**
    * 配置来源 (admin API 用来判断是否可编辑 / 是否缺 key)
    * - 'db'      : 从 agent.config 表读出来
@@ -93,6 +94,7 @@ function defaultConfig(): AgentConfig {
     baseURL: null,
     apiKey: null,
     model: 'claude-opus-4-8',
+    jwksUrl: null,
     source: 'missing',
   }
 }
@@ -105,6 +107,7 @@ interface DbConfigRow {
   model: string | null
   params: AgentConfigParams | null
   agent_md: string | null
+  jwks_url: string | null
 }
 
 /**
@@ -114,7 +117,7 @@ interface DbConfigRow {
 async function loadFromDb(): Promise<AgentConfig | null> {
   try {
     const { rows } = await getPool().query<DbConfigRow>(`
-      SELECT base_url, encrypted_key, model, params, agent_md
+      SELECT base_url, encrypted_key, model, params, agent_md, jwks_url
       FROM agent.config
       WHERE id = 1
     `)
@@ -145,6 +148,7 @@ async function loadFromDb(): Promise<AgentConfig | null> {
       baseURL: row.base_url,
       apiKey,
       model: row.model ?? 'claude-opus-4-8',
+      jwksUrl: row.jwks_url ?? null,
       source: 'db',
     }
   } catch (e) {
@@ -167,6 +171,12 @@ export function getBaseURL(): string | null { return slot.current.baseURL }
 export function getApiKey(): string | null { return slot.current.apiKey }
 export function getModel(): string { return slot.current.model }
 export function getConfigSource(): AgentConfig['source'] { return slot.current.source }
+/**
+ * 返回 JWKS URL。优先级: DB 配置 > AGENT_JWKS_URL env > null。
+ */
+export function getJwksUrl(): string | null {
+  return slot.current.jwksUrl ?? process.env.AGENT_JWKS_URL ?? null
+}
 
 /**
  * server.ts 启动时必须 await 这个函数。
@@ -220,6 +230,10 @@ export function setCredentialConfig(
   model: string,
 ): void {
   slot.current = { ...slot.current, baseURL, apiKey, model }
+}
+
+export function setJwksUrl(jwksUrl: string | null): void {
+  slot.current = { ...slot.current, jwksUrl }
 }
 
 export function resetAgentConfig(): void {

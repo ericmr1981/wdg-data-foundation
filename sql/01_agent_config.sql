@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS agent.config (
   model           TEXT,
   params          JSONB,            -- AgentConfigParams (maxTokens/temperature/...)
   agent_md        TEXT,             -- 当前活跃的 agent.md 内容(可选,文件仍是 source of truth)
+  jwks_url        TEXT,             -- Portal JWKS 端点,用于 WS/HTTP JWT 验签 (agent.config 优先于 AGENT_JWKS_URL env)
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_by      TEXT,
   CONSTRAINT single_row CHECK (id = 1)

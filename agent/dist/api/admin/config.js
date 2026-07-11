@@ -5,7 +5,7 @@
 // POST: 写 in-memory + 写 DB (persistent)
 // /reset:  清空 credentials (api_key=null, base_url=null), model 复位
 // /reload: 从 DB 重读
-import { getAgentConfig, setAgentMd, setParams, setCredentialConfig, resetAgentConfig, DEFAULT_PARAMS, reloadFromDb, getConfigSource, } from '../../config/store.js';
+import { getAgentConfig, setAgentMd, setParams, setCredentialConfig, setJwksUrl, resetAgentConfig, DEFAULT_PARAMS, reloadFromDb, getConfigSource, } from '../../config/store.js';
 import { encrypt } from '../../crypto/secret-crypto.js';
 import { writeFileSync } from 'fs';
 import { AGENT_MD_FILE_PATH } from '../../config/agent-md-loader.js';
@@ -29,13 +29,14 @@ export function registerAdminConfigRoutes(app) {
             model: cfg.model,
             baseUrl: cfg.baseURL,
             hasApiKey: cfg.apiKey !== null,
+            jwksUrl: cfg.jwksUrl,
             dirty: false,
             source: getConfigSource(),
         };
     });
     // ─── POST (upsert config into DB) ───────
     app.post('/api/admin/config', async (req) => {
-        const { agentMd, params, credentials } = req.body;
+        const { agentMd, params, credentials, jwksUrl } = req.body;
         const oldCfg = getAgentConfig();
         // 1. 计算新值（部分提交语义）
         let newApiKey = undefined;
@@ -71,6 +72,9 @@ export function registerAdminConfigRoutes(app) {
             const finalModel = newModel ?? oldCfg.model ?? 'claude-opus-4-8';
             setCredentialConfig(finalBaseURL, finalApiKey, finalModel);
         }
+        if (jwksUrl !== undefined) {
+            setJwksUrl(jwksUrl);
+        }
         const newCfg = getAgentConfig();
         // 3. 写 DB (持久化)
         const encKey = process.env.AGENT_CRED_ENCRYPTION_KEY;
@@ -87,15 +91,17 @@ export function registerAdminConfigRoutes(app) {
                 }
                 const dbBaseUrl = newBaseURL !== undefined ? newBaseURL : oldCfg.baseURL;
                 const dbModel = newModel ?? newCfg.model;
+                const dbJwksUrl = jwksUrl !== undefined ? jwksUrl : oldCfg.jwksUrl;
                 const upsertSql = `
-          INSERT INTO agent.config (id, base_url, encrypted_key, model, params, agent_md, updated_at, updated_by)
-          VALUES (1, $1, $2, $3, $4, $5, NOW(), $6)
+          INSERT INTO agent.config (id, base_url, encrypted_key, model, params, agent_md, jwks_url, updated_at, updated_by)
+          VALUES (1, $1, $2, $3, $4, $5, $6, NOW(), $7)
           ON CONFLICT (id) DO UPDATE SET
             base_url    = COALESCE(EXCLUDED.base_url, agent.config.base_url),
             encrypted_key = EXCLUDED.encrypted_key,
             model       = EXCLUDED.model,
             params      = EXCLUDED.params,
             agent_md    = EXCLUDED.agent_md,
+            jwks_url    = EXCLUDED.jwks_url,
             updated_at  = NOW(),
             updated_by  = EXCLUDED.updated_by
         `;
@@ -105,6 +111,7 @@ export function registerAdminConfigRoutes(app) {
                     dbModel,
                     JSON.stringify(newCfg.params),
                     newCfg.agentMd,
+                    dbJwksUrl,
                     updated_by,
                 ]);
                 console.log('[admin/config] DB saved: baseUrl=' + dbBaseUrl + ' model=' + dbModel + ' hasKey=' + (dbEncryptedKey !== null));

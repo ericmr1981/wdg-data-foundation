@@ -20,6 +20,7 @@ export interface AgentConfigView {
   baseURL: string | null;
   apiKeyMasked: string | null;
   model: string;
+  jwksUrl: string | null;
   agent: {
     reachable: boolean;
     source: string | null;
@@ -75,6 +76,7 @@ export async function callAgentJson(method: 'GET'): Promise<AgentConfigView> {
       baseURL: null,
       apiKeyMasked: null,
       model: 'claude-opus-4-8',
+      jwksUrl: null,
       agent: { reachable: false, source: null, hasApiKey: null, model: null, baseUrl: null },
     };
   }
@@ -88,6 +90,7 @@ export async function callAgentJson(method: 'GET'): Promise<AgentConfigView> {
     baseURL: (body.baseUrl as string | null | undefined) ?? null,
     apiKeyMasked: hasApiKey ? '***' : null,
     model: (body.model as string | undefined) ?? 'claude-opus-4-8',
+    jwksUrl: (body.jwksUrl as string | null | undefined) ?? null,
     agent: {
       reachable,
       source: (body.source as string | null | undefined) ?? null,

@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
     baseURL?: string | null;
     apiKey?: string | null;
     model?: string;
+    jwksUrl?: string | null;
   };
 
   // 适配 UI form 字段 → Agent 期望的 credentials 嵌套
@@ -56,6 +57,9 @@ export async function POST(req: NextRequest) {
       credentials.model = (typeof body.model === 'string' && body.model.trim()) ? body.model.trim() : 'claude-opus-4-8'
     }
     agentBody.credentials = credentials
+  }
+  if (typeof body.jwksUrl !== 'undefined') {
+    agentBody.jwksUrl = (typeof body.jwksUrl === 'string' && body.jwksUrl.trim()) ? body.jwksUrl.trim() : null
   }
 
   const result = await callAgent('/api/admin/config', {

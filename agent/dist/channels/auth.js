@@ -10,6 +10,7 @@
 // 降级: 如果 initAuth() 未调用/失败,verifyAgentToken 抛 INVALID_TOKEN。
 // Portal 部署后 env AGENT_JWKS_URL 指向 portal 的 JWKS 端点。
 import crypto from 'node:crypto';
+import { getJwksUrl } from '../config/store.js';
 // 单个 RSA 公钥(预取后赋值),支持 RS256。
 let _pubKey = null;
 let _initError = null;
@@ -17,9 +18,9 @@ let _initError = null;
 let _lastFetchTs = 0;
 /** 两次 re-fetch 之间的最小间隔 (ms) */
 const REFETCH_COOLDOWN_MS = 30_000;
-/** 重新从 AGENT_JWKS_URL 拉取公钥（同步 verify 前的异步补救） */
+/** 重新从 JWKS URL 拉取公钥（同步 verify 前的异步补救） */
 async function reFetchJwks() {
-    const url = process.env.AGENT_JWKS_URL;
+    const url = getJwksUrl();
     if (!url)
         return false;
     const now = Date.now();
@@ -48,9 +49,9 @@ async function reFetchJwks() {
  * 如果 AGENT_JWKS_URL 未配置或 fetch 失败,记 _initError 但不抛(允许降级到 INVALID_TOKEN)。
  */
 export async function initAuth() {
-    const url = process.env.AGENT_JWKS_URL;
+    const url = getJwksUrl();
     if (!url) {
-        _initError = 'AGENT_JWKS_URL not configured';
+        _initError = 'JWKS URL not configured (set jwksUrl in agent config or AGENT_JWKS_URL env)';
         console.warn('[auth]', _initError);
         return;
     }

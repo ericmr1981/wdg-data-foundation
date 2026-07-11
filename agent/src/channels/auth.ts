@@ -12,6 +12,7 @@
 
 import crypto from 'node:crypto'
 import type { JWTPayload } from 'jose'
+import { getJwksUrl } from '../config/store.js'
 
 export interface AgentClaims {
   sub: string
@@ -26,9 +27,9 @@ let _lastFetchTs = 0
 /** 两次 re-fetch 之间的最小间隔 (ms) */
 const REFETCH_COOLDOWN_MS = 30_000
 
-/** 重新从 AGENT_JWKS_URL 拉取公钥（同步 verify 前的异步补救） */
+/** 重新从 JWKS URL 拉取公钥（同步 verify 前的异步补救） */
 async function reFetchJwks(): Promise<boolean> {
-  const url = process.env.AGENT_JWKS_URL
+  const url = getJwksUrl()
   if (!url) return false
   const now = Date.now()
   if (now - _lastFetchTs < REFETCH_COOLDOWN_MS) return false
@@ -53,9 +54,9 @@ async function reFetchJwks(): Promise<boolean> {
  * 如果 AGENT_JWKS_URL 未配置或 fetch 失败,记 _initError 但不抛(允许降级到 INVALID_TOKEN)。
  */
 export async function initAuth(): Promise<void> {
-  const url = process.env.AGENT_JWKS_URL
+  const url = getJwksUrl()
   if (!url) {
-    _initError = 'AGENT_JWKS_URL not configured'
+    _initError = 'JWKS URL not configured (set jwksUrl in agent config or AGENT_JWKS_URL env)'
     console.warn('[auth]', _initError)
     return
   }

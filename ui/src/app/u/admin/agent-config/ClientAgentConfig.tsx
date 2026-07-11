@@ -10,6 +10,7 @@ interface Props {
     baseURL: string | null;
     apiKeyMasked: string | null;
     model: string;
+    jwksUrl: string | null;
   };
   defaultParams: AgentConfigParams;
 }
@@ -21,6 +22,7 @@ export function ClientAgentConfig({ initial, defaultParams }: Props) {
     baseURL: string | null;
     apiKey: string;
     model: string;
+    jwksUrl: string | null;
   }) {
     // Note: apiKey '' means "keep current value" (server distinguishes via === '').
     // To CLEAR the apiKey the admin should click "重置默认" (which calls DELETE).
@@ -33,6 +35,7 @@ export function ClientAgentConfig({ initial, defaultParams }: Props) {
         baseURL: data.baseURL,
         apiKey: data.apiKey,
         model: data.model,
+        jwksUrl: data.jwksUrl,
       }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

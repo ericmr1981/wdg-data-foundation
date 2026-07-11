@@ -52,6 +52,7 @@ function defaultConfig() {
         baseURL: null,
         apiKey: null,
         model: 'claude-opus-4-8',
+        jwksUrl: null,
         source: 'missing',
     };
 }
@@ -62,7 +63,7 @@ function defaultConfig() {
 async function loadFromDb() {
     try {
         const { rows } = await getPool().query(`
-      SELECT base_url, encrypted_key, model, params, agent_md
+      SELECT base_url, encrypted_key, model, params, agent_md, jwks_url
       FROM agent.config
       WHERE id = 1
     `);
@@ -89,6 +90,7 @@ async function loadFromDb() {
             baseURL: row.base_url,
             apiKey,
             model: row.model ?? 'claude-opus-4-8',
+            jwksUrl: row.jwks_url ?? null,
             source: 'db',
         };
     }
@@ -106,6 +108,12 @@ export function getBaseURL() { return slot.current.baseURL; }
 export function getApiKey() { return slot.current.apiKey; }
 export function getModel() { return slot.current.model; }
 export function getConfigSource() { return slot.current.source; }
+/**
+ * 返回 JWKS URL。优先级: DB 配置 > AGENT_JWKS_URL env > null。
+ */
+export function getJwksUrl() {
+    return slot.current.jwksUrl ?? process.env.AGENT_JWKS_URL ?? null;
+}
 /**
  * server.ts 启动时必须 await 这个函数。
  * R 设计: DB-only。失败抛错由 server.ts 决定要不要 fast-fail。
@@ -145,6 +153,9 @@ export function setParams(params) {
 }
 export function setCredentialConfig(baseURL, apiKey, model) {
     slot.current = { ...slot.current, baseURL, apiKey, model };
+}
+export function setJwksUrl(jwksUrl) {
+    slot.current = { ...slot.current, jwksUrl };
 }
 export function resetAgentConfig() {
     slot.current = defaultConfig();
