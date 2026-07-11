@@ -353,7 +353,25 @@ function zodToJsonSchemaSafe(schema: ZodType<unknown>): Record<string, unknown> 
 
 function describeZod(z: ZodType<unknown>): Record<string, unknown> {
   const desc = (z.description ? { description: z.description } : {});
-  if (z instanceof ZodString)  return { ...desc, type: 'string' };
+  if (z instanceof ZodString) {
+    const out: Record<string, unknown> = { ...desc, type: 'string' };
+    // Zod v3: ._def.checks 里可能有 { kind:'regex', regex:/.../, ... },
+    // 提取第一个 regex → JSON Schema pattern。
+    try {
+      const def = (z as any)._def;
+      if (def?.checks) {
+        for (const c of def.checks) {
+          if (c.kind === 'regex' && c.regex) {
+            out.pattern = c.regex.source;   // 例如 "^\d{4}-\d{2}(-\d{2})?$"
+            break;
+          }
+        }
+      }
+      // 也尝试 Zod v4 的 _zod (兼容未来升级)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (_) { /* ignore */ }
+    return out;
+  }
   if (z instanceof ZodNumber)  return { ...desc, type: 'number' };
   if (z instanceof ZodBoolean) return { ...desc, type: 'boolean' };
   if (z instanceof ZodArray)   return { ...desc, type: 'array', items: describeZod(z.element) };

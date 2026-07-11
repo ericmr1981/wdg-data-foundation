@@ -7,7 +7,8 @@ import { getErrorMessage } from '@/lib/query-types';
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const storeCode = searchParams.get('store') ?? null;
-    const month = searchParams.get('month') ?? null; // 'YYYY-MM-01'
+    const monthRaw = searchParams.get('month') ?? null; // 'YYYY-MM' or 'YYYY-MM-01'
+    const month = monthRaw && monthRaw.length === 7 ? monthRaw + '-01' : monthRaw;
 
     const conditions: string[] = [];
     const params: unknown[] = [];

@@ -6,11 +6,13 @@ import { getErrorMessage } from '@/lib/query-types';
 
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
-    const month = searchParams.get('month') ?? null;
+    const monthRaw = searchParams.get('month') ?? null;
 
-    if (!month) {
-        return NextResponse.json({ success: false, error: 'month is required (YYYY-MM-01)' }, { status: 400 });
+    if (!monthRaw) {
+        return NextResponse.json({ success: false, error: 'month is required (YYYY-MM or YYYY-MM-01)' }, { status: 400 });
     }
+
+    const month = monthRaw.length === 7 ? monthRaw + '-01' : monthRaw;
 
     try {
         const { rows } = await pool.query(

@@ -7,11 +7,14 @@ import { getErrorMessage } from '@/lib/query-types';
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const storeCode = searchParams.get('store') ?? null;
-    const month = searchParams.get('month'); // 'YYYY-MM-01'
+    const monthRaw = searchParams.get('month'); // 'YYYY-MM' or 'YYYY-MM-DD'
 
-    if (!month || !/^\d{4}-\d{2}-\d{2}$/.test(month)) {
-        return NextResponse.json({ success: false, error: 'month required (YYYY-MM-01)' }, { status: 400 });
+    if (!monthRaw || !/^\d{4}-\d{2}(-\d{2})?$/.test(monthRaw)) {
+        return NextResponse.json({ success: false, error: 'month required (YYYY-MM or YYYY-MM-DD)' }, { status: 400 });
     }
+
+    // Normalize YYYY-MM → YYYY-MM-01 for PostgreSQL date arithmetic
+    const month = monthRaw.length === 7 ? monthRaw + '-01' : monthRaw;
 
     // 计算月初 + 下月初
     const params: unknown[] = [month];
