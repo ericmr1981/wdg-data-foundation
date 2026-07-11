@@ -24,7 +24,16 @@ export class AgentRunner {
         // 2. 加载历史
         const history = await this.deps.conversation.getMessages(conv.conversationId, 10);
         console.log('[runner] getMessages done count=' + history.length);
-        // 3. 工具集
+        // 3. 持久化用户消息（仅当 Tool Runner 路径时；手动 tool loop 路径在下文独立处理）
+        const isToolRunnerPath = process.env.RUNNER_USE_TOOL_RUNNER !== '0';
+        if (isToolRunnerPath) {
+            await this.deps.conversation.appendMessage({
+                conversationId: conv.conversationId,
+                role: 'user',
+                content: msg.content,
+            }).catch((e) => console.error('[runner] appendMessage(user) failed:', e.message));
+        }
+        // 4. 工具集
         console.log('[runner] listTools start...');
         const tools = (await this.deps.mcpBridge.listTools())
             .filter((t) => isToolEnabled(t.name));
@@ -34,9 +43,9 @@ export class AgentRunner {
             description: '加载 skill 完整内容',
             input_schema: { type: 'object', properties: { name: { type: 'string' }, reason: { type: 'string' } }, required: ['name', 'reason'] },
         });
-        // 4. system blocks(stable agentMd + cache_control ttl=1h)
+        // 5. system blocks(stable agentMd + cache_control ttl=1h)
         const system = buildSystemBlocks(cfg.agentMd);
-        // 5. messages: session context + 历史 + 当前 user message
+        // 6. messages: session context + 历史 + 当前 user message
         const userContent = [];
         // session context 注入第一条 user 内容(不进 system,避免污染 cache)
         userContent.push({
@@ -109,6 +118,9 @@ export class AgentRunner {
                     return s;
                 throw new Error('toolRunner finished without yielding a stream');
             })();
+            // R7 fix: 变量提升到 Promise scope 外，finalMessage 回调赋值，Promise resolve 后持久化
+            let finalAssistantContent = '';
+            let finalToolCalls = null;
             await new Promise((resolve, reject) => {
                 let settled = false;
                 const finish = (err) => {
@@ -136,6 +148,9 @@ export class AgentRunner {
                         type: 'message',
                         payload: finalMessage,
                     }).catch((e) => console.error('[runner] recordAndSend final failed:', e));
+                    // 捕获助手回复内容用于持久化
+                    finalAssistantContent = extractTextContent(finalMessage);
+                    finalToolCalls = extractToolCalls(finalMessage);
                 });
                 stream.on('error', (err) => {
                     // 跟 R5/§A.2.5 一致:catch SDK typed exception → 发 error 帧
@@ -149,6 +164,15 @@ export class AgentRunner {
                 });
                 stream.on('end', () => finish());
             });
+            // R7 fix: 持久化助手回复到 agent.messages，确保下次 getMessages() 能加载历史
+            if (finalAssistantContent || finalToolCalls) {
+                this.deps.conversation.appendMessage({
+                    conversationId: conv.conversationId,
+                    role: 'assistant',
+                    content: finalAssistantContent,
+                    toolCalls: finalToolCalls,
+                }).catch((e) => console.error('[runner] appendMessage(assistant) failed:', e.message));
+            }
         }
         else {
             // ── 手动 tool loop + 模拟流式推送 ──
@@ -323,6 +347,37 @@ export class AgentRunner {
                 break;
             }
             console.log('[runner] tool loop done');
+            // R7 fix: 持久化本次新增的消息到 agent.messages
+            // loopMessages = history(前 history.length 条) + userMsg + assistant turns + tool_results
+            // 只持久化索引 >= history.length 的新消息，避免重复写入历史
+            const prevMsgCount = history.length;
+            // 第一步：持久化原始用户输入（不在 loopMessages 里取，避免 Session Context 污染）
+            await this.deps.conversation.appendMessage({
+                conversationId: conv.conversationId,
+                role: 'user',
+                content: msg.content,
+            }).catch((e) => console.error('[runner] appendMessage(user) failed:', e.message));
+            // 第二步：遍历 loopMessages 只取 assistant 和 tool_result 新增部分
+            for (let i = prevMsgCount; i < loopMessages.length; i++) {
+                const m = loopMessages[i];
+                if (m.role === 'user') {
+                    // 用户消息已在上一步单独持久化，跳过（loopMessages 里 user 含 Session Context）
+                    continue;
+                }
+                if (m.role === 'assistant') {
+                    const blocks = Array.isArray(m.content) ? m.content : [{ type: 'text', text: String(m.content) }];
+                    const text = blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+                    const toolCalls = blocks.filter((b) => b.type === 'tool_use').map((b) => ({ id: b.id, name: b.name, input: b.input }));
+                    // 即使 text 为空也要存（纯 tool_use 轮次），否则 getMessages 还原时丢失 assistant turn
+                    await this.deps.conversation.appendMessage({
+                        conversationId: conv.conversationId,
+                        role: 'assistant',
+                        content: text || '(tool calls)', // 标记纯 tool 轮次，非空字符串确保不会被过滤
+                        toolCalls: toolCalls.length > 0 ? toolCalls : null,
+                    }).catch((e) => console.error('[runner] appendMessage(assistant) failed:', e.message));
+                }
+                // tool_result 由 assistent 的 toolCalls 字段隐式携带，不单独存
+            }
         }
         return { conversationId: conv.conversationId };
     }
@@ -338,3 +393,18 @@ export class AgentRunner {
     }
 }
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+/** Extract plain text from an Anthropic Message's content blocks. */
+function extractTextContent(msg) {
+    if (!msg?.content)
+        return '';
+    const blocks = Array.isArray(msg.content) ? msg.content : [];
+    return blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+}
+/** Extract tool_use blocks from an Anthropic Message's content. */
+function extractToolCalls(msg) {
+    if (!msg?.content)
+        return null;
+    const blocks = Array.isArray(msg.content) ? msg.content : [];
+    const calls = blocks.filter((b) => b.type === 'tool_use').map((b) => ({ id: b.id, name: b.name, input: b.input }));
+    return calls.length > 0 ? calls : null;
+}

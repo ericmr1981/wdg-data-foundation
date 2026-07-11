@@ -155,11 +155,23 @@ export default function AgentTestPage() {
       push({ direction: 'sys', type: 'error', payload: { msg: 'ws not open' }, raw: 'no send' });
       return;
     }
-    // agent/src/channels/web.ts 期望 { content, brand, conversationId? }
-    const payload = { content: input, brand };
+    // agent/src/channels/web.ts 期望 ChatIncoming 协议:
+    //   { type:'user.message', payload: { conversationId, content: ContentBlock[], messageId, brand? } }
+    // 但 web.ts 在连接后会先发 hello → 客户端必须回复 auth JWT → 然后才能发 user.message。
+    // 当前 agent-test 调试页绕过 auth 走的是旧 { content, brand } 裸格式，
+    // 修复为完整协议。
+    const payload = {
+      type: 'user.message' as const,
+      payload: {
+        conversationId: '',  // 空 → agent 自动创建新 conversation
+        content: [{ type: 'text' as const, text: input }],
+        messageId: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        brand,
+      },
+    };
     const raw = JSON.stringify(payload);
     ws.send(raw);
-    push({ direction: 'send', type: 'user', payload, raw });
+    push({ direction: 'send', type: payload.type, payload: payload.payload, raw });
     setInput('');
   };
 
