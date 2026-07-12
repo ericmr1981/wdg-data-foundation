@@ -344,6 +344,14 @@ export class AgentRunner {
                 }
                 // 无 tool_use → 最终 text 回复
                 await emitResponseStreaming(response);
+                // R7 fix: end_turn 且无 tool_use 时也要持久化（纯文本回复路径）
+                const finalText = extractTextContent(response);
+                await this.deps.conversation.appendMessage({
+                    conversationId: conv.conversationId,
+                    role: 'assistant',
+                    content: finalText,
+                    toolCalls: null,
+                }).catch((e) => console.error('[runner] appendMessage(assistant) failed:', e.message));
                 break;
             }
             console.log('[runner] tool loop done');
