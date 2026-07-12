@@ -54,6 +54,7 @@ function defaultConfig() {
         model: 'claude-opus-4-8',
         jwksUrl: null,
         source: 'missing',
+        mcpBackends: [],
     };
 }
 /**
@@ -63,7 +64,7 @@ function defaultConfig() {
 async function loadFromDb() {
     try {
         const { rows } = await getPool().query(`
-      SELECT base_url, encrypted_key, model, params, agent_md, jwks_url
+      SELECT base_url, encrypted_key, model, params, agent_md, jwks_url, mcp_backends
       FROM agent.config
       WHERE id = 1
     `);
@@ -85,13 +86,15 @@ async function loadFromDb() {
             }
         }
         return {
-            agentMd: row.agent_md ?? loadDefaultAgentMd(),
+            // env AGENT_MD_PATH 优先（文件覆盖 DB）
+            agentMd: process.env.AGENT_MD_PATH ? loadDefaultAgentMd() : (row.agent_md ?? loadDefaultAgentMd()),
             params: row.params ? { ...DEFAULT_PARAMS, ...row.params } : { ...DEFAULT_PARAMS },
             baseURL: row.base_url,
             apiKey,
             model: row.model ?? 'claude-opus-4-8',
             jwksUrl: row.jwks_url ?? null,
             source: 'db',
+            mcpBackends: normalizeBackends(row.mcp_backends),
         };
     }
     catch (e) {
@@ -157,6 +160,30 @@ export function setCredentialConfig(baseURL, apiKey, model) {
 export function setJwksUrl(jwksUrl) {
     slot.current = { ...slot.current, jwksUrl };
 }
+/** 设置外部 MCP 后端列表 (in-memory, 不写 DB) */
+export function setMcpBackends(backends) {
+    slot.current = { ...slot.current, mcpBackends: backends };
+}
 export function resetAgentConfig() {
     slot.current = defaultConfig();
+}
+/** 规范化后端配置：去重、补齐默认值、校验必填字段 */
+function normalizeBackends(raw) {
+    if (!Array.isArray(raw))
+        return [];
+    const seen = new Set();
+    const out = [];
+    for (const b of raw) {
+        if (!b?.name || !b?.url)
+            continue;
+        if (seen.has(b.name))
+            continue;
+        seen.add(b.name);
+        out.push({
+            ...b,
+            transport: b.transport ?? 'fetch',
+            timeoutMs: b.timeoutMs ?? 30_000,
+        });
+    }
+    return out;
 }

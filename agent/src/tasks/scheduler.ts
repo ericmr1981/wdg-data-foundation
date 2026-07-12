@@ -3,7 +3,7 @@ import type { Pool } from 'pg'
 import type { TaskDefinition, TaskRow, TaskStepUpdate } from './types.js'
 import { getHandler } from './registry.js'
 import type { Notifier } from '../notifications/notifier.js'
-import type { McpBridge } from '../mcp/bridge.js'
+import type { UnifiedMcpBridge } from '../mcp/bridge.js'
 
 const POLL_INTERVAL_MS = 1000
 
@@ -11,7 +11,7 @@ export class TaskScheduler {
   constructor(
     private db: Pool,
     private notifier: Notifier,
-    private mcpBridge: McpBridge,
+    private mcpBridge: UnifiedMcpBridge,
     private workerCount: number = 4,
   ) {
     void this.mcpBridge  // unused for now, used by handlers via closure

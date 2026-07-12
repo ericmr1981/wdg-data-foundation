@@ -5,7 +5,7 @@
 // POST: 写 in-memory + 写 DB (persistent)
 // /reset:  清空 credentials (api_key=null, base_url=null), model 复位
 // /reload: 从 DB 重读
-import { getAgentConfig, setAgentMd, setParams, setCredentialConfig, setJwksUrl, resetAgentConfig, DEFAULT_PARAMS, reloadFromDb, getConfigSource, } from '../../config/store.js';
+import { getAgentConfig, setAgentMd, setParams, setCredentialConfig, setJwksUrl, setMcpBackends, resetAgentConfig, DEFAULT_PARAMS, reloadFromDb, getConfigSource, } from '../../config/store.js';
 import { encrypt } from '../../crypto/secret-crypto.js';
 import { writeFileSync } from 'fs';
 import { AGENT_MD_FILE_PATH } from '../../config/agent-md-loader.js';
@@ -30,13 +30,14 @@ export function registerAdminConfigRoutes(app) {
             baseUrl: cfg.baseURL,
             hasApiKey: cfg.apiKey !== null,
             jwksUrl: cfg.jwksUrl,
+            mcpBackends: cfg.mcpBackends,
             dirty: false,
             source: getConfigSource(),
         };
     });
     // ─── POST (upsert config into DB) ───────
-    app.post('/api/admin/config', async (req) => {
-        const { agentMd, params, credentials, jwksUrl } = req.body;
+    app.post('/api/admin/config', async (req, reply) => {
+        const { agentMd, params, credentials, jwksUrl, mcpBackends } = req.body;
         const oldCfg = getAgentConfig();
         // 1. 计算新值（部分提交语义）
         let newApiKey = undefined;
@@ -75,11 +76,15 @@ export function registerAdminConfigRoutes(app) {
         if (jwksUrl !== undefined) {
             setJwksUrl(jwksUrl);
         }
+        if (mcpBackends !== undefined) {
+            setMcpBackends(mcpBackends);
+        }
         const newCfg = getAgentConfig();
         // 3. 写 DB (持久化)
         const encKey = process.env.AGENT_CRED_ENCRYPTION_KEY;
         if (!encKey) {
             console.warn('[admin/config] AGENT_CRED_ENCRYPTION_KEY env not set — DB write skipped');
+            return { success: false, error: 'server misconfigured: AGENT_CRED_ENCRYPTION_KEY not set' };
         }
         else {
             try {
@@ -92,16 +97,19 @@ export function registerAdminConfigRoutes(app) {
                 const dbBaseUrl = newBaseURL !== undefined ? newBaseURL : oldCfg.baseURL;
                 const dbModel = newModel ?? newCfg.model;
                 const dbJwksUrl = jwksUrl !== undefined ? jwksUrl : oldCfg.jwksUrl;
+                const dbMcpBackends = mcpBackends !== undefined
+                    ? JSON.stringify(mcpBackends) : JSON.stringify(oldCfg.mcpBackends);
                 const upsertSql = `
-          INSERT INTO agent.config (id, base_url, encrypted_key, model, params, agent_md, jwks_url, updated_at, updated_by)
-          VALUES (1, $1, $2, $3, $4, $5, $6, NOW(), $7)
+          INSERT INTO agent.config (id, base_url, encrypted_key, model, params, agent_md, jwks_url, mcp_backends, updated_at, updated_by)
+          VALUES (1, $1, $2, $3, $4, $5, $6, $7, NOW(), $8)
           ON CONFLICT (id) DO UPDATE SET
             base_url    = COALESCE(EXCLUDED.base_url, agent.config.base_url),
-            encrypted_key = EXCLUDED.encrypted_key,
+            encrypted_key = COALESCE(EXCLUDED.encrypted_key, agent.config.encrypted_key),
             model       = EXCLUDED.model,
             params      = EXCLUDED.params,
             agent_md    = EXCLUDED.agent_md,
             jwks_url    = EXCLUDED.jwks_url,
+            mcp_backends = EXCLUDED.mcp_backends,
             updated_at  = NOW(),
             updated_by  = EXCLUDED.updated_by
         `;
@@ -112,6 +120,7 @@ export function registerAdminConfigRoutes(app) {
                     JSON.stringify(newCfg.params),
                     newCfg.agentMd,
                     dbJwksUrl,
+                    dbMcpBackends,
                     updated_by,
                 ]);
                 console.log('[admin/config] DB saved: baseUrl=' + dbBaseUrl + ' model=' + dbModel + ' hasKey=' + (dbEncryptedKey !== null));
@@ -136,5 +145,13 @@ export function registerAdminConfigRoutes(app) {
             source: cfg?.source ?? null,
             message: cfg ? 'reloaded from DB' : 'no DB row found',
         };
+    });
+    // ─── POST /restart (让 systemd 重启 Agent) ─────
+    // 退出前先 reload from DB，确保重启时拿到最新 DB 配置
+    app.post('/api/admin/restart', async (_req, reply) => {
+        await reloadFromDb();
+        await reply.code(202).send({ success: true, message: 'restarting...' });
+        console.log('[admin/config] restart triggered by admin');
+        process.exit(0);
     });
 }

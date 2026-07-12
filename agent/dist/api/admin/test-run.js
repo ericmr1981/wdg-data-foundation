@@ -3,16 +3,12 @@
 //   - 不存 DB (不写 agent.conversations / agent.messages)
 //   - 可选 tools 白名单 (从 request body.tools 接)
 //   - 返 {text, steps, tool_calls, usage}
-//
-// 用 /api/admin/test-chat (单 LLM 往返) 已有的简洁对比。
-// 用这个让 admin 看到 LLM 完整 tool_use loop、tool 执行结果、token 用量。
 import Anthropic from '@anthropic-ai/sdk';
 import { getAgentConfig, getBaseURL, thinkingConfigFor } from '../../config/store.js';
 import { buildSystemPrompt } from '../../agent/prompt.js';
 import { handleLoadSkill, LOAD_SKILL_NAME } from '../../skills/load-skill-tool.js';
 import { isToolEnabled } from '../admin/tools.js';
 import { mapAnthropicStatusError } from '../../errors.js';
-// 单次 LLM 调用超时 — 测试用, 不让坏 LLM 卡死整个 agent 进程
 const LLM_CALL_TIMEOUT_MS = 60_000;
 export function registerTestRunRoute(app, deps) {
     app.post('/api/admin/test-run', async (req, reply) => {
@@ -40,16 +36,19 @@ export function registerTestRunRoute(app, deps) {
         let inputTokensTotal = 0;
         let outputTokensTotal = 0;
         try {
-            // 1. 拉所有 MCP 工具
             const allTools = await deps.mcpBridge.listTools();
             const enabled = allTools.filter((t) => isToolEnabled(t.name));
             const whitelist = body.toolsWhitelist;
             const tools = whitelist && whitelist.length > 0
                 ? enabled.filter((t) => whitelist.includes(t.name))
                 : enabled;
-            // 加 load_skill (Agent 自己的 meta-tool)
+            // 清理 inputSchema 中不被某些兼容 API 接受的字段 (nullable, 缺失 type 等)
             const toolsForClaude = [
-                ...tools,
+                ...tools.map((t) => ({
+                    name: t.name,
+                    description: t.description,
+                    input_schema: sanitizeJsonSchema(t.inputSchema ?? {}),
+                })),
                 {
                     name: LOAD_SKILL_NAME,
                     description: '加载 skill 完整内容',
@@ -66,24 +65,18 @@ export function registerTestRunRoute(app, deps) {
             const client = new Anthropic({
                 apiKey,
                 baseURL: baseURL ?? undefined,
-                // Phase 7.1: 单次 LLM 调用超时 — 防止坏 LLM / 网络卡死整个 agent
-                // (用户看到 Failed (agent_unreachable) 上层会重定向到 detail="client_timeout")
                 timeout: LLM_CALL_TIMEOUT_MS,
             });
-            // 2. 准备消息 + 系统提示
             const messages = [
                 { role: 'user', content: body.prompt },
             ];
             const system = buildSystemPrompt({ brand: 'admin-test', channel: 'admin-test' }, body.system || cfg.agentMd, toolsForClaude);
-            // 3. 工具调用循环
             const maxIter = Math.min(body.maxDepth ?? cfg.params.maxToolChainDepth ?? 10, 20);
             steps.push({ phase: 'thinking', label: `准备调用 Claude (tools=${toolsForClaude.length})`, ts: Date.now() });
             let iter = 0;
             let finalText = '';
             while (iter < maxIter) {
                 iter++;
-                // Promise.race 防御: 万一 Anthropic SDK 的 client.timeout 不工作 (老版本),
-                // 用 setTimeout 强制 60s 到期, 出错就中止这次 iter 抛给外层 catch
                 const thinkingCfg = thinkingConfigFor(cfg.params.thinkingLevel);
                 const llmPromise = client.messages.create({
                     model: cfg.model,
@@ -118,7 +111,6 @@ export function registerTestRunRoute(app, deps) {
                     });
                     break;
                 }
-                // 执行工具
                 const toolResults = [];
                 for (const tu of toolUses) {
                     const tcallStart = Date.now();
@@ -159,7 +151,7 @@ export function registerTestRunRoute(app, deps) {
                             toolName: tu.name,
                             ts: tcallStart,
                         });
-                        const r = await deps.mcpBridge.call(tu.name, tu.input, 'admin-test-user');
+                        const r = await deps.mcpBridge.call(tu.name, tu.input);
                         content = r.success ? r.data : `ERROR: ${r.error}`;
                         isError = !r.success;
                         label = `工具「${tu.name}」${isError ? '失败' : '成功'}`;
@@ -225,4 +217,40 @@ export function registerTestRunRoute(app, deps) {
             });
         }
     });
+}
+/**
+ * 递归清理 JSON Schema 中不被某些 LLM API (DeepSeek/MiniMax) 接受的属性。
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function sanitizeJsonSchema(schema) {
+    if (!schema || typeof schema !== 'object')
+        return schema;
+    if (Array.isArray(schema))
+        return schema.map(sanitizeJsonSchema);
+    const out = {};
+    for (const [key, value] of Object.entries(schema)) {
+        if (key === 'properties' && value && typeof value === 'object' && !Array.isArray(value)) {
+            const cleaned = {};
+            for (const [propName, propSchema] of Object.entries(value)) {
+                cleaned[propName] = sanitizeJsonSchema(propSchema);
+            }
+            out[key] = cleaned;
+        }
+        else if ((key === 'items' || key === 'additionalProperties' || key === 'contains') && value && typeof value === 'object') {
+            out[key] = sanitizeJsonSchema(value);
+        }
+        else if (key === 'anyOf' || key === 'oneOf' || key === 'allOf') {
+            out[key] = Array.isArray(value) ? value.map(sanitizeJsonSchema) : value;
+        }
+        else if (key === 'nullable') {
+            // drop — not supported by DeepSeek / MiniMax
+        }
+        else {
+            out[key] = value;
+        }
+    }
+    if (out.properties && !out.type && !out.anyOf && !out.oneOf && !out.allOf) {
+        out.type = 'object';
+    }
+    return out;
 }

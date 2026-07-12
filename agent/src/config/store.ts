@@ -21,6 +21,7 @@
 import { loadDefaultAgentMd } from './agent-md-loader.js'
 import { decrypt } from '../crypto/secret-crypto.js'
 import { getPool } from '../db.js'
+import type { BackendConfig } from '../mcp/bridge.js'
 
 // ─── 类型 ───────────────────────────
 
@@ -83,6 +84,8 @@ export interface AgentConfig {
    * - 'missing' : DB 没 row 或读不出, 启动应该 fail (R 设计下不允许)
    */
   source: 'db' | 'missing'
+  /** 外部 MCP 后端列表（从 agent.config.mcp_backends JSONB 读取）。 */
+  mcpBackends: BackendConfig[]
 }
 
 // ─── defaults ───────────────────────
@@ -96,6 +99,7 @@ function defaultConfig(): AgentConfig {
     model: 'claude-opus-4-8',
     jwksUrl: null,
     source: 'missing',
+    mcpBackends: [],
   }
 }
 
@@ -108,6 +112,7 @@ interface DbConfigRow {
   params: AgentConfigParams | null
   agent_md: string | null
   jwks_url: string | null
+  mcp_backends: BackendConfig[] | null
 }
 
 /**
@@ -117,7 +122,7 @@ interface DbConfigRow {
 async function loadFromDb(): Promise<AgentConfig | null> {
   try {
     const { rows } = await getPool().query<DbConfigRow>(`
-      SELECT base_url, encrypted_key, model, params, agent_md, jwks_url
+      SELECT base_url, encrypted_key, model, params, agent_md, jwks_url, mcp_backends
       FROM agent.config
       WHERE id = 1
     `)
@@ -143,13 +148,15 @@ async function loadFromDb(): Promise<AgentConfig | null> {
     }
 
     return {
-      agentMd: row.agent_md ?? loadDefaultAgentMd(),
+      // env AGENT_MD_PATH 优先（文件覆盖 DB）
+      agentMd: process.env.AGENT_MD_PATH ? loadDefaultAgentMd() : (row.agent_md ?? loadDefaultAgentMd()),
       params: row.params ? { ...DEFAULT_PARAMS, ...row.params } : { ...DEFAULT_PARAMS },
       baseURL: row.base_url,
       apiKey,
       model: row.model ?? 'claude-opus-4-8',
       jwksUrl: row.jwks_url ?? null,
       source: 'db',
+      mcpBackends: normalizeBackends(row.mcp_backends),
     }
   } catch (e) {
     console.error('[config] loadFromDb error:', (e as Error).message)
@@ -236,6 +243,29 @@ export function setJwksUrl(jwksUrl: string | null): void {
   slot.current = { ...slot.current, jwksUrl }
 }
 
+/** 设置外部 MCP 后端列表 (in-memory, 不写 DB) */
+export function setMcpBackends(backends: BackendConfig[]): void {
+  slot.current = { ...slot.current, mcpBackends: backends }
+}
+
 export function resetAgentConfig(): void {
   slot.current = defaultConfig()
+}
+
+/** 规范化后端配置：去重、补齐默认值、校验必填字段 */
+function normalizeBackends(raw: BackendConfig[] | null | undefined): BackendConfig[] {
+  if (!Array.isArray(raw)) return []
+  const seen = new Set<string>()
+  const out: BackendConfig[] = []
+  for (const b of raw) {
+    if (!b?.name || !b?.url) continue
+    if (seen.has(b.name)) continue
+    seen.add(b.name)
+    out.push({
+      ...b,
+      transport: b.transport ?? 'fetch',
+      timeoutMs: b.timeoutMs ?? 30_000,
+    })
+  }
+  return out
 }

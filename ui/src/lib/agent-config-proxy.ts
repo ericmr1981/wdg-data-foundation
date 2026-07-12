@@ -21,6 +21,7 @@ export interface AgentConfigView {
   apiKeyMasked: string | null;
   model: string;
   jwksUrl: string | null;
+  mcpBackends?: Array<{ name: string; url: string; transport?: string; headers?: Record<string, string>; timeoutMs?: number }>;
   agent: {
     reachable: boolean;
     source: string | null;
@@ -91,6 +92,7 @@ export async function callAgentJson(method: 'GET'): Promise<AgentConfigView> {
     apiKeyMasked: hasApiKey ? '***' : null,
     model: (body.model as string | undefined) ?? 'claude-opus-4-8',
     jwksUrl: (body.jwksUrl as string | null | undefined) ?? null,
+    mcpBackends: (body.mcpBackends as AgentConfigView['mcpBackends'] | undefined) ?? [],
     agent: {
       reachable,
       source: (body.source as string | null | undefined) ?? null,
