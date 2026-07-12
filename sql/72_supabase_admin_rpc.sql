@@ -1,7 +1,9 @@
 -- ============================================================
 -- 补充 Supabase 用户管理 RPC：兼容 Foundation admin/users API
 -- 在 Foundation 已有的 Portal RPC 基础上加 username / enabled 字段
--- 在 Supabase SQL Editor 中运行（替换原有 admin_* RPC）
+-- 属于 commit: feat(agent): UnifiedMcpBridge 多后端支持
+-- 跑法: bash sql/migrate-all.sh
+--    或: Supabase Dashboard → SQL Editor 中逐条粘贴运行
 -- ============================================================
 
 -- ─── admin_get_users（加 enabled 字段，兼容 Foundation）──────

@@ -1,7 +1,9 @@
 -- ============================================================
 -- Supabase 用户表兼容迁移：让 public.users 同时支持
 -- WGD Portal (admin | user) + WDG Data Foundation (admin | operator)
--- 在 Supabase SQL Editor 中运行此文件
+-- 属于 commit: feat(agent): UnifiedMcpBridge 多后端支持
+-- 跑法: bash sql/migrate-all.sh
+--    或: Supabase Dashboard → SQL Editor 中逐条粘贴运行
 -- ============================================================
 
 -- 1. 加 enabled 列（Foundation 需要，默认 true 保持 Portal 兼容）

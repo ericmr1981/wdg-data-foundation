@@ -2,7 +2,8 @@
 -- Foundation 本地 session 表兼容迁移：加 role/username 列
 -- 因为用户数据迁到 Supabase public.users，getSessionUser()
 -- 不再能 JOIN ops.users 拿角色。改为登录时写入 sessions。
--- 在 Foundation VPS 数据库上运行。
+-- 属于 commit: feat(agent): UnifiedMcpBridge 多后端支持
+-- 跑法: bash sql/migrate-all.sh
 -- ============================================================
 
 -- 1. 给 ops.sessions 加角色和用户名列
