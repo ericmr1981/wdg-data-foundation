@@ -7,14 +7,6 @@ export class AgentRunner {
     constructor(deps) {
         this.deps = deps;
     }
-    /**
-     * 处理一条 user.message(来自 web WS、cron、或 admin test)。
-     * R4 (Phase 1b): 内部机制换成 anthropic.beta.messages.toolRunner({stream:true}),
-     * 由 SDK 自动管 tool_use / pause_turn / end_turn。本 task 仍把每个 message 整体
-     * 回推给 emitter,逐 frame 透传留 R5。
-     *
-     * env RUNNER_USE_TOOL_RUNNER=0 → 走旧的非流式 messages.create(回退旁路)。
-     */
     async handle(msg, emitter) {
         const cfg = getAgentConfig();
         console.log('[runner] handle start convId=' + (msg.conversationId ?? 'null'));
@@ -36,7 +28,12 @@ export class AgentRunner {
         // 4. 工具集
         console.log('[runner] listTools start...');
         const tools = (await this.deps.mcpBridge.listTools())
-            .filter((t) => isToolEnabled(t.name));
+            .filter((t) => isToolEnabled(t.name))
+            .map((t) => ({
+            name: t.name,
+            description: t.description,
+            input_schema: sanitizeJsonSchema(t.inputSchema ?? {}),
+        }));
         console.log('[runner] listTools done count=' + tools.length);
         tools.push({
             name: LOAD_SKILL_NAME,
@@ -78,30 +75,6 @@ export class AgentRunner {
         const useToolRunner = process.env.RUNNER_USE_TOOL_RUNNER !== '0';
         console.log('[runner] useToolRunner=' + useToolRunner + ' model=' + cfg.model);
         if (useToolRunner) {
-            // ── 新 (post-fix-list 2026-07-10): Tool Runner 流式 → SDK 原生事件透传 ──
-            //
-            // R4 时误把 `for await (const x of iter)` 拿到的对象当成 Anthropic.Message emit;
-            // 实际 `stream: true` 时 SDK 返回的是 BetaMessageStream(EventEmitter+async iterable),
-            // 那个对象 .messages / .receivedMessages / .controller 才是 portal 早先看到的内部状态。
-            //
-            // Spec §A.2.3 streaming variant 解法:订阅 BetaMessageStream 的 'streamEvent' 事件,
-            // 把每个 SDK 原生事件 *原本*映射成 spec-chat-agent.md §A.3 的 ChatOutgoing 帧:
-            //   SDK raw event name          →  spec frame type
-            //   ──────────────────────────────────────────────────
-            //   message_start               →  message_start       { message }
-            //   content_block_start         →  content_block_start { index, content_block }
-            //   content_block_delta          →  content_block_delta  { index, delta }
-            //   content_block_stop          →  content_block_stop  { index }
-            //   message_delta               →  message_delta       { delta, usage? }
-            //   message_stop                →  message_stop        {}
-            //
-            // 结束时 (await finalMessage) 一次性 emit `message` 给需要 final payload 的 caller,
-            // 但实际 portal 消费的是上面 6 个 SDK event,所以 `message` 帧可选。
-            //
-            // R6 (Phase 2) abort signal 接 BetaToolRunnerRequestOptions 第二参(SDK 0.110+ signature)。
-            // R7 (Phase 3) recordAndSend:每个 emit 前先 recordEvent 持久化到 agent.message_events。
-            // toolRunner 自带 Symbol.asyncIterator (per BetaToolRunner.d.ts) — for-await 解构
-            // 一次来抽 BetaMessageStream;iter 是 toolRunner 自身的 iterator。
             const iter = this.deps.anthropic.beta.messages.toolRunner({
                 model: cfg.model,
                 max_tokens: cfg.params.maxTokens,
@@ -111,14 +84,11 @@ export class AgentRunner {
                 stream: true,
                 ...(thinkingCfg ?? {}),
             }, msg.signal ? { signal: msg.signal } : undefined);
-            // 取第一次 yield 拿 BetaMessageStream 实例;tollRunner 自己管内部多轮迭代,
-            // 我们只关心它的第一份 stream(后续 iter 循环由 SDK 内部消费,见 BetaToolRunner.mjs)。
             const stream = await (async () => {
                 for await (const s of iter)
                     return s;
                 throw new Error('toolRunner finished without yielding a stream');
             })();
-            // R7 fix: 变量提升到 Promise scope 外，finalMessage 回调赋值，Promise resolve 后持久化
             let finalAssistantContent = '';
             let finalToolCalls = null;
             await new Promise((resolve, reject) => {
@@ -133,38 +103,25 @@ export class AgentRunner {
                         resolve();
                 };
                 stream.on('streamEvent', (event) => {
-                    // BetaMessageStreamEvent 形状: { type: 'message_start' | 'content_block_start' | ... ,
-                    //   message?, index?, content_block?, delta?, usage?, ... }
-                    // spec-chat-agent.md §A.3 帧 type 与 SDK event type 同名,
-                    // payload 直接透传 SDK event(payload 内字段名已是 spec 要求的)。
                     const frame = { type: event.type, payload: event };
                     this.recordAndSend(conv.conversationId, emitter, frame).catch((e) => console.error('[runner] recordAndSend failed:', e));
                 });
                 stream.on('finalMessage', (finalMessage) => {
-                    // portal 可选消费 'message' 帧(完整 final payload);与 6 帧并存的语义是 final 汇总。
-                    // ChatShell reducer 直接访问 payload.id / .content / .stop_reason / .usage,
-                    // 不加 { message: ... } 包装(与 SDK event 的 message_start 格式对齐)。
                     this.recordAndSend(conv.conversationId, emitter, {
                         type: 'message',
                         payload: finalMessage,
                     }).catch((e) => console.error('[runner] recordAndSend final failed:', e));
-                    // 捕获助手回复内容用于持久化
                     finalAssistantContent = extractTextContent(finalMessage);
                     finalToolCalls = extractToolCalls(finalMessage);
                 });
                 stream.on('error', (err) => {
-                    // 跟 R5/§A.2.5 一致:catch SDK typed exception → 发 error 帧
-                    // 但 emit 已在外面 await finalMessage,错误就转 throw 给 caller。
                     finish(err);
                 });
                 stream.on('aborted', () => {
-                    // R6 user.interrupt 触发 ac.abort() → SDK stream abort;
-                    // 已发 'interrupted' 帧在 web.ts;这里 noop。
                     finish();
                 });
                 stream.on('end', () => finish());
             });
-            // R7 fix: 持久化助手回复到 agent.messages，确保下次 getMessages() 能加载历史
             if (finalAssistantContent || finalToolCalls) {
                 this.deps.conversation.appendMessage({
                     conversationId: conv.conversationId,
@@ -176,10 +133,6 @@ export class AgentRunner {
         }
         else {
             // ── 手动 tool loop + 模拟流式推送 ──
-            // 非流式 messages.create 拿回完整 response,拆成 6 帧协议逐帧推送:
-            //   message_start → content_block_start → delta(分段) → content_block_stop
-            //   → …(tool execution)… → message_delta → message_stop
-            // Portal 侧 ChatShell reducer 逐帧消费,UI 逐块渲染。
             console.log('[runner] starting manual tool loop, model=' + cfg.model);
             const MAX_TOOL_TURNS = 10;
             const loopMessages = [...messages];
@@ -188,15 +141,10 @@ export class AgentRunner {
                 if (delayMs > 0)
                     await sleep(delayMs);
             };
-            /**
-             * 把一条完整的 LLM response 拆成流式帧序列推送。
-             * toolResults 可选: 含 tool_use 的 turn 把 tool_result blocks 追加到同一条消息末尾。
-             */
             const emitResponseStreaming = async (response, toolResults) => {
                 const msgId = response.id;
                 const blocks = (response.content || []);
                 const allBlocks = toolResults ? [...blocks, ...toolResults] : blocks;
-                // 1. message_start — Portal 侧创建新的 streaming ChatMessage
                 await emitFrame({
                     type: 'message_start',
                     payload: {
@@ -206,31 +154,27 @@ export class AgentRunner {
                         },
                     },
                 }, 10);
-                // 2. 逐 block 推送
                 for (let i = 0; i < allBlocks.length; i++) {
                     const block = allBlocks[i];
                     if (block.type === 'text') {
-                        // content_block_start: 先放空 text,Portal 侧会创建 Markdown 区域
                         await emitFrame({
                             type: 'content_block_start',
                             payload: { index: i, content_block: { type: 'text', text: '' } },
                         }, 10);
-                        // 逐 chunk 推送 delta,模拟打字效果
                         const text = block.text;
-                        const CHUNK = 3; // 每次 3 个字符,更平滑的打字效果
+                        const CHUNK = 3;
                         for (let pos = 0; pos < text.length; pos += CHUNK) {
                             const chunk = text.slice(pos, pos + CHUNK);
                             await emitFrame({
                                 type: 'content_block_delta',
                                 payload: { index: i, delta: { type: 'text_delta', text: chunk } },
-                            }, 18); // ~167 chars/s, 更慢更自然
+                            }, 18);
                         }
                         await emitFrame({
                             type: 'content_block_stop', payload: { index: i },
                         }, 5);
                     }
                     else if (block.type === 'thinking') {
-                        // thinking 块: Portal 渲染为可折叠面板,一次性推送完整内容
                         await emitFrame({
                             type: 'content_block_start',
                             payload: { index: i, content_block: { type: 'thinking', thinking: block.thinking } },
@@ -240,7 +184,6 @@ export class AgentRunner {
                         }, 5);
                     }
                     else if (block.type === 'tool_use') {
-                        // tool_use 块: 先展示工具头(名称+id),再逐段展示输入 JSON
                         await emitFrame({
                             type: 'content_block_start',
                             payload: {
@@ -275,7 +218,6 @@ export class AgentRunner {
                         }, 5);
                     }
                 }
-                // 3. message_delta + message_stop → Portal 标记消息为 done
                 await emitFrame({
                     type: 'message_delta',
                     payload: {
@@ -287,7 +229,6 @@ export class AgentRunner {
                     type: 'message_stop', payload: {},
                 }, 5);
             };
-            // ── Tool loop ──
             for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
                 console.log('[runner] tool loop turn ' + (turn + 1) + '/' + MAX_TOOL_TURNS);
                 const response = await this.deps.anthropic.messages.create({
@@ -302,12 +243,10 @@ export class AgentRunner {
                 const toolUses = (response.content || []).filter((c) => c.type === 'tool_use');
                 if (toolUses.length > 0) {
                     console.log('[runner] turn ' + (turn + 1) + ' has ' + toolUses.length + ' tool_use(s)');
-                    // 深拷贝存入对话历史
                     loopMessages.push({
                         role: 'assistant',
                         content: (response.content || []).map((c) => ({ ...c })),
                     });
-                    // 执行工具调用
                     const toolResults = [];
                     for (const tu of toolUses) {
                         const toolName = tu.name;
@@ -316,7 +255,7 @@ export class AgentRunner {
                         let resultContent;
                         let isError = false;
                         try {
-                            const result = await this.deps.mcpBridge.call(toolName, toolInput, msg.userId);
+                            const result = await this.deps.mcpBridge.call(toolName, toolInput);
                             resultContent = result.success
                                 ? (typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2))
                                 : 'MCP error: ' + (result.error || 'unknown');
@@ -338,13 +277,11 @@ export class AgentRunner {
                         });
                     }
                     loopMessages.push({ role: 'user', content: toolResults });
-                    // 流式推送本 turn: thinking + tool_use + tool_result 依次出现
                     await emitResponseStreaming(response, toolResults);
                     continue;
                 }
                 // 无 tool_use → 最终 text 回复
                 await emitResponseStreaming(response);
-                // R7 fix: end_turn 且无 tool_use 时也要持久化（纯文本回复路径）
                 const finalText = extractTextContent(response);
                 await this.deps.conversation.appendMessage({
                     conversationId: conv.conversationId,
@@ -355,60 +292,85 @@ export class AgentRunner {
                 break;
             }
             console.log('[runner] tool loop done');
-            // R7 fix: 持久化本次新增的消息到 agent.messages
-            // loopMessages = history(前 history.length 条) + userMsg + assistant turns + tool_results
-            // 只持久化索引 >= history.length 的新消息，避免重复写入历史
             const prevMsgCount = history.length;
-            // 第一步：持久化原始用户输入（不在 loopMessages 里取，避免 Session Context 污染）
             await this.deps.conversation.appendMessage({
                 conversationId: conv.conversationId,
                 role: 'user',
                 content: msg.content,
             }).catch((e) => console.error('[runner] appendMessage(user) failed:', e.message));
-            // 第二步：遍历 loopMessages 只取 assistant 和 tool_result 新增部分
             for (let i = prevMsgCount; i < loopMessages.length; i++) {
                 const m = loopMessages[i];
-                if (m.role === 'user') {
-                    // 用户消息已在上一步单独持久化，跳过（loopMessages 里 user 含 Session Context）
+                if (m.role === 'user')
                     continue;
-                }
                 if (m.role === 'assistant') {
                     const blocks = Array.isArray(m.content) ? m.content : [{ type: 'text', text: String(m.content) }];
                     const text = blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
                     const toolCalls = blocks.filter((b) => b.type === 'tool_use').map((b) => ({ id: b.id, name: b.name, input: b.input }));
-                    // 即使 text 为空也要存（纯 tool_use 轮次），否则 getMessages 还原时丢失 assistant turn
                     await this.deps.conversation.appendMessage({
                         conversationId: conv.conversationId,
                         role: 'assistant',
-                        content: text || '(tool calls)', // 标记纯 tool 轮次，非空字符串确保不会被过滤
+                        content: text || '(tool calls)',
                         toolCalls: toolCalls.length > 0 ? toolCalls : null,
                     }).catch((e) => console.error('[runner] appendMessage(assistant) failed:', e.message));
                 }
-                // tool_result 由 assistent 的 toolCalls 字段隐式携带，不单独存
             }
         }
         return { conversationId: conv.conversationId };
     }
-    /**
-     * 顺序: 先 emit 帧给 client(实时 UI 优先),再 recordEvent 写 DB(replay 端点)。
-     * recordEvent 失败(DB 缺表 / DB down) 静默吞掉,不影响流式体验。
-     * Portal 调试经验: 一旦 recordEvent 失败,UI 看不到任何 frame(整个 emit 被 catch 吞)。
-     */
     async recordAndSend(conversationId, emitter, frame) {
         await emitter.send(frame);
         this.deps.conversation.recordEvent(conversationId, frame.type, frame.payload)
             .catch((e) => console.error('[runner] recordEvent failed (silent):', e?.message ?? e));
     }
 }
+/**
+ * 递归清理 JSON Schema 中不被某些 LLM API 接受的属性。
+ * - 移除 `nullable: true` → 改为 anyOf
+ * - 确保 `type` 字段存在
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function sanitizeJsonSchema(schema) {
+    if (!schema || typeof schema !== 'object')
+        return schema;
+    if (Array.isArray(schema))
+        return schema.map(sanitizeJsonSchema);
+    const out = {};
+    for (const [key, value] of Object.entries(schema)) {
+        // Recursively clean nested schemas
+        if (key === 'properties' && value && typeof value === 'object' && !Array.isArray(value)) {
+            const cleaned = {};
+            for (const [propName, propSchema] of Object.entries(value)) {
+                cleaned[propName] = sanitizeJsonSchema(propSchema);
+            }
+            out[key] = cleaned;
+        }
+        else if ((key === 'items' || key === 'additionalProperties' || key === 'contains') && value && typeof value === 'object') {
+            out[key] = sanitizeJsonSchema(value);
+        }
+        else if (key === 'anyOf' || key === 'oneOf' || key === 'allOf') {
+            out[key] = Array.isArray(value) ? value.map(sanitizeJsonSchema) : value;
+        }
+        else if (key === 'nullable') {
+            // Drop nullable — not supported by DeepSeek / MiniMax
+            // already handled by stripping it
+        }
+        else {
+            out[key] = value;
+        }
+    }
+    // Ensure type field exists for object schemas with properties
+    if (out.properties && !out.type && !out.anyOf && !out.oneOf && !out.allOf) {
+        out.type = 'object';
+    }
+    return out;
+}
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-/** Extract plain text from an Anthropic Message's content blocks. */
 function extractTextContent(msg) {
     if (!msg?.content)
         return '';
     const blocks = Array.isArray(msg.content) ? msg.content : [];
     return blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
 }
-/** Extract tool_use blocks from an Anthropic Message's content. */
 function extractToolCalls(msg) {
     if (!msg?.content)
         return null;

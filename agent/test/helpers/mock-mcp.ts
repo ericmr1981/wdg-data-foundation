@@ -1,35 +1,29 @@
 // agent/test/helpers/mock-mcp.ts
-import { McpBridge, type McpCallResult } from '../../src/mcp/bridge.ts'
+import { UnifiedMcpBridge, type McpCallResult } from '../../src/mcp/bridge.ts'
 
-export class MockMcpBridge extends McpBridge {
-  private handlers: Record<string, (args: any, userId: string) => McpCallResult> = {}
+export class MockMcpBridge extends UnifiedMcpBridge {
+  private handlers: Record<string, (args: any) => McpCallResult> = {}
 
   constructor() {
-    super('http://mock', {
-      agentMd: '',
-      params: { mcpRetryMaxAttempts: 0 } as any,
-      baseURL: null,
-      apiKey: null,
-      model: 'mock',
-      source: 'mock',
-    } as any)
+    super()
   }
 
-  call = async (toolName: string, args: any, userId: string): Promise<McpCallResult> => {
+  call = async (toolName: string, args: any): Promise<McpCallResult> => {
     const handler = this.handlers[toolName]
     if (!handler) {
       return { success: false, data: null, error: `Tool not found: ${toolName}`, retryable: false }
     }
-    return handler(args, userId)
+    return handler(args)
   }
 
   listTools = async () => Object.keys(this.handlers).map(name => ({
     name,
     description: `Mock ${name}`,
-    input_schema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: {} } as Record<string, unknown>,
+    _backend: 'mock',
   }))
 
-  on(toolName: string, handler: (args: any, userId: string) => McpCallResult) {
+  on(toolName: string, handler: (args: any) => McpCallResult) {
     this.handlers[toolName] = handler
   }
 

@@ -13,8 +13,9 @@ const CANDIDATE_PATHS = [
   join(__dirname, '..', '..', 'default-agent.md'),          // fallback
 ]
 
+/** AGENT_MD_PATH env var 可覆盖 agent.md 文件路径 */
 export const AGENT_MD_PATH =
-  CANDIDATE_PATHS.find((p) => existsSync(p)) ?? CANDIDATE_PATHS[CANDIDATE_PATHS.length - 1] ?? process.cwd()
+  process.env.AGENT_MD_PATH ?? CANDIDATE_PATHS.find((p) => existsSync(p)) ?? CANDIDATE_PATHS[CANDIDATE_PATHS.length - 1] ?? process.cwd()
 
 export function loadDefaultAgentMd(): string {
   try {

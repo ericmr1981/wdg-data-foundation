@@ -1,7 +1,16 @@
 'use client';
+import { useState } from 'react';
 import { AgentConfigEditor } from '@/components/admin/AgentConfigEditor';
 import { AgentConfigPreview } from '@/components/admin/AgentConfigPreview';
 import type { AgentConfigParams } from '@/lib/chat/agent-config-store';
+
+interface McpBackend {
+  name: string;
+  url: string;
+  transport?: string;
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+}
 
 interface Props {
   initial: {
@@ -11,11 +20,14 @@ interface Props {
     apiKeyMasked: string | null;
     model: string;
     jwksUrl: string | null;
+    mcpBackends?: McpBackend[];
   };
   defaultParams: AgentConfigParams;
 }
 
 export function ClientAgentConfig({ initial, defaultParams }: Props) {
+  const [saving, setSaving] = useState(false);
+
   async function handleSave(data: {
     agentMd: string;
     params: AgentConfigParams;
@@ -23,30 +35,26 @@ export function ClientAgentConfig({ initial, defaultParams }: Props) {
     apiKey: string;
     model: string;
     jwksUrl: string | null;
+    mcpBackends?: McpBackend[];
   }) {
-    // Note: apiKey '' means "keep current value" (server distinguishes via === '').
-    // To CLEAR the apiKey the admin should click "重置默认" (which calls DELETE).
-    const res = await fetch('/api/admin/agent-config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        agentMd: data.agentMd,
-        params: data.params,
-        baseURL: data.baseURL,
-        apiKey: data.apiKey,
-        model: data.model,
-        jwksUrl: data.jwksUrl,
-      }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    // After save, reload to pick up masked apiKey from server (in case model changed)
-    window.location.reload();
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/agent-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      window.location.reload();
+    } catch (e) {
+      alert('保存失败: ' + (e instanceof Error ? e.message : String(e)));
+      setSaving(false);
+    }
   }
 
   async function handleReset() {
     const res = await fetch('/api/admin/agent-config', { method: 'DELETE' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    // After reset, reload the page to reflect the default values.
     window.location.reload();
   }
 

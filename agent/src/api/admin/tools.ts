@@ -1,6 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { McpBridge } from '../../mcp/bridge.js'
-import { getAgentConfig } from '../../config/store.js'
+import { UnifiedMcpBridge } from '../../mcp/bridge.js'
 
 // 工具启用/禁用列表 (v1 在内存，v1.1 移到 DB)
 const disabledTools = new Set<string>()
@@ -12,17 +11,23 @@ export function registerAdminToolRoutes(app: FastifyInstance) {
     if (role !== 'admin') return reply.code(403).send({ error: 'forbidden' })
   })
 
-  // GET 列表 (从 McpBridge.listTools 实时拉)
+  // GET 列表 (实时拉)
   app.get('/api/admin/tools', async () => {
-    const cfg = getAgentConfig()
-    const bridge = new McpBridge(process.env.MCP_ENDPOINT ?? 'http://ui:3000/api/mcp', cfg)
+    const bridge = new UnifiedMcpBridge()
+    await bridge.connectBackends([{
+      name: 'wdg',
+      url: process.env.MCP_ENDPOINT ?? 'http://ui:3000/api/mcp',
+      transport: 'fetch',
+      headers: { 'x-mcp-session': 'internal', 'x-wdg-user-id': 'agent-system' },
+    }])
     const tools = await bridge.listTools()
+    await bridge.disconnectAll()
     return {
       success: true,
-      tools: tools.map((t: any) => ({
+      tools: tools.map(t => ({
         name: t.name,
         description: t.description ?? '',
-        inputSchema: t.input_schema ?? {},
+        inputSchema: t.inputSchema ?? {},
         enabled: !disabledTools.has(t.name),
       })),
     }

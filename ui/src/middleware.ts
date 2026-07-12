@@ -43,6 +43,7 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/u/store-report') ||
     pathname.startsWith('/u/sales/tamkoko') ||
     pathname.startsWith('/api/admin/analyze-unclassified') ||
+    pathname.startsWith('/api/admin/restart-agent') ||
     pathname.startsWith('/api/chat')
   ) {
     return NextResponse.next();
