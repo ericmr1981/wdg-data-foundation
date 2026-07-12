@@ -10,6 +10,7 @@ interface Props {
     apiKeyMasked: string | null;
     model: string;
     jwksUrl: string | null;
+    mcpBackends?: Array<{ name: string; url: string; transport?: string; headers?: Record<string, string>; timeoutMs?: number }>;
   };
   defaultParams: AgentConfigParams;
   onSave: (data: {
@@ -19,6 +20,7 @@ interface Props {
     apiKey: string;
     model: string;
     jwksUrl: string | null;
+    mcpBackends?: Array<{ name: string; url: string; transport?: string; headers?: Record<string, string>; timeoutMs?: number }>;
   }) => Promise<void>;
   onReset: () => Promise<void>;
 }
@@ -49,10 +51,15 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
   const [showKey, setShowKey] = useState(false);
   const [model, setModel] = useState(initial.model);
   const [jwksUrl, setJwksUrl] = useState(initial.jwksUrl ?? '');
+  const [mcpBackendsJson, setMcpBackendsJson] = useState(
+    JSON.stringify(initial.mcpBackends ?? [], null, 2),
+  );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
+  const [restarting, setRestarting] = useState(false);
+  const [restartMessage, setRestartMessage] = useState<string | null>(null);
 
   const dirty = agentMd !== initial.agentMd
     || (Object.keys(params) as Array<keyof AgentConfigParams>).some(k => params[k] !== initial.params[k])
@@ -69,6 +76,13 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
     setSaving(true);
     setMessage(null);
     try {
+      // 解析 mcpBackends JSON
+      let parsedBackends: Array<{ name: string; url: string; transport?: string; headers?: Record<string, string>; timeoutMs?: number }> | undefined;
+      try {
+        const val = JSON.parse(mcpBackendsJson);
+        if (Array.isArray(val)) parsedBackends = val as any;
+      } catch { /* keep undefined — don't send backends if JSON invalid */ }
+
       await onSave({
         agentMd,
         params,
@@ -76,6 +90,7 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
         apiKey,
         model: model.trim() || 'claude-opus-4-8',
         jwksUrl: jwksUrl.trim() || null,
+        mcpBackends: parsedBackends,
       });
       setMessage('✅ 已保存。下一个请求即生效。');
       setApiKey('');  // clear after save
@@ -97,6 +112,48 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
       setMessage('❌ 重置失败：' + (e as Error).message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** 轮询 agent 是否就绪（检查 agent.reachable），最多等 45 秒 */
+  async function waitForAgentReady(maxWaitMs = 45000): Promise<boolean> {
+    const deadline = Date.now() + maxWaitMs
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 1500))
+      try {
+        const res = await fetch('/api/admin/agent-config')
+        if (res.ok) {
+          const data = await res.json()
+          if (data?.agent?.reachable && data?.agent?.source === 'db') {
+            return true
+          }
+        }
+      } catch { /* agent not reachable yet */ }
+      setRestartMessage(`⏳ Agent 重启中... ${Math.round((deadline - Date.now()) / 1000)}s 后超时`)
+    }
+    return false
+  }
+
+  async function handleRestart() {
+    if (!confirm('确定重启 Agent？重启期间服务暂时不可用（约 5-10 秒）。')) return;
+    setRestarting(true);
+    setRestartMessage(null);
+    try {
+      const r = await fetch('/api/admin/restart-agent', { method: 'POST' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setRestartMessage('✅ Agent 正在重启...');
+
+      const ready = await waitForAgentReady()
+      if (ready) {
+        setRestartMessage('✅ Agent 已就绪，配置完整。刷新页面...');
+        setTimeout(() => window.location.reload(), 500)
+      } else {
+        setRestartMessage('⚠️ Agent 超时未就绪 — 请手动刷新页面确认状态');
+      }
+    } catch (e) {
+      setRestartMessage('❌ 重启失败：' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setRestarting(false);
     }
   }
 
@@ -278,7 +335,15 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
         >
           {testing ? 'Testing…' : 'Test Connection'}
         </button>
+        <button
+          onClick={handleRestart}
+          disabled={restarting}
+          className="rounded border border-orange-300 px-4 py-2 text-sm text-orange-700 hover:bg-orange-50 disabled:opacity-50"
+        >
+          {restarting ? '重启中…' : '重启 Agent'}
+        </button>
         {message && <span className="text-sm text-gray-700">{message}</span>}
+        {restartMessage && <span className="text-sm text-orange-700">{restartMessage}</span>}
       </div>
       {testResult && (
         <div className={`mt-3 rounded p-3 text-sm ${testResult.success ? 'bg-green-50 text-green-900' : 'bg-red-50 text-red-900'}`}>
@@ -292,6 +357,30 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
       )}
 
       {/* System Prompt 预览已挪到下方 <AgentConfigPreview> 组件 (拉真实 46 工具) */}
+
+      {/* 外部 MCP 后端 */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700">外部 MCP 后端</h3>
+        <p className="mt-1 text-xs text-gray-500">
+          JSON 数组，每项可含 <code>name</code>, <code>url</code>, <code>transport</code> (<em>fetch</em>/<em>sse</em>),
+          <code>headers</code>, <code>timeoutMs</code>。写入后需重启 Agent 生效。
+        </p>
+        <textarea
+          value={mcpBackendsJson}
+          onChange={e => setMcpBackendsJson(e.target.value)}
+          rows={8}
+          className="mt-2 w-full rounded border border-gray-300 bg-white px-3 py-2 font-mono text-xs"
+          placeholder={`[
+  { "name": "dailycheck", "url": "http://dailycheck:5100/api/mcp",
+    "transport": "fetch", "headers": { "Authorization": "Bearer xyz" },
+    "timeoutMs": 30000
+  }
+]`}
+        />
+        <p className="mt-1 text-[10px] text-gray-400">
+          {initial.mcpBackends?.length ?? 0} 个后端已配置（从 DB 加载）
+        </p>
+      </div>
     </div>
   );
 }
