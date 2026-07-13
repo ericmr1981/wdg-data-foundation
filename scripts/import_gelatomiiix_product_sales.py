@@ -6,31 +6,34 @@
 Path convention: inputs/{brand_code}/{store_code}/product_sales/{YYYY-MM}/{filename}.csv
 """
 
-import argparse, hashlib, os, re, sys
+import os
+import re
+import sys
 from datetime import datetime, date
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 import psycopg2
-from psycopg2.extras import execute_values
 
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
-from _store_guard import load_valid_stores  # noqa: E402
-
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "port": os.getenv("DB_PORT", "5432"),
-    "database": os.getenv("DB_NAME", "dataplatform"),
-    "user": os.getenv("DB_USER", "postgres"),
-    "password": os.getenv("DB_PASSWORD"),
-}
+from lib.importer import (
+    calculate_sha256,
+    ensure_table_exists,
+    get_db_config,
+    IngestFileManager,
+    insert_batch,
+    load_valid_stores,
+    parse_path,
+    setup_cli_parser,
+)
 
 STORE_CODE_DEFAULT = os.getenv("GELATOMIIIX_STORE_CODE", "sh_xtd")
 STORE_NAME_DEFAULT = os.getenv("GELATOMIIIX_STORE_NAME", "上海新天地店")
 TARGET_TABLE = "gelatomiiix_ods.product_sales_detail"
+SOURCE_TYPE = "product_sales"
 
 COLMAP = {
     '门店名称': 'store_name',
@@ -45,37 +48,50 @@ COLMAP = {
 }
 
 
-def calculate_sha256(file_path: str) -> str:
-    sha256_hash = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for block in iter(lambda: f.read(4096), b""):
-            sha256_hash.update(block)
-    return sha256_hash.hexdigest()
+TABLE_DDL = """
+CREATE SCHEMA IF NOT EXISTS gelatomiiix_ods;
+CREATE TABLE IF NOT EXISTS gelatomiiix_ods.product_sales_detail (
+  id BIGSERIAL PRIMARY KEY, store_code TEXT NOT NULL, store_name TEXT,
+  biz_date DATE NOT NULL, order_no TEXT NOT NULL,
+  product_name TEXT NOT NULL, unit_price NUMERIC(14,2),
+  qty INT, sales_amt NUMERIC(14,2), received_amt NUMERIC(14,2),
+  discount_amt NUMERIC(14,2), source_file_id BIGINT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_gelatomiiix_product_sales_detail UNIQUE (store_code, order_no, product_name)
+);
+"""
+
+COLUMNS = [
+    "store_code", "store_name", "biz_date", "order_no", "product_name",
+    "unit_price", "qty", "sales_amt", "received_amt", "discount_amt",
+    "order_hour", "source_file_id",
+]
+
+CONFLICT_CLAUSE = """
+ON CONFLICT (store_code, order_no, product_name) DO UPDATE SET
+  store_name=EXCLUDED.store_name, unit_price=EXCLUDED.unit_price,
+  qty=EXCLUDED.qty, sales_amt=EXCLUDED.sales_amt,
+  received_amt=EXCLUDED.received_amt, discount_amt=EXCLUDED.discount_amt,
+  order_hour=EXCLUDED.order_hour, source_file_id=EXCLUDED.source_file_id
+"""
 
 
-def parse_path(file_path: str) -> dict:
+def parse_path_gelato(file_path: str) -> dict:
+    """Parse path with fallback to env defaults."""
     p = Path(file_path)
     parts = p.parts
     if "inputs" not in parts:
         return {
             "brand_code": "gelatomiiix",
             "store_code": STORE_CODE_DEFAULT,
-            "source_type": "product_sales",
+            "source_type": SOURCE_TYPE,
             "month": None, "month_date": None,
             "file_name": p.name, "file_path": str(p),
         }
-    idx = parts.index("inputs")
-    if len(parts) < idx + 5:
+    try:
+        return parse_path(file_path, SOURCE_TYPE)
+    except ValueError:
         raise ValueError(f"路径格式: inputs/{{brand_code}}/{{store_code}}/product_sales/{{YYYY-MM}}/{{file}}\n实际: {file_path}")
-    return {
-        "brand_code": parts[idx + 1],
-        "store_code": parts[idx + 2],
-        "source_type": parts[idx + 3],
-        "month": parts[idx + 4],
-        "month_date": f"{parts[idx + 4]}-01",
-        "file_name": parts[-1],
-        "file_path": file_path,
-    }
 
 
 def to_numeric(v):
@@ -143,55 +159,6 @@ def transform(df: pd.DataFrame) -> list[dict]:
     return records
 
 
-def ensure_table_exists(conn):
-    with conn.cursor() as cur:
-        cur.execute("""
-            SELECT EXISTS (SELECT FROM information_schema.tables
-              WHERE table_schema='gelatomiiix_ods' AND table_name='product_sales_detail');
-        """)
-        if cur.fetchone()[0]:
-            return
-        cur.execute("""
-            CREATE SCHEMA IF NOT EXISTS gelatomiiix_ods;
-            CREATE TABLE IF NOT EXISTS gelatomiiix_ods.product_sales_detail (
-              id BIGSERIAL PRIMARY KEY, store_code TEXT NOT NULL, store_name TEXT,
-              biz_date DATE NOT NULL, order_no TEXT NOT NULL,
-              product_name TEXT NOT NULL, unit_price NUMERIC(14,2),
-              qty INT, sales_amt NUMERIC(14,2), received_amt NUMERIC(14,2),
-              discount_amt NUMERIC(14,2), source_file_id BIGINT,
-              created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-              CONSTRAINT uq_gelatomiiix_product_sales_detail UNIQUE (store_code, order_no, product_name)
-            );
-        """)
-        conn.commit()
-
-
-def check_ingest_file(file_hash: str, conn) -> Optional[dict]:
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT id, brand_code, store_code, source_type, month, status, row_count FROM raw.ingest_file WHERE file_hash = %s",
-            (file_hash,))
-        row = cur.fetchone()
-        return {"id": row[0], "status": row[5]} if row else None
-
-
-def create_ingest_file(meta: dict, file_hash: str, file_size: int, conn) -> int:
-    with conn.cursor() as cur:
-        cur.execute("""
-            INSERT INTO raw.ingest_file (brand_code,store_code,source_type,month,file_name,file_path,file_hash,file_size,status)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'pending') RETURNING id
-        """, (meta['brand_code'], meta['store_code'], meta['source_type'],
-              meta['month_date'], meta['file_name'], meta['file_path'], file_hash, file_size))
-        return cur.fetchone()[0]
-
-
-def update_ingest_file_success(source_file_id: int, row_count: int, conn):
-    with conn.cursor() as cur:
-        cur.execute("UPDATE raw.ingest_file SET status='success', row_count=%s, finished_at=CURRENT_TIMESTAMP WHERE id=%s",
-                    (row_count, source_file_id))
-        conn.commit()
-
-
 def delete_existing_by_source(source_file_id: int, conn) -> int:
     with conn.cursor() as cur:
         cur.execute(f"DELETE FROM {TARGET_TABLE} WHERE source_file_id = %s", (source_file_id,))
@@ -200,59 +167,23 @@ def delete_existing_by_source(source_file_id: int, conn) -> int:
         return deleted
 
 
-def insert_rows(records: list[dict], meta: dict, source_file_id: int, conn) -> int:
-    store_code = meta.get("store_code") or STORE_CODE_DEFAULT
-    store_name = STORE_NAME_DEFAULT
-    # Dedup by (order_no, product_name) to avoid ON CONFLICT errors
-    seen: set[tuple[str, str]] = set()
-    deduped: list[dict] = []
-    for r in records:
-        key = (r['order_no'], r['product_name'])
-        if key not in seen:
-            seen.add(key)
-            deduped.append(r)
-    values = [
-        (store_code, store_name, r['biz_date'], r['order_no'],
-         r['product_name'], r['unit_price'], r['qty'],
-         r['sales_amt'], r['received_amt'], r['discount_amt'],
-         r.get('order_hour'), source_file_id)
-        for r in deduped
-    ]
-    if not values:
-        return 0
-    with conn.cursor() as cur:
-        execute_values(cur, f"""
-            INSERT INTO {TARGET_TABLE}
-              (store_code,store_name,biz_date,order_no,product_name,unit_price,qty,sales_amt,received_amt,discount_amt,order_hour,source_file_id)
-            VALUES %s
-            ON CONFLICT (store_code, order_no, product_name) DO UPDATE SET
-              store_name=EXCLUDED.store_name, unit_price=EXCLUDED.unit_price,
-              qty=EXCLUDED.qty, sales_amt=EXCLUDED.sales_amt,
-              received_amt=EXCLUDED.received_amt, discount_amt=EXCLUDED.discount_amt,
-              order_hour=EXCLUDED.order_hour, source_file_id=EXCLUDED.source_file_id
-        """, values)
-        conn.commit()
-    return len(values)
-
-
 def main():
-    ap = argparse.ArgumentParser(description="gelatomiiix 商品销售明细导入")
-    ap.add_argument("input", help="csv file or directory")
-    ap.add_argument("--dry-run", action="store_true")
+    ap = setup_cli_parser("gelatomiiix 商品销售明细导入")
     args = ap.parse_args()
+
+    if not args.input:
+        raise SystemExit("Usage: python import_gelatomiiix_product_sales.py [csv_file_or_dir]")
 
     in_path = Path(args.input)
     files = [str(p) for p in in_path.rglob("*.csv")] if in_path.is_dir() else [str(in_path)]
     if not files:
         raise SystemExit(f"no csv files under: {in_path}")
 
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = psycopg2.connect(**get_db_config())
     try:
-        ensure_table_exists(conn)
-        # 预先按 brand 加载合法 store 缓存，避免逐文件打 DB
         valid_stores_cache: dict[str, set[str]] = {}
         for fp in sorted(files):
-            meta = parse_path(fp)
+            meta = parse_path_gelato(fp)
             brand = meta["brand_code"]
             if brand not in valid_stores_cache:
                 valid_stores_cache[brand] = load_valid_stores(brand, conn)
@@ -262,28 +193,52 @@ def main():
                     f"FATAL: ops.stores 中没有 brand={brand!r} 的 enabled 门店"
                 )
             if meta["store_code"] not in valid:
-                # 历史教训：跨品牌错写会把脏数据灌入 *_ods 表
                 raise SystemExit(
                     f"FATAL: 文件 {fp} 路径推得 store_code={meta['store_code']!r}，"
                     f"不属于 brand={brand!r} 合法集合 {sorted(valid)}。"
                 )
             file_hash = calculate_sha256(fp)
             file_size = os.path.getsize(fp)
-            existing = check_ingest_file(file_hash, conn)
+            mgr = IngestFileManager(conn)
+            existing = mgr.check(file_hash)
             if existing and existing['status'] == 'success':
                 print(f"SKIP: {fp}")
                 continue
-            source_file_id = existing['id'] if existing else create_ingest_file(meta, file_hash, file_size, conn)
+            month = meta.get("month_date") or f"{datetime.now().strftime('%Y-%m')}-01"
+            source_file_id = (
+                existing['id']
+                if existing
+                else mgr.create(
+                    meta['brand_code'], meta['store_code'], SOURCE_TYPE,
+                    meta.get('month_date') or f"{datetime.now().strftime('%Y-%m')}-01",
+                    meta['file_name'], meta['file_path'], file_hash, file_size,
+                )
+            )
             conn.commit()
 
             df = read_csv(fp)
             records = transform(df)
             print(f"FILE: {fp} -> {len(records)} records")
             if args.dry_run:
+                mgr.mark_pending(source_file_id, len(records))
                 continue
+
+            ensure_table_exists(conn, "gelatomiiix_ods", "product_sales_detail", TABLE_DDL)
             delete_existing_by_source(source_file_id, conn)
-            inserted = insert_rows(records, meta, source_file_id, conn)
-            update_ingest_file_success(source_file_id, inserted, conn)
+
+            store_code = meta.get("store_code") or STORE_CODE_DEFAULT
+            store_name = STORE_NAME_DEFAULT
+            seen: set[tuple[str, str]] = set()
+            deduped = [r for r in records if (r['order_no'], r['product_name']) not in seen and not seen.add((r['order_no'], r['product_name']))]
+            values = [
+                (store_code, store_name, r['biz_date'], r['order_no'],
+                 r['product_name'], r['unit_price'], r['qty'],
+                 r['sales_amt'], r['received_amt'], r['discount_amt'],
+                 r.get('order_hour'), source_file_id)
+                for r in deduped
+            ]
+            inserted = insert_batch(conn, TARGET_TABLE, COLUMNS, values, CONFLICT_CLAUSE)
+            mgr.mark_success(source_file_id, inserted)
             print(f"  inserted={inserted}")
     finally:
         conn.close()
