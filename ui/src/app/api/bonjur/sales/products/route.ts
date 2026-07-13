@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
-import { getErrorMessage, getErrorCode } from '@/lib/query-types';
+import { getErrorMessage } from '@/lib/query-types';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: { by_sales: bySales.rows, by_qty: byQty.rows } });
   } catch (error: unknown) {
-    if (getErrorCode(error) === '42P01') {
+    if ((error as { code?: string })?.code === '42P01') {
       return NextResponse.json({ success: true, data: null, note: 'view not ready' });
     }
     return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { normalizeBrand, getDmSchemaSafe } from '@/lib/brand-server';
-import { getErrorMessage, getErrorCode } from '@/lib/query-types';
+import { getErrorMessage } from '@/lib/query-types';
 import { parsePeriod } from '../period-utils';
 
 // GET /api/financial/kpi-trend?brand=x&period=2026-06&span=month&store=xxx
@@ -242,7 +242,7 @@ export async function GET(request: Request) {
       },
     });
   } catch (error: unknown) {
-    if (getErrorCode(error) === '42P01') {
+    if ((error as { code?: string })?.code === '42P01') {
       return NextResponse.json({ success: true, data: null, note: 'view not ready' });
     }
     console.error('Error in kpi-trend route:', error);

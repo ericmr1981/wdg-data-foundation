@@ -3,7 +3,7 @@ import pool from '@/lib/db';
 import { normalizeBrand, getDmSchemaSafe, getOdsSchema } from '@/lib/brand-server';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { parsePeriod } from '../period-utils';
-import { ProfitRow, CashflowRow, BalanceSheetRow, CountRow, getErrorMessage, getErrorCode } from '@/lib/query-types';
+import { ProfitRow, CashflowRow, BalanceSheetRow, CountRow, getErrorMessage } from '@/lib/query-types';
 
 function getPrevBoundaries(period: string, span: string): [string, string] | null {
   if (span === 'month') {
@@ -279,7 +279,7 @@ export async function GET(request: Request) {
       },
     });
   } catch (error: unknown) {
-    if (getErrorCode(error) === '42P01') {
+    if ((error as { code?: string })?.code === '42P01') {
       return NextResponse.json({ success: true, data: null, note: 'view not ready' });
     }
     console.error('Error in overview route:', error);

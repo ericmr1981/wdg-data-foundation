@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
-import { getErrorMessage, getErrorCode } from '@/lib/query-types';
+import { getErrorMessage } from '@/lib/query-types';
 
 // GET /api/admin/users - list all users
 export async function GET() {
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     if (status === 401 || status === 403) {
       return NextResponse.json({ success: false, error: (error as Error).message }, { status });
     }
-    if (getErrorCode(error) === '23505') {
+    if ((error as { code?: string })?.code === '23505') {
       return NextResponse.json({ success: false, error: 'Username already exists' }, { status: 409 });
     }
     console.error('Error creating user:', error);
@@ -119,7 +119,7 @@ export async function PUT(request: Request) {
     if (status === 401 || status === 403) {
       return NextResponse.json({ success: false, error: (error as Error).message }, { status });
     }
-    if (getErrorCode(error) === '23505') {
+    if ((error as { code?: string })?.code === '23505') {
       return NextResponse.json({ success: false, error: 'Username already exists' }, { status: 409 });
     }
     console.error('Error updating user:', error);
