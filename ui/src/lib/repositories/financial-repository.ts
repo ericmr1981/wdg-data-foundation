@@ -51,7 +51,7 @@ export async function getFinancialOverview(
 ): Promise<OverviewData> {
   const boundaries = buildPeriodBoundaries(period, span);
   if (!boundaries) {
-    return { profit: [], cashflow: [], balance: null, cogs_total: '0' };
+    return { profit: [], cashflow: [], balance: null, cogs_total: '0', qimai_net: null, qimai_gross: null };
   }
   const { start, end } = boundaries;
 
@@ -88,8 +88,20 @@ export async function getFinancialOverview(
       ${scCogs.clause}
   `, [start, end, ...scCogs.params]);
 
-  const [profitRes, cfRes, balanceRes, cogsRes] = await Promise.all([
-    profitPromise, cfPromise, balancePromise, cogsPromise,
+  const odsSchema = dmSchema.replace('_dm', '_ods');
+  const scQimai = buildStoreCondition(store, 2);
+  const qimaiPromise = pool.query<{ qimai_net: string; qimai_gross: string }>(`
+    SELECT
+      COALESCE(SUM(net_amt), 0)::numeric   AS qimai_net,
+      COALESCE(SUM(gross_amt), 0)::numeric AS qimai_gross
+    FROM ${odsSchema}.income_detail
+    WHERE NOT COALESCE(is_member_payment, FALSE)
+      AND NOT COALESCE(is_refund, FALSE)
+      AND biz_date >= $1::date AND biz_date < $2::date ${scQimai.clause}
+  `, [start, end, ...scQimai.params]);
+
+  const [profitRes, cfRes, balanceRes, cogsRes, qimaiRes] = await Promise.all([
+    profitPromise, cfPromise, balancePromise, cogsPromise, qimaiPromise,
   ]);
 
   return {
@@ -97,6 +109,8 @@ export async function getFinancialOverview(
     cashflow: cfRes.rows,
     balance: balanceRes.rows[0] || null,
     cogs_total: cogsRes.rows[0]?.cogs_total || '0',
+    qimai_net: qimaiRes.rows[0]?.qimai_net ?? null,
+    qimai_gross: qimaiRes.rows[0]?.qimai_gross ?? null,
   };
 }
 
@@ -276,7 +290,7 @@ export async function getKpiTrend(
   const storeClause = store !== 'all' ? 'AND t.store_code = $1' : '';
   const storeParams = store !== 'all' ? [store] : [];
 
-  const result = await pool.query(`
+  const result = await pool.query<KpiTrendRow>(`
     SELECT
       to_char(date_trunc('month', t.txn_time)::date, 'YYYY-MM') as month,
       COALESCE(SUM(CASE WHEN c.lvl1_code = 'REV_BIZ' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as revenue_amt,
@@ -292,7 +306,7 @@ export async function getKpiTrend(
     ORDER BY month DESC
     LIMIT 12
   `, storeParams);
-  return result.rows as unknown as KpiTrendRow[];
+  return result.rows;
 }
 
 // ── Income metrics (lvl1 breakdown of inflows) ──

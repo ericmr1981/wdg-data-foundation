@@ -19,19 +19,18 @@ export interface OverviewData {
   cashflow: CashflowRow[];
   balance: BalanceSheetRow | null;
   cogs_total: string;
+  qimai_net: string | null;
+  qimai_gross: string | null;
 }
 
 export interface KpiTrendRow extends QueryResultRow {
   month: string;
   revenue_amt: string;
-  expense_amt: string;
-  gross_profit_amt: string;
+  rev_other_amt: string;
+  material_cost_amt: string;
   net_profit_amt: string;
-  operating_cf_amt: string;
-  cash_balance: string;
-  cashflow_runway_months: string | null;
-  hr_ratio_pct: string | null;
-  rent_ratio_pct: string | null;
+  expense_amt: string;
+  non_cogs_exp_amt: string;
 }
 
 export interface IncomeMetricsRow extends QueryResultRow {
@@ -51,7 +50,4 @@ export interface CounterpartyRow extends QueryResultRow {
   txn_count: string;
 }
 
-export interface QimaiRevenueRow extends QueryResultRow {
-  month: string;
-  revenue_amt: string;
-}
+
