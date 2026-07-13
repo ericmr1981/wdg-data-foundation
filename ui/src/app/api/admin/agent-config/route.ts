@@ -42,16 +42,15 @@ export async function POST(req: NextRequest) {
   if (body.params && typeof body.params === 'object') agentBody.params = body.params
   if (body.baseURL !== undefined || body.apiKey !== undefined || body.model !== undefined) {
     const credentials: Record<string, unknown> = {}
-    const sentByUser = (body as any)
-    if (sentByUser.hasOwnProperty('baseURL')) {
+    if ('baseURL' in body) {
       credentials.baseURL = body.baseURL
         ? (typeof body.baseURL === 'string' && body.baseURL.trim() ? body.baseURL.trim() : null)
         : null
     }
-    if (sentByUser.hasOwnProperty('apiKey')) {
+    if ('apiKey' in body) {
       credentials.apiKey = (typeof body.apiKey === 'string' && body.apiKey !== '') ? body.apiKey : null
     }
-    if (sentByUser.hasOwnProperty('model')) {
+    if ('model' in body) {
       credentials.model = (typeof body.model === 'string' && body.model.trim()) ? body.model.trim() : 'claude-opus-4-8'
     }
     agentBody.credentials = credentials

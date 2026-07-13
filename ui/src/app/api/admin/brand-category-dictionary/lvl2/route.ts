@@ -65,7 +65,7 @@ export async function POST(request: Request) {
           sort_order = EXCLUDED.sort_order,
           updated_at = NOW()
       `,
-      [lvl1_code, lvl2_code, lvl2_name, enabled, Number.isFinite(sort_order as any) ? sort_order : null]
+      [lvl1_code, lvl2_code, lvl2_name, enabled, sort_order !== null && Number.isFinite(sort_order) ? sort_order : null]
     );
 
     return NextResponse.json({ success: true });
@@ -101,7 +101,7 @@ export async function PUT(request: Request) {
     if (body.enabled !== undefined) add('enabled', Boolean(body.enabled));
     if (body.sort_order !== undefined) {
       const v = body.sort_order === null || body.sort_order === '' ? null : Number(body.sort_order);
-      add('sort_order', Number.isFinite(v as any) ? v : null);
+      add('sort_order', v !== null && Number.isFinite(v) ? v : null);
     }
 
     if (patches.length === 0) return NextResponse.json({ success: true });

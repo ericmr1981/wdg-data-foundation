@@ -5,7 +5,7 @@ import pool from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-const TASKS = ['data_stale', 'unmatched_txn', 'dup_rule', 'monthly_report'] as const;
+const TASKS: readonly string[] = ['data_stale', 'unmatched_txn', 'dup_rule', 'monthly_report'];
 
 // Lightweight 5-field cron syntax check (m/h/d/M/dow). Deep semantics
 // (e.g. Feb 30) are validated by the wdg-scheduler daemon on reload.
@@ -78,7 +78,7 @@ export async function PUT(req: NextRequest) {
   }
   // 校验 cron + task_name
   for (const it of body.items) {
-    if (!TASKS.includes(it.task_name as any)) {
+    if (!TASKS.includes(it.task_name)) {
       return NextResponse.json({ error: `unknown task: ${it.task_name}` }, { status: 400 });
     }
     try {

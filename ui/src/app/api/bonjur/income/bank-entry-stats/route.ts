@@ -149,7 +149,7 @@ export async function GET(request: NextRequest) {
     }
     channelMetrics.push({ channel: 'TOTAL', qimai_net_amt: tq.toFixed(2), bank_entry_amt: tb.toFixed(2), entry_rate: tq > 0 ? (tb / tq * 100).toFixed(2) : '0.00', month_qimai_amt: tcq.toFixed(2), month_bank_amt: tcb.toFixed(2) });
 
-    const unmatchedOrders = (unmatchedOrdersResult.rows as any[]).map((r: any) => ({
+    const unmatchedOrders = unmatchedOrdersResult.rows.map((r: any) => ({
       month: r.month, channel: r.ch, order_count: r.oc, unentered_amt: parseFloat(r.ua).toFixed(2),
     }));
 

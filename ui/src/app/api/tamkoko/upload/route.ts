@@ -27,9 +27,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: 'Invalid period (YYYY-MM)' }, { status: 400 });
   }
 
-  const ALLOWED = ['.xlsx', '.xls'] as const;
+  const ALLOWED: readonly string[] = ['.xlsx', '.xls'];
   const fileExt = '.' + file.name.toLowerCase().split('.').pop()!;
-  if (!ALLOWED.includes(fileExt as any)) {
+  if (!ALLOWED.includes(fileExt)) {
     return NextResponse.json({ success: false, error: `Invalid file type: ${fileExt}` }, { status: 400 });
   }
 
