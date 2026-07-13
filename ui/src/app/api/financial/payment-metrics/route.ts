@@ -4,6 +4,7 @@ import { normalizeBrand, getDmSchemaSafe, getCfgSchema } from '@/lib/brand-serve
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { parsePeriod } from '../period-utils';
 import { getErrorMessage } from '@/lib/query-types';
+import { getPaymentMetrics } from '@/lib/repositories/financial-repository';
 
 interface PaymentLvl1Row {
   lvl1_code: string;
@@ -60,16 +61,6 @@ export async function GET(request: Request) {
       params.push(store);
     }
 
-    // Total outgoing + lvl1 breakdown (no JOIN needed, lookup lvl1 names separately)
-    const totalParams = [...params];
-    const totalAndLvl1Query = `
-      SELECT lvl1_code, sum(abs(net_amount)) as amount
-      FROM ${dmSchema}.v_cashflow_statement
-      WHERE net_amount < 0 ${dateClause} ${storeClause}
-      GROUP BY lvl1_code
-      ORDER BY amount DESC
-    `;
-
     // Dim lookup for lvl1 names
     const dimQuery = `SELECT lvl1_code, lvl1_name FROM ${cfgSchema}.dim_category_lvl1`;
 
@@ -85,15 +76,15 @@ export async function GET(request: Request) {
       LIMIT 12
     `;
 
-    const [lvl1Res, dimRes, trendRes] = await Promise.all([
-      pool.query(totalAndLvl1Query, totalParams),
+    const lvl1Result = await getPaymentMetrics(dmSchema, cfgSchema, period, span, store);
+    const [dimRes, trendRes] = await Promise.all([
       pool.query(dimQuery),
       pool.query(trendQuery, trendParams),
     ]);
 
     const dimMap = new Map((dimRes.rows as { lvl1_code: string; lvl1_name: string }[]).map(r => [r.lvl1_code, r.lvl1_name]));
 
-    const byLvl1 = (lvl1Res.rows as PaymentLvl1Row[]).map(r => ({
+    const byLvl1 = lvl1Result.map(r => ({
       lvl1_code: r.lvl1_code,
       lvl1_name: dimMap.get(r.lvl1_code) || r.lvl1_code,
       amount: Number(r.amount),

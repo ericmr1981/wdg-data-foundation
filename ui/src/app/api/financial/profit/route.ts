@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db';
 import { normalizeBrand, getDmSchemaSafe } from '@/lib/brand-server';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { parsePeriod } from '../period-utils';
 import { getErrorMessage } from '@/lib/query-types';
+import { getProfitStatement, getCogsTotal } from '@/lib/repositories/financial-repository';
 
 interface LineItem {
   section: string;
@@ -165,7 +165,6 @@ export async function GET(request: Request) {
     if (!boundaries) {
       return NextResponse.json({ success: false, error: 'Invalid period format' }, { status: 400 });
     }
-    const [startDate, endDate] = boundaries;
 
     let dmSchema: string;
     try {
@@ -176,49 +175,12 @@ export async function GET(request: Request) {
       }
       throw err;
     }
-    const viewName = `${dmSchema}.v_profit_statement`;
 
-    // Use parameterized query for store filter to prevent SQL injection
-    const params: (string | number)[] = [startDate, endDate];
-    let storeClause = '';
-    if (store !== 'all') {
-      storeClause = `AND store_code = $3`;
-      params.push(store);
-    }
-
-    const query = `
-      SELECT section, lvl1_code, lvl1_name, lvl2_code, lvl2_name,
-             sum(amount) as amount
-      FROM ${viewName}
-      WHERE month >= $1::date AND month < $2::date ${storeClause}
-      GROUP BY section, lvl1_code, lvl1_name, lvl2_code, lvl2_name
-      ORDER BY min(sort_order), lvl1_code, lvl2_code
-    `;
-
-    // Inventory-based COGS: when tamkoko has inventory_monthly_summary rows,
-    // SUM(cogs_amt) across the period is the true cost of goods sold.
-    // Falls back to NULL (= use bank MATERIAL approximation) when not available.
-    const cogsParams: (string | number)[] = [startDate, endDate];
-    let cogsStoreClause = '';
-    if (store !== 'all') {
-      cogsStoreClause = `AND store_code = $3`;
-      cogsParams.push(store);
-    }
-    const cogsQuery = `
-      SELECT COALESCE(SUM(cogs_amt), 0)::numeric AS cogs_total
-      FROM ${dmSchema}.v_cogs_monthly
-      WHERE period >= to_char($1::date, 'YYYY-MM')
-        AND period <  to_char($2::date, 'YYYY-MM')
-        ${cogsStoreClause}
-    `;
-
-    const [result, cogsRes] = await Promise.all([
-      pool.query(query, params),
-      pool.query(cogsQuery, cogsParams).catch(() => ({ rows: [{ cogs_total: null }] })),
+    const [result, cogsTotal] = await Promise.all([
+      getProfitStatement(dmSchema, period, span, store),
+      getCogsTotal(dmSchema, period, span, store),
     ]);
-    const cogsTotal: number | null = cogsRes.rows[0]?.cogs_total != null
-      ? Number(cogsRes.rows[0].cogs_total) : null;
-    const lines = buildProfitLines(result.rows, cogsTotal);
+    const lines = buildProfitLines(result as Parameters<typeof buildProfitLines>[0], cogsTotal);
 
     return NextResponse.json({
       success: true,

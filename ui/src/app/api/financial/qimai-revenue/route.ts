@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
-import { normalizeBrand, getDmSchema, getOdsSchema } from '@/lib/brand-server';
+import { normalizeBrand, getDmSchemaSafe, getOdsSchema } from '@/lib/brand-server';
 import { parsePeriod } from '../period-utils';
+import { getQimaiRevenue } from '@/lib/repositories/financial-repository';
 
 // GET /api/financial/qimai-revenue?brand=gelatomiiix&period=2026-06&span=month&store=xxx
 // Returns cumulative bank revenue and qimai revenue up to the selected period
@@ -21,49 +21,18 @@ export async function GET(request: Request) {
 
     const boundaries = parsePeriod(period, span);
     if (!boundaries) return NextResponse.json({ success: false, error: 'Invalid period' }, { status: 400 });
-    const [, endDate] = boundaries;
 
-    const dmSchema = getDmSchema(brand);
+    const dmSchema = await getDmSchemaSafe(brand);
     const odsSchema = getOdsSchema(brand);
     const incomeOds = brand === 'gelatomiiix' ? 'gelatomiiix_ods' : odsSchema;
 
-    const storeClause = store !== 'all' ? 'AND store_code = $2' : '';
-    const storeParams = store !== 'all' ? [endDate, store] : [endDate];
-
-    let bankRevenue = 0;
-    try {
-      const brRes = await pool.query(
-        `SELECT COALESCE(SUM(amount), 0)::numeric as bank_revenue
-         FROM ${dmSchema}.v_profit_statement
-         WHERE section = 'revenue' AND lvl1_code = 'REV_BIZ'
-           AND lvl2_code != 'OTHER_CH'
-           AND month < $1::date ${storeClause}`,
-        storeParams
-      );
-      bankRevenue = Number(brRes.rows[0]?.bank_revenue || 0);
-    } catch {
-      // view not ready
-    }
-
-    let qimaiRevenue: number | null = null;
-    try {
-      const qiRes = await pool.query(
-        `SELECT COALESCE(SUM(net_amt), 0)::numeric as qimai_revenue
-         FROM ${incomeOds}.income_detail
-         WHERE NOT is_member_payment AND NOT is_refund
-           AND biz_date < $1::date ${storeClause}`,
-        storeParams
-      );
-      qimaiRevenue = Number(qiRes.rows[0]?.qimai_revenue || 0);
-    } catch {
-      // income_detail table doesn't exist for this brand
-    }
+    const data = await getQimaiRevenue(dmSchema, odsSchema, incomeOds, period, span, store);
 
     return NextResponse.json({
       success: true,
       data: {
-        bank_revenue: bankRevenue,
-        qimai_revenue: qimaiRevenue,
+        bank_revenue: data.bank_revenue,
+        qimai_revenue: data.qimai_revenue,
       },
     });
   } catch (err: any) {

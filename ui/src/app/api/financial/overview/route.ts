@@ -3,25 +3,29 @@ import pool from '@/lib/db';
 import { normalizeBrand, getDmSchemaSafe, getOdsSchema } from '@/lib/brand-server';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { parsePeriod } from '../period-utils';
-import { ProfitRow, CashflowRow, BalanceSheetRow, CountRow, getErrorMessage } from '@/lib/query-types';
+import { getErrorMessage } from '@/lib/query-types';
+import {
+  getFinancialOverview,
+  getBeginningBalance,
+  getActiveStoreCount,
+  getKpiRate,
+  getOperatingExpenses,
+} from '@/lib/repositories/financial-repository';
 
-function getPrevBoundaries(period: string, span: string): [string, string] | null {
+function getPrevPeriod(period: string, span: string): string {
   if (span === 'month') {
     const [y, m] = period.split('-');
-    let pm = Number(m) - 1, py = Number(y);
-    if (pm < 1) { pm = 12; py--; }
-    const pp = `${py}-${String(pm).padStart(2, '0')}`;
-    return parsePeriod(pp, 'month');
+    const pm = Number(m) - 1;
+    return pm < 1 ? `${Number(y) - 1}-12` : `${y}-${String(pm).padStart(2, '0')}`;
   }
   if (span === 'quarter') {
     const [y, q] = period.split('-Q');
-    if (q === '1') return parsePeriod(`${Number(y) - 1}-Q4`, 'quarter');
-    return parsePeriod(`${y}-Q${Number(q) - 1}`, 'quarter');
+    return q === '1' ? `${Number(y) - 1}-Q4` : `${y}-Q${Number(q) - 1}`;
   }
   if (span === 'year') {
-    return parsePeriod(String(Number(period) - 1), 'year');
+    return String(Number(period) - 1);
   }
-  return null;
+  return '';
 }
 
 export async function GET(request: Request) {
@@ -41,7 +45,6 @@ export async function GET(request: Request) {
 
     const boundaries = parsePeriod(period, span);
     if (!boundaries) return NextResponse.json({ success: false, error: 'Invalid period' }, { status: 400 });
-    const [startDate, endDate] = boundaries;
 
     let dmSchema: string;
     try {
@@ -53,101 +56,26 @@ export async function GET(request: Request) {
       throw err;
     }
 
-    // Helper to build params with store clause
-    const withStore = (base: (string | number)[]): { params: (string | number)[]; clause: string } => {
-      const p = [...base];
-      let c = '';
-      if (store !== 'all') {
-        c = `AND store_code = $${p.length + 1}`;
-        p.push(store);
-      }
-      return { params: p, clause: c };
-    };
-
-    // Current period queries
-    const cp = withStore([startDate, endDate]);
-
-    const [profitRes, cfRes, balanceRes, storesRes, beginBalanceRes, npRes, gmRes, cogsRes, qimaiRes, expensesRes] = await Promise.all([
-      pool.query(
-        `SELECT lvl1_code, sum(amount) as amount FROM ${dmSchema}.v_profit_statement WHERE month >= $1::date AND month < $2::date ${cp.clause} GROUP BY lvl1_code`,
-        cp.params
-      ),
-      pool.query(
-        `SELECT activity, sum(net_amount) as net_amount FROM ${dmSchema}.v_cashflow_statement WHERE month >= $1::date AND month < $2::date ${cp.clause} GROUP BY activity`,
-        cp.params
-      ),
-      pool.query(
-        `SELECT cash_balance FROM ${dmSchema}.v_balance_sheet WHERE month < $1::date ${store !== 'all' ? 'AND store_code = $2' : ''} ORDER BY month DESC LIMIT 1`,
-        store !== 'all' ? [endDate, store] : [endDate]
-      ),
-      store === 'all'
-        ? pool.query(
-            `SELECT count(DISTINCT store_code) as cnt FROM ${dmSchema}.v_profit_statement WHERE month >= $1::date AND month < $2::date`,
-            [startDate, endDate]
-          )
-        : Promise.resolve({ rows: [{ cnt: '1' }] }),
-      pool.query(
-        `SELECT cash_balance FROM ${dmSchema}.v_balance_sheet WHERE month < $1::date ${store !== 'all' ? 'AND store_code = $2' : ''} ORDER BY month DESC LIMIT 1`,
-        store !== 'all' ? [startDate, store] : [startDate]
-      ),
-      pool.query(
-        `SELECT AVG(net_profit_rate_pct) as rate_pct
-         FROM ${dmSchema}.v_store_monthly_kpi
-         WHERE month >= $1::date AND month < $2::date ${cp.clause}`,
-        cp.params
-      ),
-      // Gross margin: source of truth is v_store_monthly_kpi.gross_profit_rate_pct (cogs-based for
-      // tamkoko via v_cogs_monthly; approximation for brands without inventory). AVG across months
-      // is fine because the view already returns NULL for first-period-no-opening cases.
-      pool.query(
-        `SELECT AVG(gross_profit_rate_pct) as rate_pct
-         FROM ${dmSchema}.v_store_monthly_kpi
-         WHERE month >= $1::date AND month < $2::date ${cp.clause}`,
-        cp.params
-      ),
-      // Inventory-based COGS for qimai-gross-margin calc (tamkoko only). NULL when brand has no
-      // cogs view. COGS = opening + purchase − closing (per v_cogs_monthly). We SUM across months
-      // in the period for parity with the bank-revenue SUM.
-      pool.query(
-        `SELECT COALESCE(SUM(cogs_amt), 0)::numeric AS cogs_total
-         FROM ${dmSchema}.v_cogs_monthly
-         WHERE period >= to_char($1::date, 'YYYY-MM')
-           AND period <  to_char($2::date, 'YYYY-MM')
-           ${cp.clause}`,
-        cp.params
-      ),
-      // Qimai revenue for the period. `income_detail` schema differs per brand:
-      //   - gelatomiiix: gelatomiiix_ods (legacy)
-      //   - tamkoko, bonjur, yufeng: <brand>_ods
-      // We use the ods schema returned by getOdsSchema (which already does this mapping for
-      // gelatomiiix; see brand-server). is_member_payment / is_refund filter to non-loyalty
-      // and non-refund rows to avoid double-counting.
-      pool.query(
-        `SELECT
-           COALESCE(SUM(net_amt), 0)::numeric   AS qimai_net,
-           COALESCE(SUM(gross_amt), 0)::numeric AS qimai_gross
-         FROM ${getOdsSchema(brand)}.income_detail
-         WHERE NOT COALESCE(is_member_payment, FALSE)
-           AND NOT COALESCE(is_refund, FALSE)
-           AND biz_date >= $1::date AND biz_date < $2::date ${cp.clause}`,
-        cp.params
-      ),
-      // 营业支出 = sum of operating categories only (excludes BUILD investing, EXP_OTHER misc, FINANCE financing, etc.)
-      pool.query(
-        `SELECT COALESCE(SUM(ABS(amount)), 0)::numeric AS operating_expenses
-         FROM ${dmSchema}.v_profit_statement
-         WHERE lvl1_code IN ('MATERIAL','HR','MKT','RENT_UTIL','SHIP','ADMIN','TAX_SURCHARGE')
-           AND month >= $1::date AND month < $2::date ${cp.clause}`,
-        cp.params
-      ),
+    const [
+      overview,
+      beginBalanceRes,
+      storeCount,
+      npRate,
+      gmRate,
+      expenses,
+    ] = await Promise.all([
+      getFinancialOverview(dmSchema, period, span, store),
+      getBeginningBalance(dmSchema, period, span, store),
+      getActiveStoreCount(dmSchema, period, span, store),
+      getKpiRate(dmSchema, period, span, store, 'net_profit_rate_pct'),
+      getKpiRate(dmSchema, period, span, store, 'gross_profit_rate_pct'),
+      getOperatingExpenses(dmSchema, period, span, store),
     ]);
 
-    const pMap = new Map(profitRes.rows.map((r: ProfitRow) => [r.lvl1_code, Number(r.amount)]));
+    const pMap = new Map(overview.profit.map(r => [r.lvl1_code, Number(r.amount)]));
     const revenue = pMap.get('REV_BIZ') || 0;
     const materialCost = pMap.get('MATERIAL') || 0;
     const allProfits = Array.from(pMap.values()).reduce((s: number, v: number) => s + v, 0);
-    // 营业支出: explicit sum of operating categories. Excludes BUILD (investing) and any non-operating amounts.
-    const expenses = Number(expensesRes.rows[0]?.operating_expenses || 0);
 
     // Unified formula (all brands). gross_profit_rate_pct from v_store_monthly_kpi is the
     // source of truth: for tamkoko it derives from cogs (v_cogs_monthly), and therefore
@@ -156,13 +84,13 @@ export async function GET(request: Request) {
     // approximation when the view itself returns NULL (e.g. all months in range lack opening).
     let grossMarginRate: number;
     let netProfitRate: number;
-    const gmFromView = gmRes.rows[0]?.rate_pct;
+    const gmFromView = gmRate;
     if (gmFromView != null) {
-      grossMarginRate = Number(gmFromView) / 100;
+      grossMarginRate = gmFromView;
     } else {
       grossMarginRate = revenue > 0 ? (revenue + materialCost) / revenue : 0;
     }
-    netProfitRate = Number(npRes.rows[0]?.rate_pct || 0) / 100;
+    netProfitRate = npRate ?? 0;
 
     // Qimai-based gross margin (营业净收 / 营业额). Uses the same COGS as the bank-based formula.
     // Both numbers share the same cost base; only the revenue denominator differs.
@@ -171,22 +99,21 @@ export async function GET(request: Request) {
     // Returns null when qimai data is unavailable (brand without income_detail) or
     // when COGS is null (no inventory, no approximation) — we do NOT silently fall back
     // to the bank-MATERIAL approximation here, to keep the qimai view honest.
-    const cogsTotal: number | null = cogsRes.rows[0]?.cogs_total != null
-      ? Number(cogsRes.rows[0].cogs_total) : null;
-    const qimaiNet: number | null = qimaiRes.rows[0]?.qimai_net != null
-      ? Number(qimaiRes.rows[0].qimai_net) : null;
-    const qimaiGross: number | null = qimaiRes.rows[0]?.qimai_gross != null
-      ? Number(qimaiRes.rows[0].qimai_gross) : null;
+    const cogsTotal: number | null = overview.cogs_total != null
+      ? Number(overview.cogs_total) : null;
+    const qimaiNet: number | null = overview.qimai_net != null
+      ? Number(overview.qimai_net) : null;
+    const qimaiGross: number | null = overview.qimai_gross != null
+      ? Number(overview.qimai_gross) : null;
     const grossMarginRateQimaiNet: number | null =
       qimaiNet != null && cogsTotal != null && qimaiNet > 0
         ? (qimaiNet - cogsTotal) / qimaiNet : null;
     const grossMarginRateQimaiGross: number | null =
       qimaiGross != null && cogsTotal != null && qimaiGross > 0
         ? (qimaiGross - cogsTotal) / qimaiGross : null;
-    const operatingCashflow = Number(cfRes.rows.find((r: CashflowRow) => r.activity === 'operating')?.net_amount || 0);
-    const cashBalance = Number(balanceRes.rows[0]?.cash_balance || 0);
-    const beginningBalance = Number(beginBalanceRes.rows[0]?.cash_balance || 0);
-    const storeCount = Number((storesRes.rows[0] as CountRow | undefined)?.cnt || 0);
+    const operatingCashflow = Number(overview.cashflow.find(r => r.activity === 'operating')?.net_amount || 0);
+    const cashBalance = Number(overview.balance?.cash_balance || 0);
+    const beginningBalance = Number(beginBalanceRes[0]?.cash_balance || 0);
 
     // Ignore records count (offset/cancellation with negative amount)
     let ignoreCount = 0;
@@ -208,49 +135,29 @@ export async function GET(request: Request) {
     const revenuePerStore = storeCount > 0 ? Math.round((revenue / storeCount) * 100) / 100 : 0;
 
     // Previous period for comparison
-    const prevBounds = getPrevBoundaries(period, span);
+    const prevPeriodStr = getPrevPeriod(period, span);
     let vsRevenue = 0, vsGm = 0, vsNp = 0, vsOcf = 0;
 
-    if (prevBounds) {
-      const pp = withStore(prevBounds);
-      const [prevProfitRes, prevCfRes, prevNpRes, prevGmRes] = await Promise.all([
-        pool.query(
-          `SELECT lvl1_code, sum(amount) as amount FROM ${dmSchema}.v_profit_statement WHERE month >= $1::date AND month < $2::date ${pp.clause} GROUP BY lvl1_code`,
-          pp.params
-        ),
-        pool.query(
-          `SELECT sum(net_amount) as net_amount FROM ${dmSchema}.v_cashflow_statement WHERE activity = 'operating' AND month >= $1::date AND month < $2::date ${pp.clause}`,
-          pp.params
-        ),
-        pool.query(
-          `SELECT AVG(net_profit_rate_pct) as rate_pct
-           FROM ${dmSchema}.v_store_monthly_kpi
-           WHERE month >= $1::date AND month < $2::date ${pp.clause}`,
-          pp.params
-        ),
-        pool.query(
-          `SELECT AVG(gross_profit_rate_pct) as rate_pct
-           FROM ${dmSchema}.v_store_monthly_kpi
-           WHERE month >= $1::date AND month < $2::date ${pp.clause}`,
-          pp.params
-        ),
+    if (prevPeriodStr) {
+      const [prevOverview, prevNpRate, prevGmRate] = await Promise.all([
+        getFinancialOverview(dmSchema, prevPeriodStr, span, store),
+        getKpiRate(dmSchema, prevPeriodStr, span, store, 'net_profit_rate_pct'),
+        getKpiRate(dmSchema, prevPeriodStr, span, store, 'gross_profit_rate_pct'),
       ]);
 
-      const prevMap = new Map(prevProfitRes.rows.map((r: ProfitRow) => [r.lvl1_code, Number(r.amount)]));
+      const prevMap = new Map(prevOverview.profit.map(r => [r.lvl1_code, Number(r.amount)]));
       const prevRev = prevMap.get('REV_BIZ') || 0;
       const prevMat = prevMap.get('MATERIAL') || 0;
-      const prevOcf = Number(prevCfRes.rows[0]?.net_amount || 0);
+      const prevOcf = Number(prevOverview.cashflow.find(r => r.activity === 'operating')?.net_amount || 0);
 
       vsRevenue = (revenue > 0 && prevRev > 0) ? (revenue - prevRev) / prevRev : 0;
       // Match the current-period rule: prefer the view's gross_profit_rate_pct (cogs-based for
       // tamkoko) over the bank-MATERIAL approximation; only fall back when the view returned NULL.
-      const prevGmRateRaw = prevGmRes.rows[0]?.rate_pct;
-      const prevGmRate = prevGmRateRaw != null ? Number(prevGmRateRaw) / 100
+      const prevGmRateVal = prevGmRate != null ? prevGmRate
         : (prevRev > 0 ? (prevRev + prevMat) / prevRev : 0);
-      vsGm = revenue > 0 ? grossMarginRate - prevGmRate : 0;
-      const prevNpRate = Number(prevNpRes.rows[0]?.rate_pct || 0) / 100;
+      vsGm = revenue > 0 ? grossMarginRate - prevGmRateVal : 0;
       // Unified formula (all brands). Use the view's pre-computed prev-period net_profit_rate_pct.
-      vsNp = revenue > 0 ? netProfitRate - prevNpRate : 0;
+      vsNp = revenue > 0 ? netProfitRate - (prevNpRate ?? 0) : 0;
       vsOcf = prevOcf !== 0 ? (operatingCashflow - prevOcf) / Math.abs(prevOcf) : 0;
     }
 

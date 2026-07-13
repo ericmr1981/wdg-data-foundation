@@ -4,6 +4,7 @@ import { normalizeBrand, getDmSchemaSafe, getOdsBankTxnTable } from '@/lib/brand
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { parsePeriod } from '../period-utils';
 import { getErrorMessage } from '@/lib/query-types';
+import { getCounterpartyData } from '@/lib/repositories/financial-repository';
 
 // GET /api/financial/counterparty?brand=gelatomiiix
 // GET /api/financial/counterparty?brand=gelatomiiix&counterparty=xxx&period=2026-01&span=month&store=all
@@ -30,71 +31,8 @@ export async function GET(request: Request) {
 
     // If no counterparty specified, return the list
     if (!counterparty) {
-      const isAll = period === 'all' || period === '';
-      if (!isAll) {
-        if (!['month', 'quarter', 'year'].includes(span)) {
-          return NextResponse.json({ success: false, error: 'Invalid span' }, { status: 400 });
-        }
-        const boundaries = parsePeriod(period, span);
-        if (!boundaries) {
-          return NextResponse.json({ success: false, error: 'Invalid period format' }, { status: 400 });
-        }
-      }
-
-      const params: (string | number)[] = [];
-      let storeClause = '';
-      let dateClause = '';
-      let channelClause = '';
-      if (lvl2Code) {
-        channelClause = 'AND c.lvl2_code = $' + (params.length + 1);
-        params.push(lvl2Code);
-      }
-      if (store !== 'all') {
-        storeClause = 'AND t.store_code = $' + (params.length + 1);
-        params.push(store);
-      }
-      if (!isAll) {
-        const boundaries = parsePeriod(period, span)!;
-        dateClause = 'AND t.txn_time >= $' + (params.length + 1) + '::timestamp AND t.txn_time < $' + (params.length + 2) + '::timestamp';
-        params.push(boundaries[0], boundaries[1]);
-      }
-
-      const isIn = direction === 'in';
-      const amountField = isIn ? 'in_amt' : 'out_amt';
-      const totalField = isIn ? 'total_received' : 'total_paid';
-      const listQuery = `
-        SELECT CASE
-                 WHEN t.counterparty_name IS NOT NULL AND t.counterparty_name != '' THEN t.counterparty_name
-                 WHEN t.purpose IS NOT NULL AND t.purpose != '' AND t.purpose != 'NaN' THEN t.purpose
-                 WHEN t.summary IS NOT NULL AND t.summary != '' THEN t.summary
-                 ELSE '（未知名）'
-               END as counterparty_name,
-               c.lvl1_code,
-               l1.lvl1_name,
-               sum(coalesce(t.${amountField}, 0)) as ${totalField},
-               count(*) as txn_count,
-               min(t.txn_time) as first_date,
-               max(t.txn_time) as last_date
-        FROM ${bankTxnTable} t
-        JOIN ${dmSchema}.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
-        LEFT JOIN ${dmSchema.substring(0, dmSchema.lastIndexOf('_'))}_cfg.dim_category_lvl1 l1
-          ON l1.lvl1_code = c.lvl1_code
-        WHERE c.classified_source IN ('rule', 'override')
-          AND coalesce(t.${amountField}, 0) > 0
-          ${dateClause}
-          ${storeClause}
-          ${channelClause}
-        GROUP BY CASE
-                   WHEN t.counterparty_name IS NOT NULL AND t.counterparty_name != '' THEN t.counterparty_name
-                   WHEN t.purpose IS NOT NULL AND t.purpose != '' AND t.purpose != 'NaN' THEN t.purpose
-                   WHEN t.summary IS NOT NULL AND t.summary != '' THEN t.summary
-                   ELSE '（未知名）'
-                 END,
-                 c.lvl1_code, l1.lvl1_name
-        ORDER BY ${totalField} DESC
-      `;
-      const result = await pool.query(listQuery, params);
-      return NextResponse.json({ success: true, data: { counterparties: result.rows } });
+      const data = await getCounterpartyData(dmSchema, bankTxnTable, period, span, store, direction, lvl2Code || undefined);
+      return NextResponse.json({ success: true, data: { counterparties: data } });
     }
 
     // "全部" = no date filter

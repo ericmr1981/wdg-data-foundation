@@ -4,6 +4,7 @@ import { normalizeBrand, getDmSchemaSafe, getCfgSchema } from '@/lib/brand-serve
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { parsePeriod } from '../period-utils';
 import { getErrorMessage } from '@/lib/query-types';
+import { getIncomeMetrics } from '@/lib/repositories/financial-repository';
 
 interface Lvl1Row {
   lvl1_code: string;
@@ -67,15 +68,6 @@ export async function GET(request: Request) {
       params.push(store);
     }
 
-    // Total income + lvl1 breakdown
-    const totalAndLvl1Query = `
-      SELECT lvl1_code, sum(net_amount) as amount
-      FROM ${dmSchema}.v_cashflow_statement
-      WHERE net_amount > 0 ${dateClause} ${storeClause}
-      GROUP BY lvl1_code
-      ORDER BY amount DESC
-    `;
-
     // Lvl2 breakdown
     const lvl2Query = `
       SELECT lvl1_code, lvl2_code, sum(net_amount) as amount
@@ -111,8 +103,8 @@ export async function GET(request: Request) {
       LIMIT 12
     `;
 
-    const [lvl1Res, lvl2Res, dimLvl1Res, dimLvl2Res, trendRes] = await Promise.all([
-      pool.query(totalAndLvl1Query, params),
+    const lvl1Result = await getIncomeMetrics(dmSchema, cfgSchema, period, span, store);
+    const [lvl2Res, dimLvl1Res, dimLvl2Res, trendRes] = await Promise.all([
       pool.query(lvl2Query, params),
       pool.query(dimLvl1Query),
       pool.query(dimLvl2Query),
@@ -125,7 +117,7 @@ export async function GET(request: Request) {
         .map(r => [`${r.lvl1_code}:${r.lvl2_code}`, r.lvl2_name])
     );
 
-    const byLvl1 = (lvl1Res.rows as Lvl1Row[]).map(r => ({
+    const byLvl1 = lvl1Result.map(r => ({
       lvl1_code: r.lvl1_code,
       lvl1_name: lvl1NameMap.get(r.lvl1_code) || r.lvl1_code,
       amount: Number(r.amount),

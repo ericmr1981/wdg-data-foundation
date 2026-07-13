@@ -4,6 +4,7 @@ import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { normalizeBrand, getDmSchemaSafe } from '@/lib/brand-server';
 import { getErrorMessage } from '@/lib/query-types';
 import { parsePeriod } from '../period-utils';
+import { getKpiTrend } from '@/lib/repositories/financial-repository';
 
 // GET /api/financial/kpi-trend?brand=x&period=2026-06&span=month&store=xxx
 // Returns:
@@ -27,27 +28,13 @@ export async function GET(request: Request) {
     const [startDate, endDate] = boundaries;
 
     const dmSchema = await getDmSchemaSafe(brand);
+    const odsSchema = dmSchema.replace('_dm', '_ods');
+    const cfgSchema = dmSchema.replace('_dm', '_cfg');
     const storeClause = store !== 'all' ? 'AND t.store_code = $1' : '';
     const storeParams = store !== 'all' ? [store] : [];
 
     // ── Trend data — always last 12 months, unfiltered by period ──
-    const profitTrend = await pool.query(
-      `SELECT
-        to_char(date_trunc('month', t.txn_time)::date, 'YYYY-MM') as month,
-        COALESCE(SUM(CASE WHEN c.lvl1_code = 'REV_BIZ' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as revenue,
-        COALESCE(SUM(CASE WHEN c.lvl1_code = 'REV_OTHER' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as rev_other,
-        COALESCE(SUM(CASE WHEN c.lvl1_code = 'MATERIAL' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as material_cost,
-        COALESCE(SUM(coalesce(t.in_amt,0) - coalesce(t.out_amt,0)), 0) as net_profit,
-        COALESCE(ABS(SUM(CASE WHEN c.lvl1_code IN ('MATERIAL','HR','RENT_UTIL','MKT','ADMIN','SHIP','TAX_SURCHARGE','EXP_OTHER','BUILD') THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END)), 0) as expenses,
-        COALESCE(ABS(SUM(CASE WHEN c.lvl1_code IN ('HR','MKT','RENT_UTIL','SHIP','ADMIN') THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END)), 0) as non_cogs_exp
-      FROM ${dmSchema}.bank_txn_classified_snapshot c
-      JOIN ${dmSchema.replace('_dm', '_ods')}.bank_txn t ON t.id = c.bank_txn_id
-      WHERE c.classified_source IN ('rule', 'override') ${storeClause}
-      GROUP BY date_trunc('month', t.txn_time)::date
-      ORDER BY month DESC
-      LIMIT 12`,
-      storeParams
-    );
+    const profitTrend = await getKpiTrend(dmSchema, period, span, store);
 
     const npTrend = await pool.query(
       `SELECT
@@ -73,7 +60,7 @@ export async function GET(request: Request) {
           ELSE 0
         END), 0) as operating_cashflow
       FROM ${dmSchema}.bank_txn_classified_snapshot c
-      JOIN ${dmSchema.replace('_dm', '_ods')}.bank_txn t ON t.id = c.bank_txn_id
+      JOIN ${odsSchema}.bank_txn t ON t.id = c.bank_txn_id
       WHERE c.classified_source IN ('rule', 'override') ${storeClause}
       GROUP BY date_trunc('month', t.txn_time)::date
       ORDER BY month DESC
@@ -83,13 +70,13 @@ export async function GET(request: Request) {
 
     // Build monthly trend
     const profitMap = new Map<string, { revenue: number; revOther: number; material: number; net: number; expenses: number; nonCogsExp: number }>();
-    for (const r of profitTrend.rows) profitMap.set(r.month, {
-      revenue: Number(r.revenue),
-      revOther: Number(r.rev_other),
-      material: Number(r.material_cost),
-      net: Number(r.net_profit),
-      expenses: Number(r.expenses),
-      nonCogsExp: Number(r.non_cogs_exp),
+    for (const r of profitTrend) profitMap.set(r.month, {
+      revenue: Number(r.revenue_amt),
+      revOther: Number(r.rev_other_amt),
+      material: Number(r.material_cost_amt),
+      net: Number(r.net_profit_amt),
+      expenses: Number(r.expense_amt),
+      nonCogsExp: Number(r.non_cogs_exp_amt),
     });
 
     const cfMap = new Map<string, number>();
@@ -135,7 +122,7 @@ export async function GET(request: Request) {
           c.lvl2_code,
           COALESCE(SUM(coalesce(t.out_amt,0) - coalesce(t.in_amt,0)), 0) as amount
         FROM ${dmSchema}.bank_txn_classified_snapshot c
-        JOIN ${dmSchema.replace('_dm', '_ods')}.bank_txn t ON t.id = c.bank_txn_id
+        JOIN ${odsSchema}.bank_txn t ON t.id = c.bank_txn_id
         WHERE c.classified_source IN ('rule', 'override')
           AND t.txn_time >= $1::date AND t.txn_time < $2::date${store !== 'all' ? ' AND t.store_code = $3' : ''}
         GROUP BY c.lvl1_code, c.lvl2_code
@@ -146,11 +133,11 @@ export async function GET(request: Request) {
         l2.lvl2_code,
         l2d.lvl2_name,
         COALESCE(a.amount, 0) as amount
-      FROM (SELECT DISTINCT lvl2_code, lvl1_code FROM ${dmSchema.replace('_dm', '_cfg')}.dim_category_lvl2 WHERE lvl1_code IN (
-        SELECT lvl1_code FROM ${dmSchema.replace('_dm', '_cfg')}.dim_category_lvl1 WHERE direction = 'out' AND enabled = true
+      FROM (SELECT DISTINCT lvl2_code, lvl1_code FROM ${cfgSchema}.dim_category_lvl2 WHERE lvl1_code IN (
+        SELECT lvl1_code FROM ${cfgSchema}.dim_category_lvl1 WHERE direction = 'out' AND enabled = true
       )) l2
-      JOIN ${dmSchema.replace('_dm', '_cfg')}.dim_category_lvl1 l1 ON l1.lvl1_code = l2.lvl1_code
-      JOIN ${dmSchema.replace('_dm', '_cfg')}.dim_category_lvl2 l2d ON l2d.lvl1_code = l2.lvl1_code AND l2d.lvl2_code = l2.lvl2_code
+      JOIN ${cfgSchema}.dim_category_lvl1 l1 ON l1.lvl1_code = l2.lvl1_code
+      JOIN ${cfgSchema}.dim_category_lvl2 l2d ON l2d.lvl1_code = l2.lvl1_code AND l2d.lvl2_code = l2.lvl2_code
       LEFT JOIN actuals a ON a.lvl1_code = l2.lvl1_code AND a.lvl2_code = l2.lvl2_code
       ORDER BY l1.sort_order, l2d.lvl2_code`,
       expParams
@@ -175,7 +162,7 @@ export async function GET(request: Request) {
           c.lvl2_code,
           COALESCE(SUM(coalesce(t.out_amt,0) - coalesce(t.in_amt,0)), 0) as amount
         FROM ${dmSchema}.bank_txn_classified_snapshot c
-        JOIN ${dmSchema.replace('_dm', '_ods')}.bank_txn t ON t.id = c.bank_txn_id
+        JOIN ${odsSchema}.bank_txn t ON t.id = c.bank_txn_id
         WHERE c.classified_source IN ('rule', 'override')
           AND t.txn_time >= $1::date AND t.txn_time < $2::date${store !== 'all' ? ' AND t.store_code = $3' : ''}
         GROUP BY c.lvl1_code, c.lvl2_code
@@ -186,11 +173,11 @@ export async function GET(request: Request) {
         l2.lvl2_code,
         l2d.lvl2_name,
         COALESCE(a.amount, 0) as amount
-      FROM (SELECT DISTINCT lvl2_code, lvl1_code FROM ${dmSchema.replace('_dm', '_cfg')}.dim_category_lvl2 WHERE lvl1_code IN (
-        SELECT lvl1_code FROM ${dmSchema.replace('_dm', '_cfg')}.dim_category_lvl1 WHERE direction = 'out' AND enabled = true
+      FROM (SELECT DISTINCT lvl2_code, lvl1_code FROM ${cfgSchema}.dim_category_lvl2 WHERE lvl1_code IN (
+        SELECT lvl1_code FROM ${cfgSchema}.dim_category_lvl1 WHERE direction = 'out' AND enabled = true
       )) l2
-      JOIN ${dmSchema.replace('_dm', '_cfg')}.dim_category_lvl1 l1 ON l1.lvl1_code = l2.lvl1_code
-      JOIN ${dmSchema.replace('_dm', '_cfg')}.dim_category_lvl2 l2d ON l2d.lvl1_code = l2.lvl1_code AND l2d.lvl2_code = l2.lvl2_code
+      JOIN ${cfgSchema}.dim_category_lvl1 l1 ON l1.lvl1_code = l2.lvl1_code
+      JOIN ${cfgSchema}.dim_category_lvl2 l2d ON l2d.lvl1_code = l2.lvl1_code AND l2d.lvl2_code = l2.lvl2_code
       LEFT JOIN actuals a ON a.lvl1_code = l2.lvl1_code AND a.lvl2_code = l2.lvl2_code`,
       prevParams
     );
@@ -216,7 +203,7 @@ export async function GET(request: Request) {
     const revRes = await pool.query(
       `SELECT COALESCE(SUM(CASE WHEN c.lvl1_code = 'REV_BIZ' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as revenue
        FROM ${dmSchema}.bank_txn_classified_snapshot c
-       JOIN ${dmSchema.replace('_dm', '_ods')}.bank_txn t ON t.id = c.bank_txn_id
+       JOIN ${odsSchema}.bank_txn t ON t.id = c.bank_txn_id
        WHERE c.classified_source IN ('rule', 'override')
          AND t.txn_time >= $1::date AND t.txn_time < $2::date${store !== 'all' ? ' AND t.store_code = $3' : ''}`,
       expParams
@@ -226,7 +213,7 @@ export async function GET(request: Request) {
     const prevRevRes = await pool.query(
       `SELECT COALESCE(SUM(CASE WHEN c.lvl1_code = 'REV_BIZ' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as revenue
        FROM ${dmSchema}.bank_txn_classified_snapshot c
-       JOIN ${dmSchema.replace('_dm', '_ods')}.bank_txn t ON t.id = c.bank_txn_id
+       JOIN ${odsSchema}.bank_txn t ON t.id = c.bank_txn_id
        WHERE c.classified_source IN ('rule', 'override')
          AND t.txn_time >= $1::date AND t.txn_time < $2::date${store !== 'all' ? ' AND t.store_code = $3' : ''}`,
       prevParams

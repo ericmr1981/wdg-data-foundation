@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db';
 import { normalizeBrand, getDmSchemaSafe } from '@/lib/brand-server';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { parsePeriod } from '../period-utils';
 import { getErrorMessage } from '@/lib/query-types';
+import { getCashflowStatement, getInventoryChange } from '@/lib/repositories/financial-repository';
 
 interface LineItem {
   section: string;
@@ -126,7 +126,6 @@ export async function GET(request: Request) {
     if (!boundaries) {
       return NextResponse.json({ success: false, error: 'Invalid period format' }, { status: 400 });
     }
-    const [startDate, endDate] = boundaries;
 
     let dmSchema: string;
     try {
@@ -137,57 +136,15 @@ export async function GET(request: Request) {
       }
       throw err;
     }
-    const viewName = `${dmSchema}.v_cashflow_statement`;
-
-    const params: (string | number)[] = [startDate, endDate];
-    let storeClause = '';
-    if (store !== 'all') {
-      storeClause = 'AND store_code = $3';
-      params.push(store);
-    }
-
-    const query = `
-      SELECT activity, lvl1_code, lvl2_code,
-             sum(total_in) as total_in,
-             sum(total_out) as total_out,
-             sum(net_amount) as net_amount
-      FROM ${viewName}
-      WHERE month >= $1::date AND month < $2::date ${storeClause}
-      GROUP BY activity, lvl1_code, lvl2_code
-      ORDER BY min(sort_order)
-    `;
-
-    // Inventory change for the period: closing - opening summed across stores.
-    // Positive value = inventory increased (use of cash, displayed as negative in CF).
-    // Negative value = inventory decreased (source of cash, displayed as positive in CF).
-    // For tamkoko this comes from v_cogs_monthly; SUM(opening_amt) and SUM(closing_amt)
-    // over the period gives the change.
-    const invParams: (string | number)[] = [startDate, endDate];
-    let invStoreClause = '';
-    if (store !== 'all') {
-      invStoreClause = 'AND store_code = $3';
-      invParams.push(store);
-    }
-    const invChangeQuery = `
-      SELECT
-        COALESCE(SUM(opening_amt), 0)::numeric AS opening_total,
-        COALESCE(SUM(closing_amt), 0)::numeric AS closing_total
-      FROM ${dmSchema}.v_cogs_monthly
-      WHERE period >= to_char($1::date, 'YYYY-MM')
-        AND period <  to_char($2::date, 'YYYY-MM')
-        ${invStoreClause}
-    `;
 
     const [result, invRes] = await Promise.all([
-      pool.query(query, params),
-      pool.query(invChangeQuery, invParams).catch(() => ({ rows: [{ opening_total: '0', closing_total: '0' }] })),
+      getCashflowStatement(dmSchema, period, span, store),
+      getInventoryChange(dmSchema, period, span, store),
     ]);
-    const invOpening = Number(invRes.rows[0]?.opening_total || 0);
-    const invClosing = Number(invRes.rows[0]?.closing_total || 0);
     // inventoryDelta is the change in inventory (closing - opening).
     // Cash flow effect: a positive delta (inventory grew) is a USE of cash → negative on CF.
-    const inventoryDelta = invClosing - invOpening;
-    const lines = buildCashflowLines(result.rows, -inventoryDelta);
+    const inventoryDelta = invRes.closing_total - invRes.opening_total;
+    const lines = buildCashflowLines(result as Parameters<typeof buildCashflowLines>[0], -inventoryDelta);
 
     return NextResponse.json({
       success: true,
