@@ -1,5 +1,5 @@
 import pool from '@/lib/db';
-import { buildPeriodBoundaries, buildStoreCondition, getPrevBoundaries } from './financial-utils';
+import { buildPeriodBoundaries, buildStoreCondition } from './financial-utils';
 import type {
   ProfitRow, CashflowRow, BalanceSheetRow, OverviewData,
   KpiTrendRow, IncomeMetricsRow, PaymentMetricsRow, CounterpartyRow,
@@ -284,7 +284,7 @@ export async function getQimaiRevenue(
 // ── KPI trend (trailing 12 months) ──
 
 export async function getKpiTrend(
-  dmSchema: string, period: string, span: string, store: string
+  dmSchema: string, _period: string, _span: string, store: string
 ): Promise<KpiTrendRow[]> {
   const odsSchema = dmSchema.replace('_dm', '_ods');
   const storeClause = store !== 'all' ? 'AND t.store_code = $1' : '';
@@ -312,7 +312,7 @@ export async function getKpiTrend(
 // ── Income metrics (lvl1 breakdown of inflows) ──
 
 export async function getIncomeMetrics(
-  dmSchema: string, cfgSchema: string, period: string, span: string, store: string
+  dmSchema: string, _cfgSchema: string, period: string, span: string, store: string
 ): Promise<IncomeMetricsRow[]> {
   const isAll = period === 'all';
   const boundaries = isAll ? null : buildPeriodBoundaries(period, span);
@@ -343,7 +343,7 @@ export async function getIncomeMetrics(
 // ── Payment metrics (lvl1 breakdown of outflows) ──
 
 export async function getPaymentMetrics(
-  dmSchema: string, cfgSchema: string, period: string, span: string, store: string
+  dmSchema: string, _cfgSchema: string, period: string, span: string, store: string
 ): Promise<PaymentMetricsRow[]> {
   const isAll = period === 'all';
   const boundaries = isAll ? null : buildPeriodBoundaries(period, span);

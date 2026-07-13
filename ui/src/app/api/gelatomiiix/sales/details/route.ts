@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getSalesDetails } from '@/lib/repositories/sales-repository';
 import { getErrorMessage } from '@/lib/query-types';
-import { getOdsSchema } from '@/lib/brand-server';
+
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
     const countResult = await pool.query(`
       SELECT COUNT(*) AS total
-      FROM ${getOdsSchema(BRAND)}.income_detail
+      FROM gelatomiiix_ods.income_detail
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
         AND NOT is_refund
         ${excludeCustom}
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
 
     const dataResult = await pool.query(`
       SELECT biz_date, order_no, gross_amt, revenue_amt, discount_amt, net_amt, payment_methods
-      FROM ${getOdsSchema(BRAND)}.income_detail
+      FROM gelatomiiix_ods.income_detail
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
         AND NOT is_refund
         ${excludeCustom}

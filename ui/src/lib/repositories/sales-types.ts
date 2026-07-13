@@ -19,6 +19,7 @@ export interface ChannelRow extends QueryResultRow {
   payment_method: string;
   txn_cnt: string;
   gross_amt: string;
+  net_amt: string;
   revenue_amt: string;
 }
 

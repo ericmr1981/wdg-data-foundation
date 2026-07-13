@@ -9,6 +9,9 @@ export async function getSalesOverview(
   brand: string, storeCode: string, month: string, opts?: SalesQueryOpts
 ): Promise<OverviewRow> {
   const schema = getOdsSchema(brand);
+  const pureFilter = opts?.pureMode
+    ? `AND NOT is_refund AND payment_methods IS NOT NULL AND NOT ('自定义结账方式' = ANY(payment_methods))`
+    : '';
   const result = await pool.query<OverviewRow>(`
     SELECT
       COALESCE(SUM(COALESCE(gross_amt,0)),0) AS gross_sales_amt,
@@ -22,6 +25,7 @@ export async function getSalesOverview(
     FROM ${schema}.income_detail
     WHERE store_code = $1
       AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
+      ${pureFilter}
   `, [storeCode, `${month}-01`]);
   return result.rows[0];
 }
