@@ -20,8 +20,6 @@ Yufeng 银行流水导入脚本
   python scripts/import_yufeng_bank_txn.py inputs/yufeng/yf_gh/bank/2025-03/ --verify
 """
 
-import argparse
-import hashlib
 import math
 import os
 import re
@@ -31,21 +29,19 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-import psycopg2
-from psycopg2.extras import execute_values
 
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+from lib.importer import (
+    calculate_sha256,
+    get_connection,
+    IngestFileManager,
+    insert_batch,
+    parse_path,
+    setup_cli_parser,
+)
 from ops_logger import create_ops_logger
-
-# =====================
-# 配置
-# =====================
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "port": os.getenv("DB_PORT", "5432"),
-    "database": os.getenv("DB_NAME", "dataplatform"),
-    "user": os.getenv("DB_USER", "postgres"),
-    "password": os.environ["DB_PASSWORD"],
-}
 
 # Excel 列名映射（工行流水模板）
 COLUMN_MAPPING = {
@@ -54,8 +50,8 @@ COLUMN_MAPPING = {
     "对方单位": "counterparty_name",
     "对方单位名称": "counterparty_name",
     "对方账号": "counterparty_acct",
-    "借方发生额": "out_amt",  # 借 = 扣款（支出）
-    "贷方发生额": "in_amt",   # 贷 = 到账（收入）
+    "借方发生额": "out_amt",
+    "贷方发生额": "in_amt",
     "转入金额": "in_amt",
     "转出金额": "out_amt",
     "余额": "balance_amt",
@@ -64,49 +60,11 @@ COLUMN_MAPPING = {
     "附言": "memo",
 }
 
+SOURCE_TYPE = "bank"
 
-def parse_path(file_path: str) -> dict:
-    """
-    从文件路径解析元数据
-    路径格式：inputs/{brand_code}/{store_code}/{source_type}/{YYYY-MM}/{filename}
-    """
-    path = Path(file_path)
-    parts = path.parts
 
-    # 检查基础路径
-    if "inputs" not in parts:
-        raise ValueError(f"路径必须包含 'inputs' 目录: {file_path}")
-
-    idx = parts.index("inputs")
-    if len(parts) < idx + 5:
-        raise ValueError(
-            f"路径格式错误: inputs/{{brand_code}}/{{store_code}}/{{source_type}}/{{YYYY-MM}}/{{filename}}\n"
-            f"实际路径: {file_path}"
-        )
-
-    brand_code = parts[idx + 1]
-    store_code = parts[idx + 2]
-    source_type = parts[idx + 3]
-    month_str = parts[idx + 4]
-    file_name = parts[-1]
-
-    # 验证月份格式
-    if not re.match(r"^\d{4}-\d{2}$", month_str):
-        raise ValueError(f"月份格式错误 (需 YYYY-MM): {month_str}")
-
-    # 验证 source_type
-    if source_type not in ("sales", "bank"):
-        raise ValueError(f"source_type 必须是 'sales' 或 'bank': {source_type}")
-
-    return {
-        "brand_code": brand_code,
-        "store_code": store_code,
-        "source_type": source_type,
-        "month": month_str,
-        "month_date": f"{month_str}-01",
-        "file_name": file_name,
-        "file_path": file_path,
-    }
+def parse_path_bank(file_path: str) -> dict:
+    return parse_path(file_path, SOURCE_TYPE)
 
 
 def find_bank_files(input_path: str) -> list[str]:
@@ -126,7 +84,7 @@ def find_bank_files(input_path: str) -> list[str]:
             if subpath.is_file() and subpath.suffix.lower() in (".xlsx", ".xls"):
                 # 检查路径是否符合约定
                 try:
-                    parse_path(str(subpath))
+                    parse_path_bank(str(subpath))
                     files.append(str(subpath))
                 except ValueError:
                     continue
@@ -134,13 +92,7 @@ def find_bank_files(input_path: str) -> list[str]:
     return sorted(files)
 
 
-def calculate_sha256(file_path: str) -> str:
-    """计算文件的 SHA-256 哈希值"""
-    sha256_hash = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for byte_block in iter(lambda: f.read(4096), b""):
-            sha256_hash.update(byte_block)
-    return sha256_hash.hexdigest()
+
 
 
 def parse_amount(value) -> Optional[float]:
@@ -325,58 +277,7 @@ def read_bank_excel(file_path: str) -> pd.DataFrame:
     return df
 
 
-def get_db_connection():
-    """获取数据库连接"""
-    return psycopg2.connect(**DB_CONFIG)
-
-
-def check_ingest_file(file_hash: str, conn) -> Optional[dict]:
-    """检查 file_hash 是否已存在"""
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT id, brand_code, store_code, source_type, month, status, row_count
-            FROM raw.ingest_file
-            WHERE file_hash = %s
-            """,
-            (file_hash,),
-        )
-        row = cur.fetchone()
-        if row:
-            return {
-                "id": row[0],
-                "brand_code": row[1],
-                "store_code": row[2],
-                "source_type": row[3],
-                "month": row[4],
-                "status": row[5],
-                "row_count": row[6],
-            }
-    return None
-
-
-def create_ingest_file(meta: dict, file_hash: str, file_size: int, conn) -> int:
-    """创建 ingest_file 记录，返回 id"""
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO raw.ingest_file
-                (brand_code, store_code, source_type, month, file_name, file_path, file_hash, file_size, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending')
-            RETURNING id
-            """,
-            (
-                meta["brand_code"],
-                meta["store_code"],
-                meta["source_type"],
-                meta["month_date"],
-                meta["file_name"],
-                meta["file_path"],
-                file_hash,
-                file_size,
-            ),
-        )
-        return cur.fetchone()[0]
+# get_connection, IngestFileManager imported from lib.importer
 
 
 def _validate_brand(brand_code: str) -> str:
@@ -500,33 +401,6 @@ def insert_bank_txn(brand_code: str, df: pd.DataFrame, store_code: str, source_f
         return len(records)
 
 
-def update_ingest_file_success(source_file_id: int, row_count: int, conn):
-    """更新 ingest_file 状态为成功"""
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE raw.ingest_file
-            SET status = 'success', row_count = %s, finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-            WHERE id = %s
-            """,
-            (row_count, source_file_id),
-        )
-        conn.commit()
-
-
-def update_ingest_file_failed(source_file_id: int, error_message: str, conn):
-    """更新 ingest_file 状态为失败"""
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE raw.ingest_file
-            SET status = 'failed', error_message = %s, finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-            WHERE id = %s
-            """,
-            (error_message, source_file_id),
-        )
-        conn.commit()
-
 
 def dry_run_import(file_path: str) -> dict:
     """
@@ -534,15 +408,13 @@ def dry_run_import(file_path: str) -> dict:
     """
     print(f"\n=== Dry Run: {file_path} ===")
 
-    # 解析路径
-    meta = parse_path(file_path)
+    meta = parse_path_bank(file_path)
     print(f"Brand Code: {meta['brand_code']}")
     print(f"Store Code: {meta['store_code']}")
     print(f"Source Type: {meta['source_type']}")
     print(f"Month: {meta['month']}")
     print(f"File Name: {meta['file_name']}")
 
-    # 计算 hash
     file_hash = calculate_sha256(file_path)
     file_size = os.path.getsize(file_path)
     print(f"File Hash: {file_hash}")
@@ -577,18 +449,16 @@ def verify_import(file_path: str) -> dict:
     """
     print(f"\n=== Verify: {file_path} ===")
 
-    # 解析路径
-    meta = parse_path(file_path)
+    meta = parse_path_bank(file_path)
 
-    # 计算 hash
     file_hash = calculate_sha256(file_path)
     print(f"File Hash: {file_hash}")
 
-    conn = get_db_connection()
+    conn = get_connection()
 
     try:
-        # 检查 ingest_file
-        ingest = check_ingest_file(file_hash, conn)
+        mgr = IngestFileManager(conn)
+        ingest = mgr.check(file_hash)
         if not ingest:
             print("⚠️  No ingest_file record found (not imported yet)")
             return {"status": "not_imported"}
@@ -642,13 +512,10 @@ def do_import(file_path: str) -> dict:
     """
     print(f"\n=== Importing: {file_path} ===")
 
-    # 解析路径
-    meta = parse_path(file_path)
+    meta = parse_path_bank(file_path)
 
-    # 验证 brand_code 格式（存在性在 DB 连接后校验）
     _validate_brand(meta["brand_code"])
 
-    # 初始化 Ops Logger
     ops = create_ops_logger(
         brand_code=meta["brand_code"],
         store_code=meta["store_code"],
@@ -657,20 +524,15 @@ def do_import(file_path: str) -> dict:
         note=meta["file_name"],
     )
 
-    # 计算 hash
     file_hash = calculate_sha256(file_path)
     file_size = os.path.getsize(file_path)
     print(f"File Hash: {file_hash}")
 
-    # 连接数据库
-    conn = get_db_connection()
+    conn = get_connection()
 
-    # 品牌必须存在（否则直接失败，避免写入奇怪 schema）
     assert_brand_exists(conn, meta["brand_code"])
-    # 门店必须在 ops.stores 白名单中（否则银行流水错挂门店）
     assert_store_exists(conn, meta["brand_code"], meta["store_code"])
 
-    # 步骤顺序
     STEP_ORDER = {
         "register_file": 1,
         "delete_previous": 2,
@@ -681,12 +543,11 @@ def do_import(file_path: str) -> dict:
     }
 
     try:
-        # Step 1: 注册文件
         if ops:
             ops.step_start("register_file", step_order=STEP_ORDER["register_file"], detail={"file_path": file_path})
 
-        # 检查是否已存在
-        existing = check_ingest_file(file_hash, conn)
+        mgr = IngestFileManager(conn)
+        existing = mgr.check(file_hash)
 
         source_file_id = None
         if existing:
@@ -694,7 +555,6 @@ def do_import(file_path: str) -> dict:
             source_file_id = existing["id"]
 
             if existing["status"] == "success":
-                # 幂等：删除旧数据
                 if ops:
                     ops.step_start("delete_previous", step_order=STEP_ORDER["delete_previous"])
 
@@ -706,14 +566,12 @@ def do_import(file_path: str) -> dict:
             elif existing["status"] == "pending":
                 print("Warning: previous import is pending, will retry")
         else:
-            # 创建新记录
-            source_file_id = create_ingest_file(meta, file_hash, file_size, conn)
+            source_file_id = mgr.create(meta, file_hash, file_size)
             print(f"Created new ingest_file: id={source_file_id}")
 
         if ops:
             ops.step_end("register_file", rows_out=1, detail={"source_file_id": source_file_id})
 
-        # Step 2: 读取 Excel
         if ops:
             ops.step_start("load_excel", step_order=STEP_ORDER["load_excel"])
 
@@ -724,7 +582,6 @@ def do_import(file_path: str) -> dict:
         if ops:
             ops.step_end("load_excel", rows_out=rows_parsed)
 
-        # Step 3: 插入数据
         if ops:
             ops.step_start("insert_bank_txn", step_order=STEP_ORDER["insert_bank_txn"], detail={"rows_in": rows_parsed})
 
@@ -734,17 +591,15 @@ def do_import(file_path: str) -> dict:
         if ops:
             ops.step_end("insert_bank_txn", rows_out=row_count, rows_rejected=rows_parsed - row_count)
 
-        # Step 4: 更新状态
         if ops:
             ops.step_start("update_ingest_status", step_order=STEP_ORDER["update_ingest_status"])
 
-        update_ingest_file_success(source_file_id, row_count, conn)
+        mgr.mark_success(source_file_id, row_count)
         print(f"Updated ingest_file status to success")
 
         if ops:
             ops.step_end("update_ingest_status", rows_out=1)
 
-        # Step 5: 刷新分类 snapshot（L2 基建：可选，缺失不影响导入成功）
         try:
             if ops:
                 ops.step_start("refresh_snapshot", step_order=STEP_ORDER["refresh_snapshot"], detail={"source_file_id": source_file_id})
@@ -757,13 +612,11 @@ def do_import(file_path: str) -> dict:
             if ops:
                 ops.step_end("refresh_snapshot", rows_out=row_count)
         except Exception as e:
-            # 兼容逐步上线：如果快照函数还没 apply（或权限/依赖未就绪），不阻断导入。
             msg = f"WARN: refresh snapshot skipped: {e}"
             print(msg)
             if ops:
                 ops.step_end("refresh_snapshot", status="skipped", error_message=str(e)[:500])
 
-        # 完成 pipeline
         if ops:
             ops.finish(status="success")
 
@@ -777,13 +630,12 @@ def do_import(file_path: str) -> dict:
         error_msg = str(e)
         print(f"Error: {error_msg}")
 
-        # 记录失败步骤
         if ops:
             ops.step_end("insert_bank_txn", status="failed", error_message=error_msg[:500])
             ops.finish(status="failed", note=error_msg[:500])
 
         if source_file_id:
-            update_ingest_file_failed(source_file_id, error_msg[:1000], conn)
+            mgr.mark_failed(source_file_id, error_msg[:1000])
 
         raise
 
@@ -794,7 +646,7 @@ def do_import(file_path: str) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Yufeng 银行流水导入脚本")
+    parser = setup_cli_parser("Yufeng 银行流水导入脚本")
     parser.add_argument(
         "input_path",
         help="文件路径或目录路径",
@@ -837,13 +689,6 @@ def main():
     )
 
     args = parser.parse_args()
-
-    # 更新 DB 配置
-    DB_CONFIG["host"] = args.db_host
-    DB_CONFIG["port"] = args.db_port
-    DB_CONFIG["database"] = args.db_name
-    DB_CONFIG["user"] = args.db_user
-    DB_CONFIG["password"] = args.db_password
 
     # 查找文件
     input_path = args.input_path

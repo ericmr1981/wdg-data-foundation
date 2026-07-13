@@ -37,8 +37,6 @@ Usage:
   python3 scripts/import_xintiandi_delivery.py inputs/xintiandi/sh_xtd_nano/delivery/2026-03/配送明细.xlsx --dry-run
 """
 
-import argparse
-import hashlib
 import os
 import re
 import sys
@@ -48,21 +46,16 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-import psycopg2
-from psycopg2.extras import execute_values
 
-# =====================
-# 配置
-# =====================
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "port": os.getenv("DB_PORT", "5432"),
-    "database": os.getenv("DB_NAME", "dataplatform"),
-    "user": os.getenv("DB_USER", "postgres"),
-    "password": os.getenv("DB_PASSWORD", "postgres"),
-}
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+from lib.importer import (
+    get_connection,
+    parse_path,
+    setup_cli_parser,
+)
 
-# 默认 delivery schema（用于向后兼容 xintiandi）
 DEFAULT_DELIVERY_SCHEMA = "xintiandi"
 
 # Excel 列名映射
@@ -97,90 +90,46 @@ def get_schema_from_brand(brand_code: str) -> str:
         return f"brand_{brand_code}_delivery"
 
 
-def parse_path(file_path: str) -> dict:
+SOURCE_TYPE = "delivery"
+
+
+def parse_path_delivery(file_path: str) -> dict:
     """
-    从文件路径解析元数据（遵循 bank/sales 导入脚本的路径约定）
-    
-    路径格式：
-      inputs/{brand_code}/{store_code}/delivery/{YYYY-MM}/{filename}
-      inputs/xintiandi/sh_xtd_nano/delivery/2026-03/配送明细.xlsx
-    
-    返回：
-      {
-        "brand_code": str,
-        "store_code": str,
-        "source_type": "delivery",
-        "month": "YYYY-MM",
-        "month_date": "YYYY-MM-01",
-        "file_name": str,
-        "file_path": str,
-      }
-    
-    备选路径格式（兼容旧版 xintiandi 直接上传）：
-      inputs/xintiandi/delivery/{YYYY-MM}/{filename}
+    Parse path with support for standard and legacy formats.
+    Standard: inputs/{brand}/{store}/delivery/{YYYY-MM}/{filename}
+    Legacy: inputs/{brand}/delivery/{YYYY-MM}/{filename}
     """
     path = Path(file_path)
     parts = path.parts
 
-    # 检查基础路径
     if "inputs" not in parts:
         raise ValueError(f"路径必须包含 'inputs' 目录: {file_path}")
 
     idx = parts.index("inputs")
-    
-    # 尝试标准格式: inputs/{brand}/{store}/delivery/{YYYY-MM}/{filename}
+
+    # Standard format: inputs/{brand}/{store}/delivery/{YYYY-MM}/{filename} (6 parts)
     if len(parts) >= idx + 6:
-        brand_code = parts[idx + 1]
-        store_code = parts[idx + 2]
-        source_type = parts[idx + 3]
-        month_str = parts[idx + 4]
-        file_name = parts[-1]
-        
-        # 验证 source_type 必须是 delivery
-        if source_type != "delivery":
-            raise ValueError(f"source_type 必须是 'delivery': {source_type}")
-        
-        # 验证月份格式
-        if not re.match(r"^\d{4}-\d{2}$", month_str):
-            raise ValueError(f"月份格式错误 (需 YYYY-MM): {month_str}")
-        
-        return {
-            "brand_code": brand_code,
-            "store_code": store_code,
-            "store_name": store_code,  # store_name 由 DB lookup 填充；此处用 store_code 作为保底值
-            "source_type": source_type,
-            "month": month_str,
-            "month_date": f"{month_str}-01",
-            "file_name": file_name,
-            "file_path": file_path,
-        }
-    
-    # 备选旧格式: inputs/{brand}/delivery/{YYYY-MM}/{filename}
-    # 兼容 xintiandi/upload 直接上传的场景
+        if parts[idx + 3] == SOURCE_TYPE:
+            meta = parse_path(file_path, SOURCE_TYPE)
+            meta["store_name"] = meta["store_code"]
+            return meta
+
+    # Legacy format: inputs/{brand}/delivery/{YYYY-MM}/{filename} (5 parts)
     if len(parts) >= idx + 5:
         brand_code = parts[idx + 1]
-        source_type = parts[idx + 2]
-        month_str = parts[idx + 3]
-        file_name = parts[-1]
-        
-        if source_type != "delivery":
-            raise ValueError(f"source_type 必须是 'delivery': {source_type}")
-        
-        if not re.match(r"^\d{4}-\d{2}$", month_str):
-            raise ValueError(f"月份格式错误 (需 YYYY-MM): {month_str}")
-        
-        # 对于旧格式，无法确定 store_code，返回 brand_code 作为标识
-        return {
-            "brand_code": brand_code,
-            "store_code": brand_code,  # fallback to brand_code
-            "store_name": brand_code,  # fallback store_name 同 store_code
-            "source_type": source_type,
-            "month": month_str,
-            "month_date": f"{month_str}-01",
-            "file_name": file_name,
-            "file_path": file_path,
-        }
-    
+        src = parts[idx + 2]
+        if src == SOURCE_TYPE and re.match(r"^\d{4}-\d{2}$", parts[idx + 3]):
+            return {
+                "brand_code": brand_code,
+                "store_code": brand_code,
+                "store_name": brand_code,
+                "source_type": SOURCE_TYPE,
+                "month": parts[idx + 3],
+                "month_date": f"{parts[idx + 3]}-01",
+                "file_name": parts[-1],
+                "file_path": file_path,
+            }
+
     raise ValueError(
         f"路径格式错误。期望: inputs/{{brand}}/{{store}}/delivery/{{YYYY-MM}}/{{filename}}\n"
         f"实际路径: {file_path}"
@@ -202,9 +151,8 @@ def find_delivery_files(input_path: str) -> list[str]:
         # 递归查找 {brand}/{store}/delivery/YYYY-MM/* 下的数据文件
         for subpath in path.rglob("*"):
             if subpath.is_file() and subpath.suffix.lower() in (".xlsx", ".xls", ".csv"):
-                # 检查路径是否符合约定
                 try:
-                    parse_path(str(subpath))
+                    parse_path_delivery(str(subpath))
                     files.append(str(subpath))
                 except ValueError:
                     continue
@@ -213,11 +161,8 @@ def find_delivery_files(input_path: str) -> list[str]:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="配送明细导入")
-    parser.add_argument("file", help="Excel 文件路径或目录路径")
-    parser.add_argument("--dry-run", action="store_true", help="仅解析不导入")
+    parser = setup_cli_parser("配送明细导入")
     parser.add_argument("--batch-id", help="指定批次ID（可选，自动生成）")
-    parser.add_argument("--store-code", default=None, help="门店编码（可选，从路径解析，优先级高于路径）")
     parser.add_argument("--store-name", default=None, help="门店名称（可选，从路径解析，优先级高于路径）")
     parser.add_argument("--schema", default=None, help=f"目标 schema（默认: 从路径推断，xintiandi 兼容模式）")
     return parser.parse_args()
@@ -271,8 +216,7 @@ def parse_excel(file_path: str, default_store_code: str = None, default_store_na
     return df
 
 
-def get_connection():
-    return psycopg2.connect(**DB_CONFIG)
+# get_connection imported from lib.importer
 
 
 def delete_existing_batch(conn, batch_id: uuid.UUID, schema: str):
@@ -412,7 +356,7 @@ def process_file(file_path: str, args) -> dict:
     
     # 解析路径元数据
     try:
-        path_meta = parse_path(str(file_path))
+        path_meta = parse_path_delivery(str(file_path))
     except ValueError as e:
         return {"file": str(file_path), "error": str(e)}
     
@@ -509,9 +453,12 @@ def process_file(file_path: str, args) -> dict:
 
 if __name__ == "__main__":
     args = parse_args()
-    input_path = Path(args.file)
+    input_path = Path(args.input) if args.input else Path()
     
-    # 如果是目录，查找所有配送文件
+    if not args.input:
+        print("Usage: python import_xintiandi_delivery.py [file_or_dir] [--dry-run]", file=sys.stderr)
+        sys.exit(1)
+    
     if input_path.is_dir():
         files = find_delivery_files(str(input_path))
         if not files:
@@ -525,7 +472,6 @@ if __name__ == "__main__":
             result = process_file(f, args)
             results.append(result)
         
-        # 汇总
         success_count = sum(1 for r in results if r.get("success"))
         error_count = sum(1 for r in results if r.get("error"))
         
@@ -541,7 +487,6 @@ if __name__ == "__main__":
         
         sys.exit(0 if error_count == 0 else 1)
     else:
-        # 单文件处理
         result = process_file(str(input_path), args)
         
         if result.get("error"):
