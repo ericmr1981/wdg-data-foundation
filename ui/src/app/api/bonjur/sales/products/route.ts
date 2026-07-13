@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { getSalesByProduct } from '@/lib/repositories/sales-repository';
 import { getErrorMessage } from '@/lib/query-types';
 import { getOdsSchema } from '@/lib/brand-server';
 
@@ -17,18 +18,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
 
-    const params = [storeCode, `${month}-01`];
-
-    const bySales = await pool.query(`
-      SELECT product_name,
-        SUM(COALESCE(qty,0)) AS total_qty,
-        SUM(COALESCE(received_amt,0)) AS total_received_amt
-      FROM ${getOdsSchema(BRAND)}.product_sales_detail
-      WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
-      GROUP BY product_name
-      ORDER BY total_received_amt DESC
-      LIMIT 10
-    `, params);
+    const bySales = await getSalesByProduct('bonjur', storeCode, month);
 
     const byQty = await pool.query(`
       SELECT product_name,
@@ -39,9 +29,9 @@ export async function GET(request: NextRequest) {
       GROUP BY product_name
       ORDER BY total_qty DESC
       LIMIT 10
-    `, params);
+    `, [storeCode, `${month}-01`]);
 
-    return NextResponse.json({ success: true, data: { by_sales: bySales.rows, by_qty: byQty.rows } });
+    return NextResponse.json({ success: true, data: { by_sales: bySales, by_qty: byQty.rows } });
   } catch (error: unknown) {
     if ((error as { code?: string })?.code === '42P01') {
       return NextResponse.json({ success: true, data: null, note: 'view not ready' });

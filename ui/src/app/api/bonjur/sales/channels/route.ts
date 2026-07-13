@@ -1,16 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import pool from '@/lib/db';
+import { getSalesByChannel } from '@/lib/repositories/sales-repository';
 import { getErrorMessage } from '@/lib/query-types';
-import { getOdsSchema } from '@/lib/brand-server';
-
-const BRAND = 'bonjur';
-
-interface ChannelRow {
-  payment_method: string;
-  gross_amt: string;
-  revenue_amt: string;
-  txn_cnt: string;
-}
 
 export const dynamic = 'force-dynamic';
 
@@ -24,21 +14,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
 
-    const result = await pool.query(`
-      SELECT
-        pm AS payment_method,
-        COUNT(*) AS txn_cnt,
-        SUM(COALESCE(gross_amt,0)) AS gross_amt,
-        SUM(COALESCE(revenue_amt,0)) AS revenue_amt
-      FROM ${getOdsSchema(BRAND)}.income_detail,
-      LATERAL unnest(payment_methods) AS pm
-      WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
-      GROUP BY pm
-      ORDER BY gross_amt DESC
-    `, [storeCode, `${month}-01`]);
-
-    const total = result.rows.reduce((acc: number, r: ChannelRow) => acc + Number(r.gross_amt), 0);
-    const data = result.rows.map((r: ChannelRow) => ({
+    const rows = await getSalesByChannel('bonjur', storeCode, month);
+    const total = rows.reduce((acc: number, r) => acc + Number(r.gross_amt), 0);
+    const data = rows.map((r) => ({
       ...r,
       gross_amt: Number(r.gross_amt),
       revenue_amt: Number(r.revenue_amt),

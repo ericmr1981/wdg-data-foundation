@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import pool from '@/lib/db';
+import { getSalesTrend } from '@/lib/repositories/sales-repository';
 import { getErrorMessage } from '@/lib/query-types';
-import { getOdsSchema } from '@/lib/brand-server';
-
-const BRAND = 'bonjur';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,20 +13,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'store_code required' }, { status: 400 });
     }
 
-    const result = await pool.query(`
-      SELECT
-        DATE_TRUNC('month', biz_date)::DATE AS month,
-        SUM(COALESCE(gross_amt,0)) AS gross_sales_amt,
-        SUM(COALESCE(revenue_amt,0)) AS revenue_amt,
-        COUNT(DISTINCT order_no) AS order_cnt
-      FROM ${getOdsSchema(BRAND)}.income_detail
-      WHERE store_code = $1
-        AND biz_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '12 months')
-      GROUP BY DATE_TRUNC('month', biz_date)::DATE
-      ORDER BY month
-    `, [storeCode]);
-
-    return NextResponse.json({ success: true, data: result.rows });
+    const data = await getSalesTrend('bonjur', storeCode);
+    return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
     if ((error as { code?: string })?.code === '42P01') {
       return NextResponse.json({ success: true, data: null, note: 'view not ready' });
