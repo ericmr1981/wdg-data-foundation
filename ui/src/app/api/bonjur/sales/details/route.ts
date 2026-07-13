@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
+import { getOdsSchema } from '@/lib/brand-server';
+
+const BRAND = 'bonjur';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,13 +26,13 @@ export async function GET(request: NextRequest) {
     if (type === 'product') {
       const countResult = await pool.query(`
         SELECT COUNT(*) AS total
-        FROM bonjur_ods.product_sales_detail
+        FROM ${getOdsSchema(BRAND)}.product_sales_detail
         WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
       `, [storeCode, `${month}-01`]);
 
       const dataResult = await pool.query(`
         SELECT biz_date, order_no, product_name, unit_price, qty, sales_amt, received_amt, discount_amt
-        FROM bonjur_ods.product_sales_detail
+        FROM ${getOdsSchema(BRAND)}.product_sales_detail
         WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
         ORDER BY biz_date, order_no
         LIMIT $3 OFFSET $4
@@ -45,13 +48,13 @@ export async function GET(request: NextRequest) {
 
     const countResult = await pool.query(`
       SELECT COUNT(*) AS total
-      FROM bonjur_ods.income_detail
+      FROM ${getOdsSchema(BRAND)}.income_detail
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
     `, [storeCode, `${month}-01`]);
 
     const dataResult = await pool.query(`
       SELECT biz_date, order_no, gross_amt, revenue_amt, net_amt, payment_methods
-      FROM bonjur_ods.income_detail
+      FROM ${getOdsSchema(BRAND)}.income_detail
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
       ORDER BY biz_date DESC, order_no
       LIMIT $3 OFFSET $4

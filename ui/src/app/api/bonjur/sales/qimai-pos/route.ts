@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
+import { getOdsSchema } from '@/lib/brand-server';
+
+const BRAND = 'bonjur';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,7 +67,7 @@ export async function GET(request: NextRequest) {
           COALESCE(SUM(wechat_pay_pos_revenue_amt), 0) AS total_wechat_pos_revenue,
           COALESCE(SUM(alipay_pay_pos_gross_amt), 0) AS total_alipay_pos_gross,
           COALESCE(SUM(alipay_pay_pos_revenue_amt), 0) AS total_alipay_pos_revenue
-        FROM bonjur_ods.sales_daily_self_service
+        FROM ${getOdsSchema(BRAND)}.sales_daily_self_service
         ${whereClause}
       `, params);
 
@@ -86,7 +89,7 @@ export async function GET(request: NextRequest) {
       SELECT biz_date,
              wechat_pay_pos_gross_amt, wechat_pay_pos_revenue_amt,
              alipay_pay_pos_gross_amt, alipay_pay_pos_revenue_amt
-      FROM bonjur_ods.sales_daily_self_service
+      FROM ${getOdsSchema(BRAND)}.sales_daily_self_service
       ${whereClause}
       ORDER BY biz_date DESC
     `, params);

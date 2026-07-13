@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
+import { getOdsSchema } from '@/lib/brand-server';
+
+const BRAND = 'bonjur';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +22,7 @@ export async function GET(request: NextRequest) {
         SUM(COALESCE(gross_amt,0)) AS gross_sales_amt,
         SUM(COALESCE(revenue_amt,0)) AS revenue_amt,
         COUNT(DISTINCT order_no) AS order_cnt
-      FROM bonjur_ods.income_detail
+      FROM ${getOdsSchema(BRAND)}.income_detail
       WHERE store_code = $1
         AND biz_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '12 months')
       GROUP BY DATE_TRUNC('month', biz_date)::DATE

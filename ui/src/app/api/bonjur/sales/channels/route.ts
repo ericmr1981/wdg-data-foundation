@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
+import { getOdsSchema } from '@/lib/brand-server';
+
+const BRAND = 'bonjur';
 
 interface ChannelRow {
   payment_method: string;
@@ -27,7 +30,7 @@ export async function GET(request: NextRequest) {
         COUNT(*) AS txn_cnt,
         SUM(COALESCE(gross_amt,0)) AS gross_amt,
         SUM(COALESCE(revenue_amt,0)) AS revenue_amt
-      FROM bonjur_ods.income_detail,
+      FROM ${getOdsSchema(BRAND)}.income_detail,
       LATERAL unnest(payment_methods) AS pm
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
       GROUP BY pm

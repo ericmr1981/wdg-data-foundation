@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
+import { getOdsSchema } from '@/lib/brand-server';
+
+const BRAND = 'bonjur';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +23,7 @@ export async function GET(request: NextRequest) {
       SELECT product_name,
         SUM(COALESCE(qty,0)) AS total_qty,
         SUM(COALESCE(received_amt,0)) AS total_received_amt
-      FROM bonjur_ods.product_sales_detail
+      FROM ${getOdsSchema(BRAND)}.product_sales_detail
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
       GROUP BY product_name
       ORDER BY total_received_amt DESC
@@ -31,7 +34,7 @@ export async function GET(request: NextRequest) {
       SELECT product_name,
         SUM(COALESCE(qty,0)) AS total_qty,
         SUM(COALESCE(received_amt,0)) AS total_received_amt
-      FROM bonjur_ods.product_sales_detail
+      FROM ${getOdsSchema(BRAND)}.product_sales_detail
       WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
       GROUP BY product_name
       ORDER BY total_qty DESC

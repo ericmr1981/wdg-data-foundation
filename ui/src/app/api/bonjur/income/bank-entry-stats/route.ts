@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
 import { parsePeriod } from '@/app/api/financial/period-utils';
+import { getOdsSchema, getDmSchema, getCfgSchema } from '@/lib/brand-server';
+
+const BRAND = 'bonjur';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,17 +58,17 @@ export async function GET(request: NextRequest) {
     if (hasPeriod) {
       const [currBankRes, currQimaiRes] = await Promise.all([
         pool.query(`SELECT s.lvl2_code AS channel, COALESCE(SUM(t.in_amt),0) AS bank_entry_amt
-          FROM bonjur_dm.bank_txn_classified_snapshot s
-          JOIN bonjur_ods.bank_txn t ON t.id = s.bank_txn_id
+          FROM ${getDmSchema(BRAND)}.bank_txn_classified_snapshot s
+          JOIN ${getOdsSchema(BRAND)}.bank_txn t ON t.id = s.bank_txn_id
           WHERE s.lvl1_code='REV_BIZ' AND s.lvl2_code NOT IN ('OTHER_CH','REFUND_IN') AND s.classified_source IN ('rule','override')
             ${currMonthBankClause} ${bankStoreWhere}
           GROUP BY s.lvl2_code`),
         pool.query(`SELECT
           COALESCE(
-            (SELECT m.channel_code FROM bonjur_cfg.channel_mapping m WHERE d.payment_methods && ARRAY[m.payment_method] ORDER BY m.sort_order LIMIT 1),
+            (SELECT m.channel_code FROM ${getCfgSchema(BRAND)}.channel_mapping m WHERE d.payment_methods && ARRAY[m.payment_method] ORDER BY m.sort_order LIMIT 1),
             'OTHER'
           ) AS channel, SUM(net_amt) AS qimai_net_amt
-          FROM bonjur_ods.income_detail d
+          FROM ${getOdsSchema(BRAND)}.income_detail d
           WHERE 1=1 ${currMonthDateClause} ${storeWhere}
           GROUP BY 1 ORDER BY 1`)
       ]);
@@ -79,29 +82,29 @@ export async function GET(request: NextRequest) {
 
     const channelMetricsResult = await pool.query(`SELECT
       COALESCE(
-        (SELECT m.channel_code FROM bonjur_cfg.channel_mapping m WHERE d.payment_methods && ARRAY[m.payment_method] ORDER BY m.sort_order LIMIT 1),
+        (SELECT m.channel_code FROM ${getCfgSchema(BRAND)}.channel_mapping m WHERE d.payment_methods && ARRAY[m.payment_method] ORDER BY m.sort_order LIMIT 1),
         'OTHER'
       ) AS channel, SUM(net_amt) AS qimai_net_amt
-      FROM bonjur_ods.income_detail d
+      FROM ${getOdsSchema(BRAND)}.income_detail d
       WHERE 1=1 ${dateClause} ${storeWhere}
       GROUP BY 1 ORDER BY 1`);
 
     const bankEntryResult = await pool.query(`SELECT s.lvl2_code AS channel, COALESCE(SUM(t.in_amt),0) AS bank_entry_amt
-      FROM bonjur_dm.bank_txn_classified_snapshot s
-      JOIN bonjur_ods.bank_txn t ON t.id = s.bank_txn_id
+      FROM ${getDmSchema(BRAND)}.bank_txn_classified_snapshot s
+      JOIN ${getOdsSchema(BRAND)}.bank_txn t ON t.id = s.bank_txn_id
       WHERE s.lvl1_code='REV_BIZ' AND s.lvl2_code NOT IN ('OTHER_CH','REFUND_IN') AND s.classified_source IN ('rule','override')
         ${monthClause} ${bankStoreWhere}
       GROUP BY s.lvl2_code`);
 
     const monthlyTrendQimai = await pool.query(
       `SELECT to_char(biz_date,'YYYY-MM') AS month,SUM(net_amt) AS qimai_net_amt
-       FROM bonjur_ods.income_detail
+       FROM ${getOdsSchema(BRAND)}.income_detail
        WHERE 1=1 ${trendDateClause} ${storeWhere}
        GROUP BY 1 ORDER BY 1`);
     const monthlyTrendBank = await pool.query(
       `SELECT to_char(t.txn_time::date,'YYYY-MM') AS month,SUM(t.in_amt) AS bank_entry_amt
-       FROM bonjur_dm.bank_txn_classified_snapshot s
-       JOIN bonjur_ods.bank_txn t ON t.id = s.bank_txn_id
+       FROM ${getDmSchema(BRAND)}.bank_txn_classified_snapshot s
+       JOIN ${getOdsSchema(BRAND)}.bank_txn t ON t.id = s.bank_txn_id
        WHERE s.lvl1_code='REV_BIZ' AND s.lvl2_code NOT IN ('OTHER_CH','REFUND_IN') AND s.classified_source IN ('rule','override')
          ${trendBankDateClause} ${bankStoreWhere}
        GROUP BY 1 ORDER BY 1`);
@@ -121,10 +124,10 @@ export async function GET(request: NextRequest) {
     const unmatchedOrdersResult = await pool.query(`SELECT month,ch,COUNT(*) oc,SUM(net_amt) ua FROM (
       SELECT to_char(biz_date,'YYYY-MM') AS month,
         COALESCE(
-          (SELECT m.channel_code FROM bonjur_cfg.channel_mapping m WHERE d.payment_methods && ARRAY[m.payment_method] ORDER BY m.sort_order LIMIT 1),
+          (SELECT m.channel_code FROM ${getCfgSchema(BRAND)}.channel_mapping m WHERE d.payment_methods && ARRAY[m.payment_method] ORDER BY m.sort_order LIMIT 1),
           'OTHER'
         ) AS ch, net_amt
-      FROM bonjur_ods.income_detail d
+      FROM ${getOdsSchema(BRAND)}.income_detail d
       WHERE third_party_txn_no IS NULL ${unmatchedDateClause} ${storeWhere}
     ) sub GROUP BY month,ch ORDER BY month DESC,ch`);
 
