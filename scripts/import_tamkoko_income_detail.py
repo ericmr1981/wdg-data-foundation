@@ -11,9 +11,7 @@ Usage:
     python scripts/import_tamkoko_income_detail.py --dry-run
 """
 
-import argparse
 import csv
-import hashlib
 import os
 import re
 import sys
@@ -21,29 +19,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import psycopg2
-from psycopg2.extras import execute_values
-
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
-from _store_guard import (
-    CrossBrandStoreError,
-    load_valid_stores,
-    safe_resolve_store,
+from lib.importer import (
+    calculate_sha256,
+    get_connection,
+    IngestFileManager,
+    insert_batch,
+    parse_path,
+    setup_cli_parser,
 )
 
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "port": os.getenv("DB_PORT", "5432"),
-    "database": os.getenv("DB_NAME", "dataplatform"),
-    "user": os.getenv("DB_USER", "postgres"),
-    "password": os.environ["DB_PASSWORD"],
-}
-
-STORE_CODE = os.getenv("INCOME_STORE_CODE", "hz_fuyang")
-STORE_NAME = os.getenv("INCOME_STORE_NAME", "")
-BRAND_CODE = os.getenv("INCOME_BRAND_CODE", "tamkoko")
+SOURCE_TYPE = "income_detail"
 
 CHANNEL_MAP = {
     "微信支付": "WECHAT",
@@ -69,67 +57,61 @@ def get_target_table(brand: str) -> str:
     raise ValueError(f"Unknown brand: {brand}")
 
 
-def calculate_sha256(file_path: str) -> str:
-    h = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for block in iter(lambda: f.read(4096), b""):
-            h.update(block)
-    return h.hexdigest()
+TABLE_DDL = """
+CREATE SCHEMA IF NOT EXISTS brand_tamkoko_ods;
+CREATE TABLE IF NOT EXISTS brand_tamkoko_ods.income_detail (
+    id                  BIGSERIAL PRIMARY KEY,
+    store_code          TEXT NOT NULL,
+    brand_name          TEXT,
+    city                TEXT,
+    store_name          TEXT,
+    biz_date            DATE NOT NULL,
+    order_no            TEXT NOT NULL,
+    channel             TEXT,
+    gross_amt           NUMERIC(14,2) NOT NULL DEFAULT 0,
+    net_amt             NUMERIC(14,2) NOT NULL DEFAULT 0,
+    revenue_amt         NUMERIC(14,2) NOT NULL DEFAULT 0,
+    payment_methods     TEXT[],
+    third_party_txn_no  TEXT,
+    order_source        TEXT,
+    order_type          TEXT,
+    source_file         TEXT,
+    source_file_id      BIGINT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_tamkoko_income_detail UNIQUE (store_code, order_no)
+);
+"""
+
+COLUMNS = [
+    "store_code", "brand_name", "city", "store_name",
+    "biz_date", "order_no", "channel",
+    "gross_amt", "net_amt", "revenue_amt",
+    "payment_methods", "third_party_txn_no",
+    "order_source", "order_type",
+    "source_file", "source_file_id",
+]
+
+CONFLICT_CLAUSE = """
+ON CONFLICT (store_code, order_no) DO UPDATE SET
+    brand_name = EXCLUDED.brand_name,
+    city = EXCLUDED.city,
+    store_name = EXCLUDED.store_name,
+    biz_date = EXCLUDED.biz_date,
+    channel = EXCLUDED.channel,
+    gross_amt = EXCLUDED.gross_amt,
+    net_amt = EXCLUDED.net_amt,
+    revenue_amt = EXCLUDED.revenue_amt,
+    payment_methods = EXCLUDED.payment_methods,
+    third_party_txn_no = EXCLUDED.third_party_txn_no,
+    order_source = EXCLUDED.order_source,
+    order_type = EXCLUDED.order_type,
+    source_file = EXCLUDED.source_file,
+    source_file_id = EXCLUDED.source_file_id
+"""
 
 
 def strip_backtick(s: str) -> str:
     return s.strip().strip("`")
-
-
-def parse_path(file_path: str) -> dict:
-    """从路径解析元数据: inputs/{brand}/{store}/income_detail/{YYYY-MM}/{filename}"""
-    path = Path(file_path)
-    parts = path.parts
-    if "inputs" not in parts:
-        raise ValueError(f"路径必须包含 'inputs' 目录: {file_path}")
-    idx = parts.index("inputs")
-    if len(parts) < idx + 5:
-        raise ValueError(
-            f"路径格式错误: inputs/{{brand}}/{{store}}/income_detail/{{YYYY-MM}}/{{filename}}\n"
-            f"实际: {file_path}"
-        )
-    brand_code = parts[idx + 1]
-    store_code = parts[idx + 2]
-    source_type = parts[idx + 3]
-    month_str = parts[idx + 4]
-    if source_type != "income_detail":
-        raise ValueError(f"source_type 必须是 'income_detail', 实际: {source_type}")
-    if not re.match(r"^\d{4}-\d{2}$", month_str):
-        raise ValueError(f"月份格式错误 (需 YYYY-MM): {month_str}")
-    return {
-        "brand_code": brand_code,
-        "store_code": store_code,
-        "source_type": source_type,
-        "month": month_str,
-        "file_name": path.name,
-        "file_path": file_path,
-    }
-
-
-def extract_month_from_filename(fname: str) -> Optional[str]:
-    """从文件名提取最晚年月,支持 '企迈 收入明细表 2026-02-01 至 2026-03-31.csv'"""
-    if not fname:
-        return None
-    candidates = []
-    # 1) YYYY-MM-DD
-    for m in re.finditer(r"(\d{4})-(\d{2})-\d{2}", fname):
-        y, mo = int(m.group(1)), int(m.group(2))
-        if 1 <= mo <= 12:
-            candidates.append(y * 100 + mo)
-    # 2) YYYY年M月
-    for m in re.finditer(r"(\d{4})年(\d{1,2})月", fname):
-        y, mo = int(m.group(1)), int(m.group(2))
-        if 1 <= mo <= 12:
-            candidates.append(y * 100 + mo)
-    if not candidates:
-        return None
-    latest = max(candidates)
-    return f"{latest // 100}-{str(latest % 100).zfill(2)}"
 
 
 def to_numeric(s: str) -> float:
@@ -161,33 +143,34 @@ def map_channel(channel_str: str) -> Optional[str]:
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("path", help="CSV 文件或目录路径")
-    parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--brand", default=BRAND_CODE)
-    args = parser.parse_args()
+    ap = setup_cli_parser("Tamkoko 企迈收入明细表 CSV 导入")
+    args = ap.parse_args()
 
-    target = Path(args.path)
+    if not args.input:
+        raise SystemExit("Usage: python import_tamkoko_income_detail.py [csv_file_or_dir]")
+
+    target = Path(args.input)
     if target.is_file():
         files = [target]
     elif target.is_dir():
         files = list(target.glob("*.csv"))
     else:
-        print(f"路径不存在: {args.path}", file=sys.stderr)
+        print(f"路径不存在: {args.input}", file=sys.stderr)
         sys.exit(1)
 
     if not files:
-        print(f"未找到 CSV 文件: {args.path}", file=sys.stderr)
+        print(f"未找到 CSV 文件: {args.input}", file=sys.stderr)
         sys.exit(1)
 
-    table = get_target_table(args.brand)
+    brand_code = args.brand or "tamkoko"
+    table = get_target_table(brand_code)
     print(f"目标表: {table}, 文件数: {len(files)}")
 
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = get_connection()
     try:
         for csv_path in files:
             print(f"\n=== {csv_path.name} ===")
-            meta = parse_path(str(csv_path))
+            meta = parse_path(str(csv_path), SOURCE_TYPE)
             print(f"  brand={meta['brand_code']}, store={meta['store_code']}, month={meta['month']}")
 
             rows = []
@@ -220,54 +203,22 @@ def main():
                 continue
 
             file_hash = calculate_sha256(str(csv_path))
-            with conn.cursor() as cur:
-                cur.execute(
-                    """INSERT INTO raw.ingest_file (brand_code, store_code, source_type, month, file_name, file_path, file_hash, file_size, status)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending')
-                       ON CONFLICT (file_hash) DO UPDATE SET status = 'pending', updated_at = NOW()
-                       RETURNING id""",
-                    (meta["brand_code"], meta["store_code"], "income_detail",
-                     meta["month"], meta["file_name"], str(csv_path), file_hash, csv_path.stat().st_size),
+            mgr = IngestFileManager(conn)
+            existing = mgr.check(file_hash, meta["brand_code"])
+            if existing:
+                source_file_id = existing["id"]
+                mgr.mark_pending(source_file_id, len(rows))
+            else:
+                source_file_id = mgr.create(
+                    meta["brand_code"], meta["store_code"], SOURCE_TYPE,
+                    meta["month_date"], meta["file_name"], meta["file_path"],
+                    file_hash, csv_path.stat().st_size,
                 )
-                source_file_id = cur.fetchone()[0]
-                conn.commit()
+            conn.commit()
 
-                execute_values(
-                    cur,
-                    f"""INSERT INTO {table} (
-                        store_code, brand_name, city, store_name, biz_date, order_no, channel,
-                        gross_amt, net_amt, revenue_amt, payment_methods,
-                        third_party_txn_no, order_source, order_type, source_file
-                    ) VALUES %s
-                    ON CONFLICT (store_code, order_no) DO UPDATE SET
-                        brand_name = EXCLUDED.brand_name,
-                        city = EXCLUDED.city,
-                        store_name = EXCLUDED.store_name,
-                        biz_date = EXCLUDED.biz_date,
-                        channel = EXCLUDED.channel,
-                        gross_amt = EXCLUDED.gross_amt,
-                        net_amt = EXCLUDED.net_amt,
-                        revenue_amt = EXCLUDED.revenue_amt,
-                        payment_methods = EXCLUDED.payment_methods,
-                        third_party_txn_no = EXCLUDED.third_party_txn_no,
-                        order_source = EXCLUDED.order_source,
-                        order_type = EXCLUDED.order_type,
-                        source_file = EXCLUDED.source_file,
-                        source_file_id = EXCLUDED.source_file_id
-                    """,
-                    [(*r, source_file_id) for r in rows],
-                )
-                conn.commit()
-
-                cur.execute(
-                    "UPDATE raw.ingest_file SET status='success', row_count=%s, finished_at=NOW(), updated_at=NOW() WHERE id=%s",
-                    (len(rows), source_file_id),
-                )
-                conn.commit()
-            print(f"  ✅ 导入成功,source_file_id={source_file_id},rows={len(rows)}")
+            values = [(*r, source_file_id) for r in rows]
+            inserted = insert_batch(conn, table, COLUMNS, values, CONFLICT_CLAUSE)
+            mgr.mark_success(source_file_id, inserted)
+            print(f"  ✅ 导入成功, source_file_id={source_file_id}, rows={inserted}")
     finally:
         conn.close()
-
-
-if __name__ == "__main__":
-    main()

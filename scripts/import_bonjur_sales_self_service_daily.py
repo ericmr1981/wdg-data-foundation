@@ -17,32 +17,113 @@ Notes
 
 from __future__ import annotations
 
-import argparse
-import hashlib
 import os
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-import psycopg2
-from psycopg2.extras import execute_values
 
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "port": os.getenv("DB_PORT", "5432"),
-    "database": os.getenv("DB_NAME", "dataplatform"),
-    "user": os.getenv("DB_USER", "postgres"),
-    "password": os.getenv("DB_PASSWORD", "postgres"),
-}
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+from lib.importer import (
+    calculate_sha256,
+    delete_imported_data,
+    ensure_table_exists,
+    get_connection,
+    IngestFileManager,
+    insert_batch,
+    parse_path,
+    setup_cli_parser,
+)
 
 STORE_CODE_DEFAULT = os.getenv("BONJUR_STORE_CODE", "wz_oh_wxc")
 STORE_NAME_DEFAULT = os.getenv("BONJUR_STORE_NAME", "温州瓯海万象城店")
 
 TARGET_TABLE = "bonjur_ods.sales_daily_self_service"
+SOURCE_TYPE = "sales"
 
-# CSV column -> db column mapping
+TABLE_DDL = """
+CREATE SCHEMA IF NOT EXISTS bonjur_ods;
+CREATE TABLE IF NOT EXISTS bonjur_ods.sales_daily_self_service (
+  id bigserial primary key,
+  store_code text not null,
+  store_name text,
+  biz_date date not null,
+  month date not null,
+
+  gross_sales_amt numeric(14,2),
+  revenue_amt numeric(14,2),
+  order_cnt int,
+  refund_amt numeric(14,2),
+  revenue_incl_service_fee_amt numeric(14,2),
+  platform_service_fee_amt numeric(14,2),
+
+  wechat_pay_gross_amt numeric(14,2),
+  wechat_pay_revenue_amt numeric(14,2),
+  wechat_pay_cnt int,
+  wechat_pay_miniapp_gross_amt numeric(14,2),
+  wechat_pay_miniapp_revenue_amt numeric(14,2),
+  wechat_pay_pos_gross_amt numeric(14,2),
+  wechat_pay_pos_revenue_amt numeric(14,2),
+
+  alipay_pay_gross_amt numeric(14,2),
+  alipay_pay_revenue_amt numeric(14,2),
+  alipay_pay_cnt int,
+  alipay_pay_miniapp_gross_amt numeric(14,2),
+  alipay_pay_miniapp_revenue_amt numeric(14,2),
+  alipay_pay_pos_gross_amt numeric(14,2),
+  alipay_pay_pos_revenue_amt numeric(14,2),
+
+  cash_pay_gross_amt numeric(14,2),
+  cash_pay_revenue_amt numeric(14,2),
+  cash_pay_cnt int,
+
+  meituan_delivery_gross_amt numeric(14,2),
+  meituan_delivery_revenue_amt numeric(14,2),
+  meituan_delivery_cnt int,
+
+  taobao_shangou_gross_amt numeric(14,2),
+  taobao_shangou_revenue_amt numeric(14,2),
+  taobao_shangou_cnt int,
+
+  jd_miaosong_gross_amt numeric(14,2),
+  jd_miaosong_revenue_amt numeric(14,2),
+  jd_miaosong_cnt int,
+
+  meituan_coupon_cnt int,
+  meituan_coupon_gross_amt numeric(14,2),
+  meituan_coupon_revenue_amt numeric(14,2),
+
+  douyin_coupon_cnt int,
+  douyin_coupon_gross_amt numeric(14,2),
+  douyin_coupon_revenue_amt numeric(14,2),
+
+  alipay_coupon_cnt int,
+  alipay_coupon_gross_amt numeric(14,2),
+  alipay_coupon_revenue_amt numeric(14,2),
+
+  meituan_online_gross_amt numeric(14,2),
+  meituan_online_revenue_amt numeric(14,2),
+  meituan_online_discount_amt numeric(14,2),
+
+  douyin_online_cnt int,
+  douyin_online_gross_amt numeric(14,2),
+  douyin_online_revenue_amt numeric(14,2),
+
+  source_file_id bigint,
+  created_at timestamptz not null default now(),
+
+  constraint uq_bonjur_sales_daily_self_service unique (store_code, biz_date)
+);
+CREATE INDEX IF NOT EXISTS idx_bonjur_sales_daily_self_service_month ON bonjur_ods.sales_daily_self_service(month);
+CREATE INDEX IF NOT EXISTS idx_bonjur_sales_daily_self_service_store_month ON bonjur_ods.sales_daily_self_service(store_code, month);
+CREATE INDEX IF NOT EXISTS idx_bonjur_sales_daily_self_service_date ON bonjur_ods.sales_daily_self_service(biz_date);
+"""
+
 COLMAP = {
     "时间": "biz_date",
     "营业额": "gross_sales_amt",
@@ -106,53 +187,21 @@ COLMAP = {
 }
 
 
-def calculate_sha256(file_path: str) -> str:
-    sha256_hash = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for block in iter(lambda: f.read(4096), b""):
-            sha256_hash.update(block)
-    return sha256_hash.hexdigest()
-
-
-def parse_path(file_path: str) -> dict:
-    """Parse inputs path: inputs/{brand}/{store}/{source}/{YYYY-MM}/{file}."""
+def parse_path_fallback(file_path: str) -> dict:
+    """Parse inputs path with fallback for non-standard paths."""
     p = Path(file_path)
     parts = p.parts
     if "inputs" not in parts:
-        # best-effort fallback
         return {
             "brand_code": "bonjur",
             "store_code": STORE_CODE_DEFAULT,
-            "source_type": "sales",
+            "source_type": SOURCE_TYPE,
             "month": None,
             "month_date": None,
             "file_name": p.name,
             "file_path": str(p),
         }
-
-    idx = parts.index("inputs")
-    if len(parts) < idx + 5:
-        raise ValueError(
-            f"路径格式错误: inputs/{{brand_code}}/{{store_code}}/{{source_type}}/{{YYYY-MM}}/{{filename}}\n实际路径: {file_path}"
-        )
-
-    brand_code = parts[idx + 1]
-    store_code = parts[idx + 2]
-    source_type = parts[idx + 3]
-    month_str = parts[idx + 4]
-
-    if not re.match(r"^\d{4}-\d{2}$", month_str):
-        raise ValueError(f"月份格式错误 (需 YYYY-MM): {month_str}")
-
-    return {
-        "brand_code": brand_code,
-        "store_code": store_code,
-        "source_type": source_type,
-        "month": month_str,
-        "month_date": f"{month_str}-01",
-        "file_name": parts[-1],
-        "file_path": file_path,
-    }
+    return parse_path(file_path, SOURCE_TYPE)
 
 
 def normalize_date(x) -> Optional[datetime.date]:
@@ -211,100 +260,7 @@ def to_int(v):
         return None
 
 
-def ensure_table_exists(conn):
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT EXISTS (
-              SELECT FROM information_schema.tables
-              WHERE table_schema='bonjur_ods' AND table_name='sales_daily_self_service'
-            );
-            """
-        )
-        if cur.fetchone()[0]:
-            return
-
-        # Minimal DDL (same as sql/bonjur_sales_daily_self_service_ods.sql)
-        cur.execute(
-            """
-            CREATE SCHEMA IF NOT EXISTS bonjur_ods;
-            CREATE TABLE IF NOT EXISTS bonjur_ods.sales_daily_self_service (
-              id bigserial primary key,
-              store_code text not null,
-              store_name text,
-              biz_date date not null,
-              month date not null,
-
-              gross_sales_amt numeric(14,2),
-              revenue_amt numeric(14,2),
-              order_cnt int,
-              refund_amt numeric(14,2),
-              revenue_incl_service_fee_amt numeric(14,2),
-              platform_service_fee_amt numeric(14,2),
-
-              wechat_pay_gross_amt numeric(14,2),
-              wechat_pay_revenue_amt numeric(14,2),
-              wechat_pay_cnt int,
-              wechat_pay_miniapp_gross_amt numeric(14,2),
-              wechat_pay_miniapp_revenue_amt numeric(14,2),
-              wechat_pay_pos_gross_amt numeric(14,2),
-              wechat_pay_pos_revenue_amt numeric(14,2),
-
-              alipay_pay_gross_amt numeric(14,2),
-              alipay_pay_revenue_amt numeric(14,2),
-              alipay_pay_cnt int,
-              alipay_pay_miniapp_gross_amt numeric(14,2),
-              alipay_pay_miniapp_revenue_amt numeric(14,2),
-              alipay_pay_pos_gross_amt numeric(14,2),
-              alipay_pay_pos_revenue_amt numeric(14,2),
-
-              cash_pay_gross_amt numeric(14,2),
-              cash_pay_revenue_amt numeric(14,2),
-              cash_pay_cnt int,
-
-              meituan_delivery_gross_amt numeric(14,2),
-              meituan_delivery_revenue_amt numeric(14,2),
-              meituan_delivery_cnt int,
-
-              taobao_shangou_gross_amt numeric(14,2),
-              taobao_shangou_revenue_amt numeric(14,2),
-              taobao_shangou_cnt int,
-
-              jd_miaosong_gross_amt numeric(14,2),
-              jd_miaosong_revenue_amt numeric(14,2),
-              jd_miaosong_cnt int,
-
-              meituan_coupon_cnt int,
-              meituan_coupon_gross_amt numeric(14,2),
-              meituan_coupon_revenue_amt numeric(14,2),
-
-              douyin_coupon_cnt int,
-              douyin_coupon_gross_amt numeric(14,2),
-              douyin_coupon_revenue_amt numeric(14,2),
-
-              alipay_coupon_cnt int,
-              alipay_coupon_gross_amt numeric(14,2),
-              alipay_coupon_revenue_amt numeric(14,2),
-
-              meituan_online_gross_amt numeric(14,2),
-              meituan_online_revenue_amt numeric(14,2),
-              meituan_online_discount_amt numeric(14,2),
-
-              douyin_online_cnt int,
-              douyin_online_gross_amt numeric(14,2),
-              douyin_online_revenue_amt numeric(14,2),
-
-              source_file_id bigint,
-              created_at timestamptz not null default now(),
-
-              constraint uq_bonjur_sales_daily_self_service unique (store_code, biz_date)
-            );
-            CREATE INDEX IF NOT EXISTS idx_bonjur_sales_daily_self_service_month ON bonjur_ods.sales_daily_self_service(month);
-            CREATE INDEX IF NOT EXISTS idx_bonjur_sales_daily_self_service_store_month ON bonjur_ods.sales_daily_self_service(store_code, month);
-            CREATE INDEX IF NOT EXISTS idx_bonjur_sales_daily_self_service_date ON bonjur_ods.sales_daily_self_service(biz_date);
-            """
-        )
-        conn.commit()
+# TABLE_DDL defined at top of file
 
 
 def read_csv(file_path: str) -> pd.DataFrame:
@@ -344,241 +300,119 @@ def transform(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
-def check_ingest_file(file_hash: str, conn) -> Optional[dict]:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT id, brand_code, store_code, source_type, month, status, row_count
-            FROM raw.ingest_file
-            WHERE file_hash = %s
-            """,
-            (file_hash,),
-        )
-        row = cur.fetchone()
-        if not row:
-            return None
-        return {
-            "id": row[0],
-            "brand_code": row[1],
-            "store_code": row[2],
-            "source_type": row[3],
-            "month": row[4],
-            "status": row[5],
-            "row_count": row[6],
-        }
+# IngestFileManager replaces check/create/update_ingest_file functions
 
 
-def create_ingest_file(meta: dict, file_hash: str, file_size: int, conn) -> int:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO raw.ingest_file
-              (brand_code, store_code, source_type, month, file_name, file_path, file_hash, file_size, status)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'pending')
-            RETURNING id
-            """,
-            (
-                meta.get("brand_code") or "bonjur",
-                meta.get("store_code") or STORE_CODE_DEFAULT,
-                meta.get("source_type") or "sales",
-                meta.get("month_date"),
-                meta.get("file_name"),
-                meta.get("file_path"),
-                file_hash,
-                file_size,
-            ),
-        )
-        return cur.fetchone()[0]
+INSERT_COLS = [
+    "store_code", "store_name", "biz_date", "month",
+    "gross_sales_amt", "revenue_amt", "order_cnt", "refund_amt",
+    "revenue_incl_service_fee_amt", "platform_service_fee_amt",
+    "wechat_pay_gross_amt", "wechat_pay_revenue_amt", "wechat_pay_cnt",
+    "wechat_pay_miniapp_gross_amt", "wechat_pay_miniapp_revenue_amt",
+    "wechat_pay_pos_gross_amt", "wechat_pay_pos_revenue_amt",
+    "alipay_pay_gross_amt", "alipay_pay_revenue_amt", "alipay_pay_cnt",
+    "alipay_pay_miniapp_gross_amt", "alipay_pay_miniapp_revenue_amt",
+    "alipay_pay_pos_gross_amt", "alipay_pay_pos_revenue_amt",
+    "cash_pay_gross_amt", "cash_pay_revenue_amt", "cash_pay_cnt",
+    "meituan_delivery_gross_amt", "meituan_delivery_revenue_amt", "meituan_delivery_cnt",
+    "taobao_shangou_gross_amt", "taobao_shangou_revenue_amt", "taobao_shangou_cnt",
+    "jd_miaosong_gross_amt", "jd_miaosong_revenue_amt", "jd_miaosong_cnt",
+    "meituan_coupon_cnt", "meituan_coupon_gross_amt", "meituan_coupon_revenue_amt",
+    "douyin_coupon_cnt", "douyin_coupon_gross_amt", "douyin_coupon_revenue_amt",
+    "alipay_coupon_cnt", "alipay_coupon_gross_amt", "alipay_coupon_revenue_amt",
+    "meituan_online_gross_amt", "meituan_online_revenue_amt", "meituan_online_discount_amt",
+    "douyin_online_cnt", "douyin_online_gross_amt", "douyin_online_revenue_amt",
+    "source_file_id",
+]
 
-
-def update_ingest_file_success(source_file_id: int, row_count: int, conn):
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE raw.ingest_file
-            SET status='success', row_count=%s, finished_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
-            WHERE id=%s
-            """,
-            (row_count, source_file_id),
-        )
-        conn.commit()
-
-
-def delete_existing_by_source(source_file_id: int, conn) -> int:
-    with conn.cursor() as cur:
-        cur.execute(f"DELETE FROM {TARGET_TABLE} WHERE source_file_id = %s", (source_file_id,))
-        deleted = cur.rowcount
-        conn.commit()
-        return deleted
+CONFLICT_CLAUSE = """
+ON CONFLICT (store_code, biz_date) DO UPDATE SET
+  store_name = EXCLUDED.store_name,
+  month = EXCLUDED.month,
+  gross_sales_amt = EXCLUDED.gross_sales_amt,
+  revenue_amt = EXCLUDED.revenue_amt,
+  order_cnt = EXCLUDED.order_cnt,
+  refund_amt = EXCLUDED.refund_amt,
+  revenue_incl_service_fee_amt = EXCLUDED.revenue_incl_service_fee_amt,
+  platform_service_fee_amt = EXCLUDED.platform_service_fee_amt,
+  wechat_pay_gross_amt = EXCLUDED.wechat_pay_gross_amt,
+  wechat_pay_revenue_amt = EXCLUDED.wechat_pay_revenue_amt,
+  wechat_pay_cnt = EXCLUDED.wechat_pay_cnt,
+  wechat_pay_miniapp_gross_amt = EXCLUDED.wechat_pay_miniapp_gross_amt,
+  wechat_pay_miniapp_revenue_amt = EXCLUDED.wechat_pay_miniapp_revenue_amt,
+  wechat_pay_pos_gross_amt = EXCLUDED.wechat_pay_pos_gross_amt,
+  wechat_pay_pos_revenue_amt = EXCLUDED.wechat_pay_pos_revenue_amt,
+  alipay_pay_gross_amt = EXCLUDED.alipay_pay_gross_amt,
+  alipay_pay_revenue_amt = EXCLUDED.alipay_pay_revenue_amt,
+  alipay_pay_cnt = EXCLUDED.alipay_pay_cnt,
+  alipay_pay_miniapp_gross_amt = EXCLUDED.alipay_pay_miniapp_gross_amt,
+  alipay_pay_miniapp_revenue_amt = EXCLUDED.alipay_pay_miniapp_revenue_amt,
+  alipay_pay_pos_gross_amt = EXCLUDED.alipay_pay_pos_gross_amt,
+  alipay_pay_pos_revenue_amt = EXCLUDED.alipay_pay_pos_revenue_amt,
+  cash_pay_gross_amt = EXCLUDED.cash_pay_gross_amt,
+  cash_pay_revenue_amt = EXCLUDED.cash_pay_revenue_amt,
+  cash_pay_cnt = EXCLUDED.cash_pay_cnt,
+  meituan_delivery_gross_amt = EXCLUDED.meituan_delivery_gross_amt,
+  meituan_delivery_revenue_amt = EXCLUDED.meituan_delivery_revenue_amt,
+  meituan_delivery_cnt = EXCLUDED.meituan_delivery_cnt,
+  taobao_shangou_gross_amt = EXCLUDED.taobao_shangou_gross_amt,
+  taobao_shangou_revenue_amt = EXCLUDED.taobao_shangou_revenue_amt,
+  taobao_shangou_cnt = EXCLUDED.taobao_shangou_cnt,
+  jd_miaosong_gross_amt = EXCLUDED.jd_miaosong_gross_amt,
+  jd_miaosong_revenue_amt = EXCLUDED.jd_miaosong_revenue_amt,
+  jd_miaosong_cnt = EXCLUDED.jd_miaosong_cnt,
+  meituan_coupon_cnt = EXCLUDED.meituan_coupon_cnt,
+  meituan_coupon_gross_amt = EXCLUDED.meituan_coupon_gross_amt,
+  meituan_coupon_revenue_amt = EXCLUDED.meituan_coupon_revenue_amt,
+  douyin_coupon_cnt = EXCLUDED.douyin_coupon_cnt,
+  douyin_coupon_gross_amt = EXCLUDED.douyin_coupon_gross_amt,
+  douyin_coupon_revenue_amt = EXCLUDED.douyin_coupon_revenue_amt,
+  alipay_coupon_cnt = EXCLUDED.alipay_coupon_cnt,
+  alipay_coupon_gross_amt = EXCLUDED.alipay_coupon_gross_amt,
+  alipay_coupon_revenue_amt = EXCLUDED.alipay_coupon_revenue_amt,
+  meituan_online_gross_amt = EXCLUDED.meituan_online_gross_amt,
+  meituan_online_revenue_amt = EXCLUDED.meituan_online_revenue_amt,
+  meituan_online_discount_amt = EXCLUDED.meituan_online_discount_amt,
+  douyin_online_cnt = EXCLUDED.douyin_online_cnt,
+  douyin_online_gross_amt = EXCLUDED.douyin_online_gross_amt,
+  douyin_online_revenue_amt = EXCLUDED.douyin_online_revenue_amt,
+  source_file_id = EXCLUDED.source_file_id
+"""
 
 
 def insert_rows(df: pd.DataFrame, meta: dict, source_file_id: int, conn) -> int:
-    records = []
-
     store_code = meta.get("store_code") or STORE_CODE_DEFAULT
     store_name = STORE_NAME_DEFAULT
 
+    records = []
     for _, r in df.iterrows():
-        # fixed columns
-        base = {
+        row = {
             "store_code": store_code,
             "store_name": store_name,
             "biz_date": r.get("biz_date"),
             "month": r.get("month"),
             "source_file_id": source_file_id,
         }
-
-        row = {**base}
         for dst in COLMAP.values():
-            if dst in ("biz_date",):
-                continue
-            if dst in row:
+            if dst in ("biz_date",) or dst in row:
                 continue
             if dst in df.columns:
                 row[dst] = r.get(dst)
-
-        # fill missing keys with None
         records.append(row)
 
     if not records:
         return 0
 
-    cols = [
-        "store_code",
-        "store_name",
-        "biz_date",
-        "month",
-        # top-level
-        "gross_sales_amt",
-        "revenue_amt",
-        "order_cnt",
-        "refund_amt",
-        "revenue_incl_service_fee_amt",
-        "platform_service_fee_amt",
-        # wechat
-        "wechat_pay_gross_amt",
-        "wechat_pay_revenue_amt",
-        "wechat_pay_cnt",
-        "wechat_pay_miniapp_gross_amt",
-        "wechat_pay_miniapp_revenue_amt",
-        "wechat_pay_pos_gross_amt",
-        "wechat_pay_pos_revenue_amt",
-        # alipay
-        "alipay_pay_gross_amt",
-        "alipay_pay_revenue_amt",
-        "alipay_pay_cnt",
-        "alipay_pay_miniapp_gross_amt",
-        "alipay_pay_miniapp_revenue_amt",
-        "alipay_pay_pos_gross_amt",
-        "alipay_pay_pos_revenue_amt",
-        # cash
-        "cash_pay_gross_amt",
-        "cash_pay_revenue_amt",
-        "cash_pay_cnt",
-        # delivery/instant
-        "meituan_delivery_gross_amt",
-        "meituan_delivery_revenue_amt",
-        "meituan_delivery_cnt",
-        "taobao_shangou_gross_amt",
-        "taobao_shangou_revenue_amt",
-        "taobao_shangou_cnt",
-        "jd_miaosong_gross_amt",
-        "jd_miaosong_revenue_amt",
-        "jd_miaosong_cnt",
-        # coupons
-        "meituan_coupon_cnt",
-        "meituan_coupon_gross_amt",
-        "meituan_coupon_revenue_amt",
-        "douyin_coupon_cnt",
-        "douyin_coupon_gross_amt",
-        "douyin_coupon_revenue_amt",
-        "alipay_coupon_cnt",
-        "alipay_coupon_gross_amt",
-        "alipay_coupon_revenue_amt",
-        # online
-        "meituan_online_gross_amt",
-        "meituan_online_revenue_amt",
-        "meituan_online_discount_amt",
-        "douyin_online_cnt",
-        "douyin_online_gross_amt",
-        "douyin_online_revenue_amt",
-        # meta
-        "source_file_id",
-    ]
-
-    values = [tuple(r.get(c) for c in cols) for r in records]
-
-    with conn.cursor() as cur:
-        execute_values(
-            cur,
-            f"""
-            INSERT INTO {TARGET_TABLE} ({', '.join(cols)})
-            VALUES %s
-            ON CONFLICT (store_code, biz_date) DO UPDATE SET
-              store_name = EXCLUDED.store_name,
-              month = EXCLUDED.month,
-              gross_sales_amt = EXCLUDED.gross_sales_amt,
-              revenue_amt = EXCLUDED.revenue_amt,
-              order_cnt = EXCLUDED.order_cnt,
-              refund_amt = EXCLUDED.refund_amt,
-              revenue_incl_service_fee_amt = EXCLUDED.revenue_incl_service_fee_amt,
-              platform_service_fee_amt = EXCLUDED.platform_service_fee_amt,
-              wechat_pay_gross_amt = EXCLUDED.wechat_pay_gross_amt,
-              wechat_pay_revenue_amt = EXCLUDED.wechat_pay_revenue_amt,
-              wechat_pay_cnt = EXCLUDED.wechat_pay_cnt,
-              wechat_pay_miniapp_gross_amt = EXCLUDED.wechat_pay_miniapp_gross_amt,
-              wechat_pay_miniapp_revenue_amt = EXCLUDED.wechat_pay_miniapp_revenue_amt,
-              wechat_pay_pos_gross_amt = EXCLUDED.wechat_pay_pos_gross_amt,
-              wechat_pay_pos_revenue_amt = EXCLUDED.wechat_pay_pos_revenue_amt,
-              alipay_pay_gross_amt = EXCLUDED.alipay_pay_gross_amt,
-              alipay_pay_revenue_amt = EXCLUDED.alipay_pay_revenue_amt,
-              alipay_pay_cnt = EXCLUDED.alipay_pay_cnt,
-              alipay_pay_miniapp_gross_amt = EXCLUDED.alipay_pay_miniapp_gross_amt,
-              alipay_pay_miniapp_revenue_amt = EXCLUDED.alipay_pay_miniapp_revenue_amt,
-              alipay_pay_pos_gross_amt = EXCLUDED.alipay_pay_pos_gross_amt,
-              alipay_pay_pos_revenue_amt = EXCLUDED.alipay_pay_pos_revenue_amt,
-              cash_pay_gross_amt = EXCLUDED.cash_pay_gross_amt,
-              cash_pay_revenue_amt = EXCLUDED.cash_pay_revenue_amt,
-              cash_pay_cnt = EXCLUDED.cash_pay_cnt,
-              meituan_delivery_gross_amt = EXCLUDED.meituan_delivery_gross_amt,
-              meituan_delivery_revenue_amt = EXCLUDED.meituan_delivery_revenue_amt,
-              meituan_delivery_cnt = EXCLUDED.meituan_delivery_cnt,
-              taobao_shangou_gross_amt = EXCLUDED.taobao_shangou_gross_amt,
-              taobao_shangou_revenue_amt = EXCLUDED.taobao_shangou_revenue_amt,
-              taobao_shangou_cnt = EXCLUDED.taobao_shangou_cnt,
-              jd_miaosong_gross_amt = EXCLUDED.jd_miaosong_gross_amt,
-              jd_miaosong_revenue_amt = EXCLUDED.jd_miaosong_revenue_amt,
-              jd_miaosong_cnt = EXCLUDED.jd_miaosong_cnt,
-              meituan_coupon_cnt = EXCLUDED.meituan_coupon_cnt,
-              meituan_coupon_gross_amt = EXCLUDED.meituan_coupon_gross_amt,
-              meituan_coupon_revenue_amt = EXCLUDED.meituan_coupon_revenue_amt,
-              douyin_coupon_cnt = EXCLUDED.douyin_coupon_cnt,
-              douyin_coupon_gross_amt = EXCLUDED.douyin_coupon_gross_amt,
-              douyin_coupon_revenue_amt = EXCLUDED.douyin_coupon_revenue_amt,
-              alipay_coupon_cnt = EXCLUDED.alipay_coupon_cnt,
-              alipay_coupon_gross_amt = EXCLUDED.alipay_coupon_gross_amt,
-              alipay_coupon_revenue_amt = EXCLUDED.alipay_coupon_revenue_amt,
-              meituan_online_gross_amt = EXCLUDED.meituan_online_gross_amt,
-              meituan_online_revenue_amt = EXCLUDED.meituan_online_revenue_amt,
-              meituan_online_discount_amt = EXCLUDED.meituan_online_discount_amt,
-              douyin_online_cnt = EXCLUDED.douyin_online_cnt,
-              douyin_online_gross_amt = EXCLUDED.douyin_online_gross_amt,
-              douyin_online_revenue_amt = EXCLUDED.douyin_online_revenue_amt,
-              source_file_id = EXCLUDED.source_file_id
-            """,
-            values,
-        )
-        conn.commit()
-
-    return len(values)
+    values = [tuple(r.get(c) for c in INSERT_COLS) for r in records]
+    return insert_batch(conn, TARGET_TABLE, INSERT_COLS, values, CONFLICT_CLAUSE)
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Bonjur 自助下载营业数据（日粒度）导入")
-    ap.add_argument("input", help="csv file or directory")
-    ap.add_argument("--dry-run", action="store_true", help="parse only, do not write")
-    ap.add_argument("--verify", action="store_true", help="run simple verification queries")
+    ap = setup_cli_parser("Bonjur 自助下载营业数据（日粒度）导入")
     args = ap.parse_args()
+
+    if not args.input:
+        raise SystemExit("Usage: python import_bonjur_sales_self_service_daily.py [csv_file_or_dir]")
 
     in_path = Path(args.input)
     files: list[str] = []
@@ -590,23 +424,21 @@ def main():
     if not files:
         raise SystemExit(f"no csv files found under: {in_path}")
 
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = get_connection()
     try:
-        ensure_table_exists(conn)
-
         for fp in sorted(files):
-            meta = parse_path(fp)
+            meta = parse_path_fallback(fp)
             file_hash = calculate_sha256(fp)
             file_size = os.path.getsize(fp)
 
-            existing = check_ingest_file(file_hash, conn)
+            mgr = IngestFileManager(conn)
+            existing = mgr.check(file_hash)
             if existing and existing.get("status") == "success":
                 print(f"SKIP (already imported): {fp}")
                 continue
 
             if existing:
                 source_file_id = int(existing["id"])
-                # reset status
                 with conn.cursor() as cur:
                     cur.execute(
                         "UPDATE raw.ingest_file SET status='pending', updated_at=CURRENT_TIMESTAMP WHERE id=%s",
@@ -614,8 +446,16 @@ def main():
                     )
                     conn.commit()
             else:
-                source_file_id = create_ingest_file(meta, file_hash, file_size, conn)
-                conn.commit()
+                source_file_id = mgr.create(
+                    meta.get("brand_code") or "bonjur",
+                    meta.get("store_code") or STORE_CODE_DEFAULT,
+                    meta.get("source_type") or SOURCE_TYPE,
+                    meta.get("month_date"),
+                    meta.get("file_name"),
+                    meta.get("file_path"),
+                    file_hash, file_size,
+                )
+            conn.commit()
 
             df_raw = read_csv(fp)
             df = transform(df_raw)
@@ -626,11 +466,12 @@ def main():
             if args.dry_run:
                 continue
 
-            deleted = delete_existing_by_source(source_file_id, conn)
+            delete_imported_data(conn, source_file_id, TARGET_TABLE)
+            ensure_table_exists(conn, "bonjur_ods", "sales_daily_self_service", TABLE_DDL)
             inserted = insert_rows(df, meta, source_file_id, conn)
-            update_ingest_file_success(source_file_id, inserted, conn)
+            mgr.mark_success(source_file_id, inserted)
 
-            print(f"- deleted(old)={deleted} inserted={inserted} source_file_id={source_file_id}")
+            print(f"- inserted={inserted} source_file_id={source_file_id}")
 
         if args.verify and not args.dry_run:
             with conn.cursor() as cur:
