@@ -2,7 +2,7 @@
 // 委托到 brand_tamkoko_dm.fn_cash_register_combined (白名单校验 dim)
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
-import { getErrorMessage } from '@/lib/query-types';
+import { getErrorMessage, getErrorCode } from '@/lib/query-types';
 
 const ALLOWED_DIMS = ['order_source', 'order_type', 'meal_period', 'weekday'];
 
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
         );
         return NextResponse.json({ success: true, data: rows });
     } catch (error) {
-        const code = (error as Record<string, string>)?.code;
+        const code = getErrorCode(error);
         if (code === '42P01') {
             return NextResponse.json({ success: true, data: null, note: 'function not ready' });
         }

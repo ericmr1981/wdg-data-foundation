@@ -2,7 +2,7 @@
 // 查询 v_cash_register_daily 按 biz_date 范围过滤
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
-import { getErrorMessage } from '@/lib/query-types';
+import { getErrorMessage, getErrorCode } from '@/lib/query-types';
 
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
         );
         return NextResponse.json({ success: true, data: rows });
     } catch (error) {
-        const code = (error as Record<string, string>)?.code;
+        const code = getErrorCode(error);
         if (code === '42P01') {
             return NextResponse.json({ success: true, data: null, note: 'view not ready' });
         }

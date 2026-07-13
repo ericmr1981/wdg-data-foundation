@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
-import { getErrorMessage } from '@/lib/query-types';
+import { getErrorMessage, getErrorCode } from '@/lib/query-types';
 import { getCfgSchema } from '@/lib/brand-server';
 import { parsePeriod } from '@/app/api/financial/period-utils';
 
@@ -246,8 +246,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: { channelMetrics, monthlyTrend, unmatchedOrders } });
   } catch (error: unknown) {
-    const pgError = error as Record<string, string>;
-    if (pgError?.code === '42P01') {
+    if (getErrorCode(error) === '42P01') {
       return NextResponse.json({ success: true, data: null, note: 'view not ready' });
     }
     return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });

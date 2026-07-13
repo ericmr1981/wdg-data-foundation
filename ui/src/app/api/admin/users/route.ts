@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
-import { getErrorMessage } from '@/lib/query-types';
+import { getErrorMessage, getErrorCode } from '@/lib/query-types';
 
 // GET /api/admin/users - list all users
 export async function GET() {
@@ -17,7 +17,7 @@ export async function GET() {
 
     return NextResponse.json({ success: true, data: result.rows });
   } catch (error: unknown) {
-    const status = (error as Record<string, number>)?.status || 500;
+    const status = (error as { status?: number })?.status || 500;
     if (status === 401 || status === 403) {
       return NextResponse.json({ success: false, error: (error as Error).message }, { status });
     }
@@ -56,11 +56,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, data: result.rows[0] });
   } catch (error: unknown) {
-    const status = (error as Record<string, number>)?.status || 500;
+    const status = (error as { status?: number })?.status || 500;
     if (status === 401 || status === 403) {
       return NextResponse.json({ success: false, error: (error as Error).message }, { status });
     }
-    if ((error as Record<string, string>)?.code === '23505') {
+    if (getErrorCode(error) === '23505') {
       return NextResponse.json({ success: false, error: 'Username already exists' }, { status: 409 });
     }
     console.error('Error creating user:', error);
@@ -115,11 +115,11 @@ export async function PUT(request: Request) {
 
     return NextResponse.json({ success: true, data: result.rows[0] });
   } catch (error: unknown) {
-    const status = (error as Record<string, number>)?.status || 500;
+    const status = (error as { status?: number })?.status || 500;
     if (status === 401 || status === 403) {
       return NextResponse.json({ success: false, error: (error as Error).message }, { status });
     }
-    if ((error as Record<string, string>)?.code === '23505') {
+    if (getErrorCode(error) === '23505') {
       return NextResponse.json({ success: false, error: 'Username already exists' }, { status: 409 });
     }
     console.error('Error updating user:', error);
@@ -155,7 +155,7 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({ success: true, message: 'User deleted' });
   } catch (error: unknown) {
-    const status = (error as Record<string, number>)?.status || 500;
+    const status = (error as { status?: number })?.status || 500;
     if (status === 401 || status === 403) {
       return NextResponse.json({ success: false, error: (error as Error).message }, { status });
     }

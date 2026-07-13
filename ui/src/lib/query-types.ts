@@ -131,3 +131,11 @@ export function getErrorMessage(error: unknown): string {
   }
   return 'Unknown error';
 }
+
+/** Safely extract a Postgres error code from an unknown error */
+export function getErrorCode(error: unknown): string | undefined {
+  if (error && typeof error === 'object' && 'code' in error) {
+    return (error as { code: string }).code;
+  }
+  return undefined;
+}
