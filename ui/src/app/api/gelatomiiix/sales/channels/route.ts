@@ -1,20 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import pool from '@/lib/db';
+import { getSalesByChannel } from '@/lib/repositories/sales-repository';
 import { getErrorMessage } from '@/lib/query-types';
-import { getOdsSchema } from '@/lib/brand-server';
-
-interface ChannelRow {
-  payment_method: string;
-  gross_amt: string;
-  revenue_amt: string;
-  txn_cnt: string;
-}
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    const BRAND = 'gelatomiiix';
     const { searchParams } = new URL(request.url);
     const storeCode = searchParams.get('store_code');
     const month = searchParams.get('month');
@@ -24,32 +15,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
     }
 
-    const excludeCustom = pureMode ? `AND pm IS NOT NULL AND pm != '自定义结账方式'` : '';
-
-    const result = await pool.query(`
-      SELECT
-        pm AS payment_method,
-        COUNT(*) AS txn_cnt,
-        SUM(COALESCE(gross_amt,0)) AS gross_amt,
-        SUM(COALESCE(revenue_amt,0)) AS revenue_amt
-      FROM ${getOdsSchema(BRAND)}.income_detail,
-      LATERAL unnest(payment_methods) AS pm
-      WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
-        AND NOT is_refund
-        ${excludeCustom}
-      GROUP BY pm
-      ORDER BY gross_amt DESC
-    `, [storeCode, `${month}-01`]);
-
-    const total = result.rows.reduce((acc: number, r: ChannelRow) => acc + Number(r.gross_amt), 0);
-    const data = result.rows.map((r: ChannelRow) => ({
-      ...r,
-      gross_amt: Number(r.gross_amt),
-      revenue_amt: Number(r.revenue_amt),
-      txn_cnt: Number(r.txn_cnt),
-      pct: total > 0 ? Math.round(Number(r.gross_amt) / total * 10000) / 100 : 0,
-    }));
-
+    const opts = pureMode ? { pureMode: true } : undefined;
+    const data = await getSalesByChannel('gelatomiiix', storeCode, month, opts);
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
     if ((error as { code?: string })?.code === '42P01') {
