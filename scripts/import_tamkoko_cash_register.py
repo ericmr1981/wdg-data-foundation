@@ -14,9 +14,7 @@ Usage:
     python scripts/import_tamkoko_cash_register.py --replace {file}
 """
 
-import argparse
 import csv
-import hashlib
 import os
 import re
 import sys
@@ -24,29 +22,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import psycopg2
-from psycopg2.extras import execute_values
-
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
-from _store_guard import (
-    CrossBrandStoreError,
-    load_valid_stores,
-    safe_resolve_store,
+from lib.importer import (
+    calculate_sha256,
+    get_connection,
+    IngestFileManager,
+    insert_batch,
+    parse_path,
+    setup_cli_parser,
 )
-
-def _get_db_config() -> dict:
-    """Build DB config dict; accesses DB_PASSWORD at call time (fail-fast
-    when actually needed). Deferring this from module level makes the
-    module importable for pure-function tests in envs without DB creds."""
-    return {
-        "host": os.getenv("DB_HOST", "localhost"),
-        "port": os.getenv("DB_PORT", "5432"),
-        "database": os.getenv("DB_NAME", "dataplatform"),
-        "user": os.getenv("DB_USER", "postgres"),
-        "password": os.environ["DB_PASSWORD"],
-    }
 
 STORE_CODE = os.getenv("CASH_REGISTER_STORE_CODE", "sh_sjh")
 STORE_NAME = os.getenv("CASH_REGISTER_STORE_NAME", "上海世纪汇店")
@@ -54,13 +40,12 @@ BRAND_CODE = os.getenv("CASH_REGISTER_BRAND_CODE", "tamkoko")
 SOURCE_TYPE = "cash_register"
 TARGET_TABLE = "brand_tamkoko_ods.cash_register_order"
 
-
-def calculate_sha256(file_path: str) -> str:
-    h = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for block in iter(lambda: f.read(4096), b""):
-            h.update(block)
-    return h.hexdigest()
+COLUMNS = [
+    "store_code", "store_name", "biz_date", "order_no",
+    "order_source", "order_type", "meal_period",
+    "gross_amt", "revenue_amt", "discount_amt", "net_amt", "qty",
+    "source_file_id",
+]
 
 
 def strip_backtick(s: str) -> str:
@@ -88,26 +73,25 @@ def parse_date(s: str) -> Optional[str]:
     return None
 
 
-def parse_path(file_path: str) -> dict:
-    """从路径解析元数据: inputs/{brand}/{store}/sales/cash_register/{YYYY-MM}/{filename}"""
+def parse_path_cash_register(file_path: str) -> dict:
+    """Parse path: inputs/{brand}/{store}/sales/cash_register/{YYYY-MM}/{filename}"""
     path = Path(file_path)
     parts = path.parts
     if "inputs" not in parts:
         raise ValueError(f"路径必须包含 'inputs' 目录: {file_path}")
     idx = parts.index("inputs")
-    if len(parts) < idx + 5:
+    if len(parts) < idx + 6:
         raise ValueError(
             f"路径格式错误: inputs/{{brand}}/{{store}}/sales/cash_register/{{YYYY-MM}}/{{filename}}\n"
             f"实际: {file_path}"
         )
     brand_code = parts[idx + 1]
     store_code = parts[idx + 2]
-    # sales/cash_register 两层路径(销售数据 / 子类收银明细)
     sales_type = parts[idx + 3]
     sub_type = parts[idx + 4]
     if sales_type != "sales" or sub_type != SOURCE_TYPE:
         raise ValueError(f"source_type 必须是 'sales/{SOURCE_TYPE}', 实际: {sales_type}/{sub_type}")
-    month_str = parts[idx + 5] if len(parts) > idx + 5 else None
+    month_str = parts[idx + 5]
     if not month_str or not re.match(r"^\d{4}-\d{2}$", month_str):
         raise ValueError(f"月份格式错误 (需 YYYY-MM): {month_str}")
     return {
@@ -115,6 +99,7 @@ def parse_path(file_path: str) -> dict:
         "store_code": store_code,
         "source_type": SOURCE_TYPE,
         "month": month_str,
+        "month_date": f"{month_str}-01",
         "file_name": path.name,
         "file_path": file_path,
     }
@@ -167,50 +152,9 @@ def aggregate_by_order_no(rows: list[dict]) -> list[dict]:
 
 
 # ---- 后续 task 添加 ----
-def is_already_imported(conn, file_hash: str) -> Optional[int]:
-    """查 raw.ingest_file,若 (brand=tamkoko, file_hash=?, status='success') 返回 source_file_id,否则 None"""
-    with conn.cursor() as cur:
-        cur.execute(
-            """SELECT id FROM raw.ingest_file
-               WHERE brand_code = %s AND file_hash = %s AND status = 'success'
-               LIMIT 1""",
-            (BRAND_CODE, file_hash),
-        )
-        row = cur.fetchone()
-        return row[0] if row else None
-
-
-def register_source_file(conn, meta: dict, file_hash: str, file_size: int) -> int:
-    """INSERT 一条 raw.ingest_file,status='running',返回 id"""
-    # month in ingest_file expects YYYY-MM-DD format, convert from YYYY-MM
-    month_date = f"{meta['month']}-01"
-    with conn.cursor() as cur:
-        cur.execute(
-            """INSERT INTO raw.ingest_file (
-                brand_code, store_code, source_type, month,
-                file_name, file_path, file_hash, file_size, status
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'running')
-            ON CONFLICT (brand_code, file_hash) DO UPDATE SET
-                status = 'running', updated_at = NOW()
-            RETURNING id""",
-            (
-                meta["brand_code"], meta["store_code"], SOURCE_TYPE, month_date,
-                meta["file_name"], meta["file_path"], file_hash, file_size,
-            ),
-        )
-        sf_id = cur.fetchone()[0]
-        conn.commit()
-        return sf_id
-
-
-def finalize_source_file(conn, source_file_id: int, row_count: int, status: str = "success"):
-    """更新 raw.ingest_file.status / row_count"""
-    with conn.cursor() as cur:
-        cur.execute(
-            "UPDATE raw.ingest_file SET status=%s, row_count=%s, finished_at=NOW(), updated_at=NOW() WHERE id=%s",
-            (status, row_count, source_file_id),
-        )
-        conn.commit()
+# is_already_imported → IngestFileManager.check()
+# register_source_file → IngestFileManager.create()
+# finalize_source_file → IngestFileManager.mark_success()
 
 
 # ---- 后续 task 添加 ----
@@ -241,25 +185,17 @@ def replace_existing_for_period(conn, store_code: str, biz_date_sample: str):
 
 
 def import_one_file(conn, meta: dict, replace: bool = False) -> dict:
-    """导入单文件到 ODS。返回值:
-        {
-            "source_file_id": int,
-            "row_count": int,
-            "skipped": bool,
-        }
-    """
     file_hash = calculate_sha256(meta["file_path"])
-    existing_id = is_already_imported(conn, file_hash)
-    if existing_id is not None:
-        return {"source_file_id": existing_id, "row_count": 0, "skipped": True}
+    mgr = IngestFileManager(conn)
+    existing = mgr.check(file_hash, meta["brand_code"])
+    if existing and existing["status"] == "success":
+        return {"source_file_id": existing["id"], "row_count": 0, "skipped": True}
 
-    # 读 + 聚合
     with open(meta["file_path"], "r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
     aggregated = aggregate_by_order_no(rows)
 
-    # store-guard:store_name 与 env 不一致 → warn + 仍继续
     if aggregated:
         actual_name = aggregated[0]["store_name"]
         expected_name = STORE_NAME
@@ -270,68 +206,63 @@ def import_one_file(conn, meta: dict, replace: bool = False) -> dict:
             )
 
     file_size = Path(meta["file_path"]).stat().st_size
-    source_file_id = register_source_file(conn, meta, file_hash, file_size)
+    source_file_id = (
+        existing["id"]
+        if existing
+        else mgr.create(
+            meta["brand_code"], meta["store_code"], SOURCE_TYPE,
+            meta["month_date"], meta["file_name"], meta["file_path"],
+            file_hash, file_size,
+        )
+    )
 
-    # replace=true 时清同月份旧 source_file(CASCADE 清 ODS)
     if replace and aggregated:
-        # 用第一条记录的 biz_date 判定月份
         sample_biz = aggregated[0]["biz_date"]
         if sample_biz:
             replace_existing_for_period(conn, meta["store_code"], sample_biz)
 
-    # 写 ODS
     if aggregated:
-        with conn.cursor() as cur:
-            execute_values(
-                cur,
-                f"""INSERT INTO {TARGET_TABLE} (
-                    store_code, store_name, biz_date, order_no,
-                    order_source, order_type, meal_period,
-                    gross_amt, revenue_amt, discount_amt, net_amt, qty,
-                    source_file_id
-                ) VALUES %s""",
-                [(
-                    meta["store_code"], r["store_name"], r["biz_date"], r["order_no"],
-                    r["order_source"], r["order_type"], r["meal_period"],
-                    r["gross_amt"], r["revenue_amt"], r["discount_amt"], r["net_amt"], r["qty"],
-                    source_file_id,
-                ) for r in aggregated],
-            )
-            conn.commit()
+        values = [(
+            meta["store_code"], r["store_name"], r["biz_date"], r["order_no"],
+            r["order_source"], r["order_type"], r["meal_period"],
+            r["gross_amt"], r["revenue_amt"], r["discount_amt"], r["net_amt"], r["qty"],
+            source_file_id,
+        ) for r in aggregated]
+        insert_batch(conn, TARGET_TABLE, COLUMNS, values)
 
-    finalize_source_file(conn, source_file_id, len(aggregated), "success")
+    mgr.mark_success(source_file_id, len(aggregated))
     return {"source_file_id": source_file_id, "row_count": len(aggregated), "skipped": False}
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("path", help="CSV 文件或目录路径")
-    parser.add_argument("--dry-run", action="store_true")
+    parser = setup_cli_parser("Tamkoko 收银明细 CSV 导入")
     parser.add_argument("--replace", action="store_true",
                         help="按 ODS 内 biz_date 年/月删除同 store+月份旧 source_file 后再写")
-    parser.add_argument("--brand", default=BRAND_CODE)
     args = parser.parse_args()
 
-    target = Path(args.path)
+    if not args.input:
+        raise SystemExit("Usage: python import_tamkoko_cash_register.py [csv_file_or_dir]")
+
+    target = Path(args.input)
     if target.is_file():
         files = [target]
     elif target.is_dir():
         files = sorted(target.glob("*.csv"))
     else:
-        print(f"路径不存在: {args.path}", file=sys.stderr)
+        print(f"路径不存在: {args.input}", file=sys.stderr)
         sys.exit(1)
     if not files:
-        print(f"未找到 CSV 文件: {args.path}", file=sys.stderr)
+        print(f"未找到 CSV 文件: {args.input}", file=sys.stderr)
         sys.exit(1)
 
     print(f"目标表: {TARGET_TABLE}, 文件数: {len(files)}, replace={args.replace}")
 
-    conn = psycopg2.connect(**_get_db_config())
+    conn = get_connection()
     try:
         for csv_path in files:
             print(f"\n=== {csv_path.name} ===")
             try:
-                meta = parse_path(str(csv_path))
+                meta = parse_path_cash_register(str(csv_path))
             except ValueError as e:
                 print(f"  ❌ 路径解析失败: {e}", file=sys.stderr)
                 continue

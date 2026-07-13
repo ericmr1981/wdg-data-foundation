@@ -14,8 +14,6 @@
 """
 from __future__ import annotations
 
-import argparse
-import hashlib
 import json
 import os
 import re
@@ -25,8 +23,16 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 import openpyxl
-import psycopg2
-from psycopg2.extras import execute_values
+
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+from lib.importer import (
+    calculate_sha256,
+    get_connection,
+    IngestFileManager,
+    insert_batch,
+)
 
 
 @dataclass
@@ -158,34 +164,25 @@ def validate_rows(rows: Iterable[InventoryRow]) -> tuple[list[InventoryRow], lis
 
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument('path')
+    from lib.importer import setup_cli_parser
+    p = setup_cli_parser('Tamkoko 月度盘点导入')
     p.add_argument('--period', required=True, help='YYYY-MM')
     p.add_argument('--store-code', default='hz_fuyang')
     args = p.parse_args()
 
-    rows = parse_inventory_excel(args.path, args.period)
+    if not args.input:
+        raise SystemExit('Usage: python import_tamkoko_inventory.py [xlsx_file] --period YYYY-MM')
+
+    rows = parse_inventory_excel(args.input, args.period)
     accepted, rejected = validate_rows(rows)
     print(f'parsed: {len(rows)}, accepted: {len(accepted)}, rejected: {len(rejected)}')
     for r, reason in rejected:
         print(f'  REJECT {r.sku}: {reason}')
 
-    # DB 写入：raw.ingest_file + cfg.material_sku + ODS
-    try:
-        conn = psycopg2.connect(
-            host=os.environ['DB_HOST'],
-            port=int(os.environ['DB_PORT']),
-            database=os.environ['DB_NAME'],
-            user=os.environ['DB_USER'],
-            password=os.environ['DB_PASSWORD'],
-        )
-    except (KeyError, psycopg2.Error) as e:
-        print(f'DB connect failed: {e}', file=sys.stderr)
-        sys.exit(1)
-
+    conn = get_connection()
     try:
         summary = run_import(
-            path=args.path,
+            path=args.input,
             period=args.period,
             store_code=args.store_code,
             brand_code='tamkoko',
@@ -205,36 +202,8 @@ def main():
 # ── DB 写入 ────────────────────────────────────────────
 
 
-def calculate_sha256(path: str) -> str:
-    h = hashlib.sha256()
-    with open(path, 'rb') as f:
-        for chunk in iter(lambda: f.read(65536), b''):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def _register_source_file(conn, brand_code: str, store_code: str,
-                          source_type: str, month: str,
-                          file_name: str, file_path: str,
-                          file_hash: str) -> int:
-    """注册 raw.ingest_file，返回 source_file_id。幂等：同 (brand, hash) 复用。
-
-    month 入参允许 'YYYY-MM'（period）或 'YYYY-MM-DD'。raw.ingest_file.month 是
-    DATE 类型，仅 'YYYY-MM' 不能直接转换，需补齐到月首日。
-    """
-    month_date = f"{month}-01" if len(month) == 7 else month
-    with conn.cursor() as cur:
-        cur.execute("""
-            INSERT INTO raw.ingest_file
-              (brand_code, store_code, source_type, month,
-               file_name, file_path, file_hash, status, row_count)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'running', 0)
-            ON CONFLICT (brand_code, file_hash) DO UPDATE
-              SET status='running', updated_at=NOW()
-            RETURNING id
-        """, (brand_code, store_code, source_type, month_date,
-              file_name, file_path, file_hash))
-        return cur.fetchone()[0]
+# calculate_sha256 imported from lib.importer
+# _register_source_file → IngestFileManager.create()
 
 
 def _upsert_material_sku(conn, rows: list[InventoryRow]):
@@ -260,45 +229,51 @@ def _upsert_material_sku(conn, rows: list[InventoryRow]):
                   r.unit_price, r.period, r.period))
 
 
+ODS_COLUMNS = [
+    "store_code", "period", "category", "sku", "material_name", "spec",
+    "unit_price", "qty", "unit", "amount", "source_file_id",
+]
+
+
 def _write_ods(conn, rows: list[InventoryRow], source_file_id: int, store_code: str):
-    """DELETE WHERE source_file_id=? 后 INSERT。store_code 由调用方提供。"""
     with conn.cursor() as cur:
-        cur.execute("""
-            DELETE FROM brand_tamkoko_ods.inventory_month_end
-            WHERE source_file_id = %s
-        """, (source_file_id,))
-        if not rows:
-            return
-        payload = [(
-            store_code, r.period, r.category, r.sku, r.material_name, r.spec,
-            r.unit_price, r.qty, r.unit, r.amount, source_file_id
-        ) for r in rows]
-        execute_values(cur, """
-            INSERT INTO brand_tamkoko_ods.inventory_month_end
-              (store_code, period, category, sku, material_name, spec,
-               unit_price, qty, unit, amount, source_file_id)
-            VALUES %s
-        """, payload)
+        cur.execute(
+            "DELETE FROM brand_tamkoko_ods.inventory_month_end WHERE source_file_id = %s",
+            (source_file_id,),
+        )
+    if not rows:
+        return
+    payload = [(
+        store_code, r.period, r.category, r.sku, r.material_name, r.spec,
+        r.unit_price, r.qty, r.unit, r.amount, source_file_id
+    ) for r in rows]
+    insert_batch(conn, "brand_tamkoko_ods.inventory_month_end", ODS_COLUMNS, payload)
 
 
 def run_import(path: str, period: str, store_code: str,
                brand_code: str, source_type: str,
                conn) -> dict:
-    """
-    全流程导入：解析 → 校验 → 写 raw.ingest_file → UPSERT cfg.material_sku → 写 ODS。
-    返回 {ods_rows, sku_count, rejected, source_file_id}。
-    注意：本函数不 commit，由调用方决定 commit 时机。
-    """
     rows = parse_inventory_excel(path, period)
     accepted, rejected = validate_rows(rows)
     file_hash = calculate_sha256(path)
     file_name = Path(path).name
-    source_file_id = _register_source_file(
-        conn, brand_code, store_code, source_type, period,
-        file_name, str(Path(path).resolve()), file_hash,
-    )
+    file_path = str(Path(path).resolve())
+    file_size = Path(path).stat().st_size
+
+    mgr = IngestFileManager(conn)
+    existing = mgr.check(file_hash, brand_code)
+    if existing:
+        source_file_id = existing["id"]
+        mgr.mark_pending(source_file_id, len(accepted))
+    else:
+        source_file_id = mgr.create(
+            brand_code, store_code, source_type,
+            f"{period}-01", file_name, file_path, file_hash, file_size,
+        )
+
     _upsert_material_sku(conn, accepted)
     _write_ods(conn, accepted, source_file_id, store_code)
+    mgr.mark_success(source_file_id, len(accepted))
     return {
         'ods_rows': len(accepted),
         'sku_count': len({r.sku for r in accepted}),
