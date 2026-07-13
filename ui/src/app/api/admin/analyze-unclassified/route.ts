@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { requireServiceToken } from '@/lib/service-auth';
 import { getErrorMessage } from '@/lib/query-types';
+import { getOdsSchema, getDmSchema } from '@/lib/brand-server';
 import pool from '@/lib/db';
 import {
   runLlmAnalysis,
@@ -16,14 +17,10 @@ import {
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const BANK_TABLE_BY_BRAND: Record<string, { bank_table: string; classified_schema: string; classified_snapshot: string }> = {
-  tamkoko:     { bank_table: 'brand_tamkoko_ods.bank_txn',     classified_schema: 'brand_tamkoko_dm',     classified_snapshot: 'bank_txn_classified_snapshot' },
-  gelatomiiix: { bank_table: 'brand_gelatomiiix_ods.bank_txn', classified_schema: 'brand_gelatomiiix_dm', classified_snapshot: 'bank_txn_classified_snapshot' },
-  bonjur:      { bank_table: 'bonjur_ods.bank_txn',             classified_schema: 'bonjur_dm',             classified_snapshot: 'bank_txn_classified_snapshot' },
-};
-
 async function loadTxns(brand: string, ids: number[] | undefined, limit: number): Promise<UnclassifiedTxnForAnalysis[]> {
-  const cfg = BANK_TABLE_BY_BRAND[brand];
+  const bank_table = `${getOdsSchema(brand)}.bank_txn`;
+  const classified_schema = getDmSchema(brand);
+  const classified_snapshot = 'bank_txn_classified_snapshot';
   const params: unknown[] = [];
   let where = 'c.bank_txn_id IS NULL';
   if (ids && ids.length > 0) {
@@ -33,8 +30,8 @@ async function loadTxns(brand: string, ids: number[] | undefined, limit: number)
   const sql = `
     SELECT t.id AS bank_txn_id, t.txn_time, t.summary, t.memo, t.purpose,
            t.counterparty_name, t.in_amt, t.out_amt, t.source_file_id
-    FROM ${cfg.bank_table} t
-    LEFT JOIN ${cfg.classified_schema}.${cfg.classified_snapshot} c ON c.bank_txn_id = t.id
+    FROM ${bank_table} t
+    LEFT JOIN ${classified_schema}.${classified_snapshot} c ON c.bank_txn_id = t.id
     WHERE ${where}
     ORDER BY t.txn_time DESC
     LIMIT ${limit}

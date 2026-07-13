@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
-import { normalizeBrand, getDmSchemaSafe } from '@/lib/brand-server';
+import { normalizeBrand, getDmSchemaSafe, getDmSchema } from '@/lib/brand-server';
 import { getSessionUser } from '@/lib/auth-server';
 import { getErrorMessage } from '@/lib/query-types';
 import type { ApiResult, SnapshotResponse, StoreKpi } from '@/lib/store-report-types';
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
                      ELSE NULL::numeric
                 END AS turnover_times
            FROM ${schema}.v_store_monthly_kpi k
-           LEFT JOIN brand_tamkoko_dm.v_inventory_turnover v
+           LEFT JOIN ${getDmSchema('tamkoko')}.v_inventory_turnover v
              ON v.store_code = k.store_code
             AND v.period = to_char(k.month, 'YYYY-MM')
           WHERE to_char(k.month, 'YYYY-MM') = $1 AND k.store_code = $2`,
@@ -72,7 +72,7 @@ export async function GET(request: Request) {
                      ELSE NULL::numeric
                 END AS turnover_times
            FROM ${schema}.v_store_monthly_kpi k
-           LEFT JOIN brand_tamkoko_dm.v_inventory_turnover v
+           LEFT JOIN ${getDmSchema('tamkoko')}.v_inventory_turnover v
              ON v.store_code = k.store_code
             AND v.period = to_char(k.month, 'YYYY-MM')
           WHERE to_char(k.month, 'YYYY-MM') = $1 AND k.store_code = $2`,

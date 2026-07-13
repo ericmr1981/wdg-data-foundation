@@ -1,12 +1,7 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
-
-function normalizeBrandCode(code: string) {
-  const c = String(code || '').trim();
-  if (!/^[a-z][a-z0-9_]{1,31}$/.test(c)) throw Object.assign(new Error('Invalid brand_code'), { status: 400 });
-  return c;
-}
+import { normalizeBrand, getSchemaPrefix, getOdsSchema, getDmSchema, getCfgSchema, getOpsSchema, getDeliverySchema } from '@/lib/brand-server';
 
 // GET /api/admin/brands
 export async function GET() {
@@ -31,19 +26,22 @@ export async function POST(request: Request) {
     assertRole(user, ['admin']);
 
     const body = await request.json();
-    const brand_code = normalizeBrandCode(body.brand_code);
+    const brand_code = normalizeBrand(body.brand_code);
+    if (!brand_code) {
+      return NextResponse.json({ success: false, error: 'Invalid brand_code' }, { status: 400 });
+    }
     const brand_name = String(body.brand_name || '').trim() || brand_code;
 
     // Check if delivery module should be provisioned
     const modules: string[] = body.modules || [];
     const hasDelivery = body.has_delivery || modules.includes('delivery');
 
-    const schema_prefix = ['yufeng', 'bonjur'].includes(brand_code) ? brand_code : `brand_${brand_code}`;
-    const ods = `${schema_prefix}_ods`;
-    const cfg = `${schema_prefix}_cfg`;
-    const dm = `${schema_prefix}_dm`;
-    const ops = `${schema_prefix}_ops`;
-    const delivery = `${schema_prefix}_delivery`;
+    const schema_prefix = getSchemaPrefix(brand_code);
+    const ods = getOdsSchema(brand_code);
+    const cfg = getCfgSchema(brand_code);
+    const dm = getDmSchema(brand_code);
+    const ops = getOpsSchema(brand_code);
+    const delivery = getDeliverySchema(brand_code);
 
     const client = await pool.connect();
     try {
