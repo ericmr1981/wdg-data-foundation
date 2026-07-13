@@ -189,6 +189,12 @@ def parse_path(file_path: str, expected_source_type: str) -> dict:
             f"Unexpected source_type '{source_type}', expected '{expected_source_type}'"
         )
 
+    import re
+    if not re.match(r"^\d{4}-\d{2}$", month_str):
+        raise ValueError(
+            f"月份格式错误 (需 YYYY-MM): {month_str}"
+        )
+
     return {
         "brand_code": brand_code,
         "store_code": store_code,

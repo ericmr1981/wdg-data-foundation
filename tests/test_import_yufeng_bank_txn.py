@@ -36,7 +36,7 @@ def test_get_dm_schema_tamkoko():
 
 def test_parse_path_tamkoko():
     """parse_path must correctly extract metadata from tamkoko bank file paths"""
-    meta = mod.parse_path("inputs/tamkoko/hz_fuyang/bank/2026-03/工行流水_202603.xlsx")
+    meta = mod.parse_path_bank("inputs/tamkoko/hz_fuyang/bank/2026-03/工行流水_202603.xlsx")
     assert meta["brand_code"] == "tamkoko"
     assert meta["store_code"] == "hz_fuyang"
     assert meta["source_type"] == "bank"
@@ -45,7 +45,7 @@ def test_parse_path_tamkoko():
 
 def test_parse_path_tamkoko_wz_bjwxc():
     """parse_path must correctly extract metadata from tamkoko wz_bjwxc bank file paths"""
-    meta = mod.parse_path("inputs/tamkoko/wz_bjwxc/bank/2026-03/工行流水_202603.xlsx")
+    meta = mod.parse_path_bank("inputs/tamkoko/wz_bjwxc/bank/2026-03/工行流水_202603.xlsx")
     assert meta["brand_code"] == "tamkoko"
     assert meta["store_code"] == "wz_bjwxc"
     assert meta["source_type"] == "bank"
@@ -54,7 +54,7 @@ def test_parse_path_tamkoko_wz_bjwxc():
 
 def test_parse_path_gelatomiiix():
     """parse_path must correctly extract metadata from gelatomiiix bank file paths"""
-    meta = mod.parse_path("inputs/gelatomiiix/sh_sc/bank/2026-03/工行流水_202603.xlsx")
+    meta = mod.parse_path_bank("inputs/gelatomiiix/sh_sc/bank/2026-03/工行流水_202603.xlsx")
     assert meta["brand_code"] == "gelatomiiix"
     assert meta["store_code"] == "sh_sc"
     assert meta["source_type"] == "bank"
@@ -63,7 +63,7 @@ def test_parse_path_gelatomiiix():
 
 def test_parse_path_bonjur():
     """parse_path must correctly extract metadata from bonjur bank file paths"""
-    meta = mod.parse_path("inputs/bonjur/sh_wdg/bank/2026-03/工行流水_202603.xlsx")
+    meta = mod.parse_path_bank("inputs/bonjur/sh_wdg/bank/2026-03/工行流水_202603.xlsx")
     assert meta["brand_code"] == "bonjur"
     assert meta["store_code"] == "sh_wdg"
     assert meta["source_type"] == "bank"
@@ -72,7 +72,7 @@ def test_parse_path_bonjur():
 
 def test_parse_path_yufeng():
     """parse_path must correctly extract metadata from yufeng bank file paths"""
-    meta = mod.parse_path("inputs/yufeng/yf_gh/bank/2026-03/工行流水_202603.xlsx")
+    meta = mod.parse_path_bank("inputs/yufeng/yf_gh/bank/2026-03/工行流水_202603.xlsx")
     assert meta["brand_code"] == "yufeng"
     assert meta["store_code"] == "yf_gh"
     assert meta["source_type"] == "bank"
@@ -81,11 +81,11 @@ def test_parse_path_yufeng():
 
 def test_parse_path_wrong_source_type():
     """parse_path must reject non-bank/sales source types"""
-    with pytest.raises(ValueError, match="source_type.*必须是"):
-        mod.parse_path("inputs/tamkoko/hz_fuyang/inventory/2026-03/file.xlsx")
+    with pytest.raises(ValueError, match="Unexpected source_type"):
+        mod.parse_path_bank("inputs/tamkoko/hz_fuyang/inventory/2026-03/file.xlsx")
 
 
 def test_parse_path_bad_month():
     """parse_path must reject invalid month formats"""
     with pytest.raises(ValueError, match="月份"):
-        mod.parse_path("inputs/tamkoko/hz_fuyang/bank/2026-3/file.xlsx")
+        mod.parse_path_bank("inputs/tamkoko/hz_fuyang/bank/2026-3/file.xlsx")
