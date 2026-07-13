@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
+import { getOdsSchema } from '@/lib/brand-server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
+    const BRAND = 'gelatomiiix';
     const { searchParams } = new URL(request.url);
     const storeCode = searchParams.get('store_code');
     const month = searchParams.get('month');
@@ -23,7 +25,7 @@ export async function GET(request: NextRequest) {
         SELECT
           floor(COALESCE(gross_amt, 0) / 20) * 20 AS bin_start,
           COUNT(*) AS order_cnt
-        FROM gelatomiiix_ods.income_detail
+        FROM ${getOdsSchema(BRAND)}.income_detail
         WHERE store_code = $1
           AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
           AND NOT is_refund

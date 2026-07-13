@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
-import { getCfgSchema } from '@/lib/brand-server';
+import { getCfgSchema, getOdsSchema } from '@/lib/brand-server';
 import { parsePeriod } from '@/app/api/financial/period-utils';
 
 export const dynamic = 'force-dynamic';
@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
     }
 
     const cfgSchema = getCfgSchema(brand);
+    const BRAND = 'gelatomiiix';
     const hasPeriod = period && period !== 'all';
     let dateClause = '';
     let bankDateClause = '';
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest) {
           'OTHER'
         ) AS channel,
         COALESCE(SUM(net_amt), 0) AS qimai_net_amt
-      FROM gelatomiiix_ods.income_detail
+      FROM ${getOdsSchema(BRAND)}.income_detail
       WHERE NOT is_refund
         AND NOT is_member_payment
         ${dateClause} ${storeClause}
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
       SELECT
         c.lvl2_code AS channel,
         COALESCE(SUM(COALESCE(t.in_amt, 0)), 0) AS bank_entry_amt
-      FROM brand_gelatomiiix_ods.bank_txn t
+      FROM brand_${getOdsSchema(BRAND)}.bank_txn t
       JOIN brand_gelatomiiix_dm.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
       WHERE c.classified_source IN ('rule', 'override')
         AND c.lvl1_code = 'REV_BIZ'
@@ -102,7 +103,7 @@ export async function GET(request: NextRequest) {
         pool.query(`
           SELECT c.lvl2_code AS channel,
                  COALESCE(SUM(COALESCE(t.in_amt, 0)), 0) AS bank_entry_amt
-          FROM brand_gelatomiiix_ods.bank_txn t
+          FROM brand_${getOdsSchema(BRAND)}.bank_txn t
           JOIN brand_gelatomiiix_dm.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
           WHERE c.classified_source IN ('rule', 'override')
             AND c.lvl1_code = 'REV_BIZ'
@@ -118,7 +119,7 @@ export async function GET(request: NextRequest) {
               'OTHER'
             ) AS channel,
             COALESCE(SUM(net_amt), 0) AS qimai_net_amt
-          FROM gelatomiiix_ods.income_detail
+          FROM ${getOdsSchema(BRAND)}.income_detail
           WHERE NOT is_refund AND NOT is_member_payment
             ${currMonthDateClause}
           GROUP BY 1
@@ -144,13 +145,13 @@ export async function GET(request: NextRequest) {
     const monthlyTrendResult = await pool.query(`
       WITH qimai_monthly AS (
         SELECT to_char(biz_date, 'YYYY-MM') AS month, SUM(net_amt) AS qimai_net_amt
-        FROM gelatomiiix_ods.income_detail
+        FROM ${getOdsSchema(BRAND)}.income_detail
         WHERE NOT is_refund AND NOT is_member_payment ${trendDateClause} ${trendStore}
         GROUP BY 1
       ),
       bank_monthly AS (
         SELECT to_char(t.txn_time, 'YYYY-MM') AS month, SUM(COALESCE(t.in_amt, 0)) AS bank_entry_amt
-        FROM brand_gelatomiiix_ods.bank_txn t
+        FROM brand_${getOdsSchema(BRAND)}.bank_txn t
         JOIN brand_gelatomiiix_dm.bank_txn_classified_snapshot c ON c.bank_txn_id = t.id
         WHERE c.classified_source IN ('rule', 'override')
           AND c.lvl1_code = 'REV_BIZ'
@@ -175,7 +176,7 @@ export async function GET(request: NextRequest) {
         ) AS channel,
         COUNT(*) AS order_count,
         COALESCE(SUM(net_amt), 0) AS unentered_amt
-      FROM gelatomiiix_ods.income_detail
+      FROM ${getOdsSchema(BRAND)}.income_detail
       WHERE third_party_txn_no IS NULL
         AND NOT is_refund
         AND NOT is_member_payment

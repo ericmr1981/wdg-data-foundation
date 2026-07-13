@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
+import { getOdsSchema } from '@/lib/brand-server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
+    const BRAND = 'gelatomiiix';
     const { searchParams } = new URL(request.url);
     const storeCode = searchParams.get('store_code');
     const pureMode = searchParams.get('pure_mode') === 'true';
@@ -22,7 +24,7 @@ export async function GET(request: NextRequest) {
         SUM(COALESCE(gross_amt,0)) AS gross_sales_amt,
         SUM(COALESCE(revenue_amt,0)) AS revenue_amt,
         COUNT(DISTINCT order_no) AS order_cnt
-      FROM gelatomiiix_ods.income_detail
+      FROM ${getOdsSchema(BRAND)}.income_detail
       WHERE store_code = $1
         AND NOT is_refund
         ${pureFilter}

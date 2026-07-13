@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
+import { getOdsSchema } from '@/lib/brand-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,7 @@ const CHANNEL_MAP: Record<string, string> = {
 // GET /api/gelatomiiix/income/qimai-detail?month=2026-04&channel=WECHAT&store=sh_xtd&summary_only=true
 export async function GET(request: NextRequest) {
   try {
+    const BRAND = 'gelatomiiix';
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month');
     const dateFrom = searchParams.get('date_from');
@@ -101,7 +103,7 @@ export async function GET(request: NextRequest) {
           COALESCE(SUM(revenue_amt), 0) AS total_revenue_amt,
           COALESCE(SUM(gross_amt), 0) AS total_gross_amt,
           COALESCE(SUM(CASE WHEN is_refund THEN 1 ELSE 0 END), 0) AS refund_count
-        FROM gelatomiiix_ods.income_detail
+        FROM ${getOdsSchema(BRAND)}.income_detail
         ${whereClause}
       `, params);
 
@@ -119,7 +121,7 @@ export async function GET(request: NextRequest) {
           END AS channel,
           COUNT(*) AS order_count,
           COALESCE(SUM(net_amt), 0) AS net_amt
-        FROM gelatomiiix_ods.income_detail
+        FROM ${getOdsSchema(BRAND)}.income_detail
         ${whereClause}
         GROUP BY channel
         ORDER BY SUM(net_amt) DESC NULLS LAST
@@ -149,7 +151,7 @@ export async function GET(request: NextRequest) {
 
     // Detail mode with pagination
     const countRes = await pool.query(
-      `SELECT COUNT(*) AS total FROM gelatomiiix_ods.income_detail ${whereClause}`,
+      `SELECT COUNT(*) AS total FROM ${getOdsSchema(BRAND)}.income_detail ${whereClause}`,
       params
     );
     const total = parseInt(countRes.rows[0].total, 10);
@@ -162,7 +164,7 @@ export async function GET(request: NextRequest) {
              payment_methods, third_party_txn_no,
              biz_source, is_member_payment,
              store_code
-      FROM gelatomiiix_ods.income_detail
+      FROM ${getOdsSchema(BRAND)}.income_detail
       ${whereClause}
       ORDER BY biz_date DESC, pay_time DESC
       OFFSET $${paramIdx} LIMIT $${paramIdx + 1}
