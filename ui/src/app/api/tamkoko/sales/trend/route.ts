@@ -3,6 +3,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
+import { getDmSchema } from '@/lib/brand-server';
+
+const BRAND = 'tamkoko';
 
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
@@ -17,7 +20,7 @@ export async function GET(request: NextRequest) {
     try {
         const { rows } = await pool.query(
             `WITH recent AS (
-                SELECT * FROM brand_tamkoko_dm.v_cash_register_overview
+                SELECT * FROM ${getDmSchema(BRAND)}.v_cash_register_overview
                 ${where}
                 ORDER BY month DESC
                 LIMIT ${months}

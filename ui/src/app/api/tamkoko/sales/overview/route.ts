@@ -1,8 +1,11 @@
 // Tamkoko 收银明细 月度 KPI 概览 API
-// 委托到 brand_tamkoko_dm.v_cash_register_overview
+// 委托到 ${getDmSchema(BRAND)}.v_cash_register_overview
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
+import { getDmSchema } from '@/lib/brand-server';
+
+const BRAND = 'tamkoko';
 
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
@@ -18,7 +21,7 @@ export async function GET(request: NextRequest) {
 
     try {
         const { rows } = await pool.query(
-            `SELECT * FROM brand_tamkoko_dm.v_cash_register_overview ${where} ORDER BY store_code, month`,
+            `SELECT * FROM ${getDmSchema(BRAND)}.v_cash_register_overview ${where} ORDER BY store_code, month`,
             params
         );
         return NextResponse.json({ success: true, data: rows });

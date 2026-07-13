@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { getErrorMessage } from '@/lib/query-types';
+import { getDmSchema, getOdsSchema } from '@/lib/brand-server';
+
+const BRAND = 'tamkoko';
 import type {
   InventorySummaryRow,
   UpsertInventorySummaryRequest,
@@ -55,10 +58,10 @@ export async function GET(req: Request) {
         s.store_name,
         v.cogs_amt, v.opening_amt, v.closing_amt,
         v.turnover_times, v.turnover_days
-      FROM brand_tamkoko_ods.inventory_monthly_summary m
+      FROM ${getOdsSchema(BRAND)}.inventory_monthly_summary m
       LEFT JOIN ops.stores s
         ON s.store_code = m.store_code AND s.brand_code = 'tamkoko'
-      LEFT JOIN brand_tamkoko_dm.v_inventory_turnover v
+      LEFT JOIN ${getDmSchema(BRAND)}.v_inventory_turnover v
         ON v.store_code = m.store_code AND v.period = m.period
       ${where}
       ORDER BY m.period DESC, m.store_code
@@ -100,14 +103,14 @@ export async function POST(req: Request) {
 
     await client.query('BEGIN');
     const oldRes = await client.query(
-      `SELECT total_amount, note FROM brand_tamkoko_ods.inventory_monthly_summary
+      `SELECT total_amount, note FROM ${getOdsSchema(BRAND)}.inventory_monthly_summary
         WHERE store_code = $1 AND period = $2 FOR UPDATE`,
       [body.store_code, body.period]
     );
     const old = oldRes.rows[0] ?? null;
 
     await client.query(
-      `INSERT INTO brand_tamkoko_ods.inventory_monthly_summary
+      `INSERT INTO ${getOdsSchema(BRAND)}.inventory_monthly_summary
          (store_code, period, total_amount, note, updated_by, updated_at)
        VALUES ($1, $2, $3, $4, $5, NOW())
        ON CONFLICT (store_code, period) DO UPDATE
@@ -135,10 +138,10 @@ export async function POST(req: Request) {
               s.store_name,
               v.cogs_amt, v.opening_amt, v.closing_amt,
               v.turnover_times, v.turnover_days
-         FROM brand_tamkoko_ods.inventory_monthly_summary m
+         FROM ${getOdsSchema(BRAND)}.inventory_monthly_summary m
          LEFT JOIN ops.stores s
            ON s.store_code = m.store_code AND s.brand_code = 'tamkoko'
-         LEFT JOIN brand_tamkoko_dm.v_inventory_turnover v
+         LEFT JOIN ${getDmSchema(BRAND)}.v_inventory_turnover v
            ON v.store_code = m.store_code AND v.period = m.period
         WHERE m.store_code = $1 AND m.period = $2`,
       [body.store_code, body.period]
@@ -177,7 +180,7 @@ export async function DELETE(req: Request) {
 
     await client.query('BEGIN');
     const oldRes = await client.query(
-      `SELECT total_amount, note FROM brand_tamkoko_ods.inventory_monthly_summary
+      `SELECT total_amount, note FROM ${getOdsSchema(BRAND)}.inventory_monthly_summary
         WHERE store_code = $1 AND period = $2 FOR UPDATE`,
       [store_code, period]
     );
@@ -192,7 +195,7 @@ export async function DELETE(req: Request) {
     const stamp = new Date().toISOString();
 
     await client.query(
-      `UPDATE brand_tamkoko_ods.inventory_monthly_summary
+      `UPDATE ${getOdsSchema(BRAND)}.inventory_monthly_summary
           SET total_amount = 0,
               note = $3,
               updated_by = $4,

@@ -1,8 +1,11 @@
 // Tamkoko 收银明细 交叉维度 API
-// 委托到 brand_tamkoko_dm.fn_cash_register_combined (白名单校验 dim)
+// 委托到 ${getDmSchema(BRAND)}.fn_cash_register_combined (白名单校验 dim)
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
+import { getDmSchema } from '@/lib/brand-server';
+
+const BRAND = 'tamkoko';
 
 const ALLOWED_DIMS = ['order_source', 'order_type', 'meal_period', 'weekday'];
 
@@ -19,7 +22,7 @@ export async function GET(request: NextRequest) {
 
     try {
         const { rows } = await pool.query(
-            `SELECT * FROM brand_tamkoko_dm.fn_cash_register_combined($1, $2, $3, $4)`,
+            `SELECT * FROM ${getDmSchema(BRAND)}.fn_cash_register_combined($1, $2, $3, $4)`,
             [storeCode, month, dim1, dim2]
         );
         return NextResponse.json({ success: true, data: rows });
