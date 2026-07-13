@@ -12,17 +12,14 @@ export interface TrendRow extends QueryResultRow {
   month: string;
   gross_sales_amt: string;
   revenue_amt: string;
-  net_amt: string;
   order_cnt: string;
-  avg_order_amt: string | null;
 }
 
 export interface ChannelRow extends QueryResultRow {
   payment_method: string;
+  txn_cnt: string;
   gross_amt: string;
   revenue_amt: string;
-  net_amt: string;
-  order_cnt: string;
 }
 
 export interface DetailRow extends QueryResultRow {
@@ -38,7 +35,7 @@ export interface DetailRow extends QueryResultRow {
 
 export interface ProductRow extends QueryResultRow {
   product_name: string;
-  qty: string;
+  total_qty: string;
   total_received_amt: string;
 }
 
@@ -49,6 +46,7 @@ export interface HourlyRow extends QueryResultRow {
 
 export interface DistributionRow extends QueryResultRow {
   bin_start: string;
+  bin_end: string;
   order_cnt: string;
 }
 

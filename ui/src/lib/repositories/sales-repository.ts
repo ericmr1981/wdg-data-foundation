@@ -35,12 +35,7 @@ export async function getSalesTrend(
       DATE_TRUNC('month', biz_date)::DATE AS month,
       COALESCE(SUM(COALESCE(gross_amt,0)),0) AS gross_sales_amt,
       COALESCE(SUM(COALESCE(revenue_amt,0)),0) AS revenue_amt,
-      COALESCE(SUM(COALESCE(net_amt,0)),0) AS net_amt,
-      COUNT(DISTINCT order_no) AS order_cnt,
-      CASE WHEN COUNT(DISTINCT order_no) > 0
-        THEN ROUND(SUM(COALESCE(gross_amt,0)) / COUNT(DISTINCT order_no), 2)
-        ELSE NULL
-      END AS avg_order_amt
+      COUNT(DISTINCT order_no) AS order_cnt
     FROM ${schema}.income_detail
     WHERE store_code = $1
       AND biz_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '12 months')
@@ -55,17 +50,16 @@ export async function getSalesByChannel(
 ): Promise<ChannelRow[]> {
   const schema = getOdsSchema(brand);
   const pure = opts?.pureMode
-    ? `AND NOT ('自定义结账方式' = ANY(payment_methods))`
+    ? `AND NOT is_refund AND pm IS NOT NULL AND pm != '自定义结账方式'`
     : '';
   const result = await pool.query<ChannelRow>(`
     SELECT
-      unnest(payment_methods) AS payment_method,
+      pm AS payment_method,
+      COUNT(*) AS txn_cnt,
       COALESCE(SUM(COALESCE(gross_amt,0)),0) AS gross_amt,
-      COALESCE(SUM(COALESCE(revenue_amt,0)),0) AS revenue_amt,
-      COALESCE(SUM(COALESCE(net_amt,0)),0) AS net_amt,
-      COUNT(DISTINCT order_no) AS order_cnt
-    FROM ${schema}.income_detail,
-      unnest(payment_methods) AS pm
+      COALESCE(SUM(COALESCE(revenue_amt,0)),0) AS revenue_amt
+    FROM ${schema}.income_detail
+      CROSS JOIN LATERAL unnest(payment_methods) AS pm
     WHERE store_code = $1
       AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
       ${pure}
@@ -117,7 +111,7 @@ export async function getSalesByProduct(
 
   const result = await pool.query<ProductRow>(`
     SELECT product_name,
-      SUM(COALESCE(qty,0)) AS qty,
+      SUM(COALESCE(qty,0)) AS total_qty,
       SUM(COALESCE(received_amt,0)) AS total_received_amt
     FROM ${schema}.product_sales_detail
     WHERE store_code = $1 AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
@@ -175,7 +169,7 @@ export async function getSalesDistribution(
         ${pure}
       GROUP BY floor(COALESCE(gross_amt, 0) / 20) * 20
     )
-    SELECT bin_start, order_cnt
+    SELECT bin_start, (bin_start + 19) AS bin_end, order_cnt
     FROM bins
     ORDER BY bin_start
   `, [storeCode, `${month}-01`]);
