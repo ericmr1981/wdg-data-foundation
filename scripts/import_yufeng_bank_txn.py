@@ -566,7 +566,11 @@ def do_import(file_path: str) -> dict:
             elif existing["status"] == "pending":
                 print("Warning: previous import is pending, will retry")
         else:
-            source_file_id = mgr.create(meta, file_hash, file_size)
+            source_file_id = mgr.create(
+                meta["brand_code"], meta["store_code"], SOURCE_TYPE,
+                meta["month_date"], meta["file_name"], meta["file_path"],
+                file_hash, file_size,
+            )
             print(f"Created new ingest_file: id={source_file_id}")
 
         if ops:
@@ -656,37 +660,7 @@ def main():
         action="store_true",
         help="干运行：解析并验证数据，不写入数据库",
     )
-    parser.add_argument(
-        "--verify",
-        action="store_true",
-        help="验证模式：检查数据是否已导入及回溯关系",
-    )
-    parser.add_argument(
-        "--db-host",
-        default=os.getenv("DB_HOST", "localhost"),
-        help="数据库主机",
-    )
-    parser.add_argument(
-        "--db-port",
-        default=os.getenv("DB_PORT", "5432"),
-        help="数据库端口",
-    )
-    parser.add_argument(
-        "--db-name",
-        default=os.getenv("DB_NAME", "dataplatform"),
-        help="数据库名称",
-    )
-    parser.add_argument(
-        "--db-user",
-        default=os.getenv("DB_USER", "postgres"),
-        help="数据库用户",
-    )
-    parser.add_argument(
-        "--db-password",
-        default=os.environ.get("DB_PASSWORD"),
-        required=not bool(os.environ.get("DB_PASSWORD")),
-        help="数据库密码 (required unless DB_PASSWORD env var is set)",
-    )
+
 
     args = parser.parse_args()
 
