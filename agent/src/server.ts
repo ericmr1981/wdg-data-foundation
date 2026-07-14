@@ -26,6 +26,7 @@ import { registerTestChatRoute } from './api/admin/test-chat.js'
 import { registerTestRunRoute } from './api/admin/test-run.js'
 import { registerAdminSkillRoutes } from './api/admin/skills.js'
 import { registerAdminToolRoutes } from './api/admin/tools.js'
+import { registerMcpStatusRoutes } from './api/admin/mcp-status.js'
 import { registerConversationRoutes } from './api/conversations.js'
 import { registerChatEventsRoutes } from './api/chat/events.js'
 import { registerChatUploadRoutes } from './api/chat/upload.js'
@@ -122,13 +123,14 @@ async function main() {
   )
   scheduler.start()
 
-  // Admin API (config / test / skills, 不依赖 channels)
+  // Admin API (config / test / skills / mcp-status, 不依赖 channels)
   registerAdminConfigRoutes(app)
   registerTestConnectionRoute(app)
   registerTestChatRoute(app)
   registerTestRunRoute(app, { mcpBridge })
   registerAdminSkillRoutes(app)
   registerAdminToolRoutes(app)
+  registerMcpStatusRoutes(app, mcpBridge)
 
   // WS/Channels
   const webChannel = new WebChannel(WS_PORT, null)
@@ -148,8 +150,10 @@ async function main() {
   registerChatEventsRoutes(app, conversation)
   registerChatUploadRoutes(app, anthropic)
 
-  // 先连接 MCP 后端，再启动 HTTP（确保 bridge 就绪后才接收请求）
-  await mcpBridge.connectBackends(mcpBackends)
+  // 先连接内置 wdg 后端（primary），再启动 HTTP
+  await mcpBridge.connectPrimary(mcpBackends.filter(b => b.required !== false))
+  // 外部后端异步连接（secondary，不阻塞）
+  mcpBridge.startSecondary(mcpBackends.filter(b => b.required === false))
   await app.listen({ port: HTTP_PORT, host: '127.0.0.1' })
 
   await webChannel.start()

@@ -227,3 +227,10 @@
 - decision: keep
 - guard: docker build ✅ + tsc compile ✅
 - next: 在 UI 重新上传蜜可诗银行数据，验证完整链路（import → 分类 → BI 报表）
+
+## 2026-07-13 22:00
+- goal: P3 Python Import Consolidation (Tasks 3.3 & 3.4) — refactor all 11 remaining import scripts to use shared `scripts/lib/importer.py`
+- bet: Replace inline boilerplate (calculate_sha256, DB_CONFIG, get_connection, IngestFileManager, parse_path, insert_batch) with imports from lib.importer; keep brand-specific transform logic intact
+- commits: `e56bc09`, `c6e857f`, `f8c50b9`, `fe5ab7a`, `a3051c2`
+- result: 774 lines removed across 11 scripts, all py_compile + pytest passing
+- guard: `python -m py_compile scripts/import_*.py` → all OK; `pytest tests/test_import_yufeng_bank_txn.py -v` → 9/9 passed

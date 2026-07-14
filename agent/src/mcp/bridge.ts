@@ -1,17 +1,26 @@
 // agent/src/mcp/bridge.ts
-// Unified multi-backend MCP bridge using @modelcontextprotocol/sdk.
+// Unified multi-backend MCP bridge — production-grade backend management.
 //
-// Each backend is a standard MCP transport connection. The bridge:
-//   1. Connects to all configured backends at startup
-//   2. Discovers tools via listTools() across all backends
-//   3. Routes call() to the correct backend by tool name
-//   4. Returns McpCallResult compatible with the old interface
+// Backend tiers:
+//   primary (required=true)  — blocks startup, fail-fast on connection error
+//   secondary (required=false) — fire-and-forget, exponential backoff retry,
+//                                periodic health checks
+//
+// Each backend gets independent lifecycle: connect → health-check → reconnect
+// on failure. One failing backend does not affect others.
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { FetchTransport } from './transports/fetch-transport.js'
 
 // ─── Types ────────────────────────────────
+
+export type BackendConnectionStatus =
+  | 'connecting'
+  | 'connected'
+  | 'degraded'
+  | 'disconnected'
+  | 'dead'
 
 export interface McpCallResult {
   success: boolean
@@ -20,72 +29,133 @@ export interface McpCallResult {
   retryable: boolean
 }
 
+export interface RetryPolicy {
+  maxRetries: number
+  backoffMs: number
+  maxBackoffMs: number
+}
+
 export interface BackendConfig {
-  /** Unique name for this backend (e.g. "wdg", "dailycheck"). */
   name: string
-  /** Base URL for the MCP endpoint. */
   url: string
-  /** Transport type. "fetch" uses plain JSON-RPC over HTTP (stateless). */
   transport: 'fetch' | 'sse'
-  /** Headers included with every request (e.g. auth tokens). */
   headers?: Record<string, string>
-  /** Request timeout in milliseconds (default 30s). */
   timeoutMs?: number
+  required?: boolean
+  retryPolicy?: RetryPolicy
+  healthCheckIntervalMs?: number
+}
+
+export interface BackendStatus {
+  name: string
+  url: string
+  status: BackendConnectionStatus
+  toolCount: number
+  lastPingMs: number | null
+  errorCount: number
+  connectedAt: string | null
+  lastError: string | null
 }
 
 export interface ToolDef {
   name: string
   description: string
   inputSchema: Record<string, unknown>
-  /** Internal: which backend owns this tool. */
   _backend: string
 }
 
 interface BackendEntry {
   client: Client
+  config: BackendConfig
   name: string
 }
+
+const DEFAULT_RETRY: RetryPolicy = {
+  maxRetries: 10,
+  backoffMs: 1_000,
+  maxBackoffMs: 30_000,
+}
+
+const DEFAULT_HEALTH_CHECK_MS = 30_000
 
 // ─── Bridge ────────────────────────────────
 
 export class UnifiedMcpBridge {
   private backends = new Map<string, BackendEntry>()
   private toolBackend = new Map<string, string>()
-  private connected = false
+  private statuses = new Map<string, BackendStatus>()
+  private healthTimers = new Map<string, ReturnType<typeof setInterval>>()
+  private shuttingDown = false
 
   // ─── Connection management ──────────────
 
   /**
-   * Connect to all configured backends and discover their tools.
-   * Call once at startup. Idempotent: second call is a no-op.
+   * Connect to primary (required) backends. Blocks until all primaries
+   * succeed or fail. Returns true if all primaries connected.
    */
-  async connectBackends(configs: BackendConfig[]): Promise<void> {
-    if (this.connected) return
+  async connectPrimary(configs: BackendConfig[]): Promise<boolean> {
+    const primaries = configs.filter(c => c.required !== false)
+    if (primaries.length === 0) return true
 
-    const promises: Promise<void>[] = []
-    for (const cfg of configs) {
-      if (this.backends.has(cfg.name)) {
-        console.warn(
-          `[bridge] backend "${cfg.name}" already configured, skipping`,
-        )
-        continue
+    // Retry up to 3 times with increasing delay
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const promises = primaries.map(cfg => this._connectOne(cfg))
+      await Promise.allSettled(promises)
+
+      await this.refreshToolRoutes()
+      this._logStatus()
+
+      const statuses = primaries.map(c => this.statuses.get(c.name)?.status)
+      const allConnected = statuses.every(s => s === 'connected')
+      if (allConnected) return true
+
+      if (attempt < 3) {
+        const delay = attempt * 5_000
+        console.warn(`[bridge] primary backends not ready, retry ${attempt}/3 in ${delay}ms`)
+        await new Promise(r => setTimeout(r, delay))
       }
-
-      promises.push(this._connectOne(cfg))
     }
 
-    // 并行连接所有后端，失败的不阻塞整体
-    await Promise.allSettled(promises)
-    await this.refreshToolRoutes()
-    this.connected = true
+    return false
+  }
 
-    const names = Array.from(this.backends.keys()).join(', ')
-    console.log(
-      `[bridge] ready: ${this.backends.size} backend(s) [${names}], ${this.toolBackend.size} tool(s)`,
-    )
+  /**
+   * Start secondary (optional) backends asynchronously with retry.
+   * These will reconnect automatically on failure.
+   */
+  startSecondary(configs: BackendConfig[]): void {
+    const secondaries = configs.filter(c => c.required === false)
+    for (const cfg of secondaries) {
+      this._connectWithRetry(cfg)
+    }
+  }
+
+  /**
+   * Legacy name kept for backward compat — connects all, primary blocks.
+   */
+  async connectBackends(configs: BackendConfig[]): Promise<void> {
+    await this.connectPrimary(configs)
+    this.startSecondary(configs)
+  }
+
+  private _initStatus(cfg: BackendConfig): void {
+    if (this.statuses.has(cfg.name)) return
+    this.statuses.set(cfg.name, {
+      name: cfg.name,
+      url: cfg.url,
+      status: 'connecting',
+      toolCount: 0,
+      lastPingMs: null,
+      errorCount: 0,
+      connectedAt: null,
+      lastError: null,
+    })
   }
 
   private async _connectOne(cfg: BackendConfig): Promise<void> {
+    this._initStatus(cfg)
+    this._setStatus(cfg.name, 'connecting')
+
     const transport = this.createTransport(cfg)
     const client = new Client(
       { name: 'wdg-agent', version: '1.0.0' },
@@ -94,39 +164,112 @@ export class UnifiedMcpBridge {
 
     try {
       await client.connect(transport)
-      this.backends.set(cfg.name, { client, name: cfg.name })
-      console.log(`[bridge] connected to "${cfg.name}" at ${cfg.url}`)
     } catch (e: any) {
-      console.error(
-        `[bridge] failed to connect "${cfg.name}": ${e?.message ?? e}`,
-      )
+      const msg = e?.message ?? String(e)
+      this._setStatus(cfg.name, 'disconnected', { lastError: msg })
+      throw e
+    }
+
+    this.backends.set(cfg.name, { client, config: cfg, name: cfg.name })
+    this._setStatus(cfg.name, 'connected', { connectedAt: new Date().toISOString(), lastError: null })
+    console.log(`[bridge] connected to "${cfg.name}" at ${cfg.url}`)
+
+    // Start health checks for non-primary backends
+    if (cfg.required === false) {
+      this._startHealthCheck(cfg)
     }
   }
 
-  private createTransport(cfg: BackendConfig) {
-    const t = cfg.transport as string
-    switch (t) {
-      case 'fetch':
-      case 'streamableHttp':
-        return new FetchTransport(cfg.url, {
-          headers: cfg.headers,
-          timeoutMs: cfg.timeoutMs,
-          label: `[fetch:${cfg.name}]`,
-        })
+  /**
+   * Connect with exponential backoff retry. Used for secondary backends.
+   * Does not throw — failures are logged and retried.
+   */
+  private async _connectWithRetry(cfg: BackendConfig): Promise<void> {
+    const retry = cfg.retryPolicy ?? DEFAULT_RETRY
+    let attempt = 0
 
-      case 'sse': {
-        // eslint-disable-next-line deprecation/deprecation
-        return new SSEClientTransport(new URL(cfg.url), {
-          requestInit: cfg.headers
-            ? { headers: cfg.headers }
-            : undefined,
-        })
+    while (!this.shuttingDown) {
+      try {
+        await this._connectOne(cfg)
+        this._stopHealthCheck(cfg.name)
+        this._startHealthCheck(cfg)
+        return // success
+      } catch (e: any) {
+        attempt++
+        const msg = e?.message ?? String(e)
+        this._recordError(cfg.name, msg)
+
+        if (attempt >= retry.maxRetries) {
+          this._setStatus(cfg.name, 'dead', { lastError: msg })
+          console.error(
+            `[bridge] backend "${cfg.name}" gave up after ${attempt} attempts: ${msg}`,
+          )
+          return
+        }
+
+        const delay = Math.min(
+          retry.backoffMs * Math.pow(2, attempt - 1),
+          retry.maxBackoffMs,
+        )
+        console.warn(
+          `[bridge] failed to connect "${cfg.name}" (attempt ${attempt}/${retry.maxRetries}), retry in ${delay}ms: ${msg}`,
+        )
+
+        await new Promise(r => setTimeout(r, delay))
       }
-
-      default:
-        throw new Error(`Unknown transport: ${cfg.transport}`)
     }
   }
+
+  // ─── Health checks ──────────────────────
+
+  private _startHealthCheck(cfg: BackendConfig): void {
+    if (this.healthTimers.has(cfg.name)) return
+
+    const interval = cfg.healthCheckIntervalMs ?? DEFAULT_HEALTH_CHECK_MS
+    const timer = setInterval(async () => {
+      if (this.shuttingDown) return
+      await this._ping(cfg.name)
+    }, interval)
+    this.healthTimers.set(cfg.name, timer)
+  }
+
+  private _stopHealthCheck(name: string): void {
+    const timer = this.healthTimers.get(name)
+    if (timer) {
+      clearInterval(timer)
+      this.healthTimers.delete(name)
+    }
+  }
+
+  private async _ping(name: string): Promise<void> {
+    const entry = this.backends.get(name)
+    if (!entry) return
+
+    const start = Date.now()
+    try {
+      await entry.client.ping()
+      const elapsed = Date.now() - start
+      this._setStatus(name, 'connected', { lastPingMs: elapsed })
+    } catch (e: any) {
+      const elapsed = Date.now() - start
+      const msg = e?.message ?? String(e)
+      this._recordError(name, msg)
+
+      // Mark degraded, try reconnect
+      this._setStatus(name, 'degraded', { lastPingMs: elapsed, lastError: msg })
+      console.warn(`[bridge] health check failed for "${name}": ${msg}`)
+
+      // Remove from backends so tools are unavailable
+      this.backends.delete(name)
+      this._stopHealthCheck(name)
+
+      // Reconnect with retry
+      const cfg = entry.config
+      this._connectWithRetry(cfg)
+    }
+  }
+
+  // ─── Tool routes ────────────────────────
 
   private async refreshToolRoutes(): Promise<void> {
     this.toolBackend.clear()
@@ -142,6 +285,7 @@ export class UnifiedMcpBridge {
           }
           this.toolBackend.set(tool.name, name)
         }
+        this._setStatus(name, 'connected', { toolCount: tools.length })
       } catch (e: any) {
         console.error(
           `[bridge] listTools failed for "${name}": ${e?.message ?? e}`,
@@ -150,17 +294,51 @@ export class UnifiedMcpBridge {
     }
   }
 
+  // ─── Status reporting ───────────────────
+
+  /** Returns current status of all backends. */
+  getStatus(): BackendStatus[] {
+    // Recalculate tool counts from current backends
+    for (const [name] of this.statuses) {
+      const entry = this.backends.get(name)
+      if (entry) {
+        const tools = Array.from(this.toolBackend.entries())
+          .filter(([, b]) => b === name)
+          .length
+        this._setStatus(name, 'connected', { toolCount: tools })
+      }
+    }
+    return Array.from(this.statuses.values())
+  }
+
+  private _setStatus(
+    name: string,
+    status: BackendConnectionStatus,
+    extra?: Partial<BackendStatus>,
+  ): void {
+    const s = this.statuses.get(name)
+    if (!s) return
+    s.status = status
+    if (extra) Object.assign(s, extra)
+  }
+
+  private _recordError(name: string, error: string): void {
+    const s = this.statuses.get(name)
+    if (!s) return
+    s.errorCount++
+    s.lastError = error
+  }
+
+  private _logStatus(): void {
+    const names = Array.from(this.backends.keys()).join(', ')
+    console.log(
+      `[bridge] ready: ${this.backends.size} backend(s) [${names}], ${this.toolBackend.size} tool(s)`,
+    )
+  }
+
   // ─── Tool discovery ──────────────────────
 
-  /**
-   * List all tools across all connected backends.
-   * Returns Anthropic-compatible tool definitions.
-   */
   async listTools(): Promise<ToolDef[]> {
-    if (!this.connected) {
-      throw new Error('Bridge not connected — call connectBackends() first')
-    }
-
     const all: ToolDef[] = []
     for (const [, { client, name }] of this.backends) {
       try {
@@ -184,10 +362,6 @@ export class UnifiedMcpBridge {
 
   // ─── Tool execution ──────────────────────
 
-  /**
-   * Call a tool by name. Routes to the correct backend automatically.
-   * Returns same McpCallResult shape as the old bridge for backward compat.
-   */
   async call(toolName: string, args: any): Promise<McpCallResult> {
     const backendName = this.toolBackend.get(toolName)
     if (!backendName) {
@@ -243,28 +417,67 @@ export class UnifiedMcpBridge {
     }
   }
 
-  // ─── Teardown ────────────────────────────
+  // ─── Transport factory ───────────────────
 
-  /** Close all backend connections. */
-  async disconnectAll(): Promise<void> {
-    for (const [, { client }] of this.backends) {
-      try {
-        await client.close()
-      } catch {
-        // best-effort close
+  createTransport(cfg: BackendConfig) {
+    const t = cfg.transport as string
+    switch (t) {
+      case 'fetch':
+      case 'streamableHttp':
+        return new FetchTransport(cfg.url, {
+          headers: cfg.headers,
+          timeoutMs: cfg.timeoutMs,
+          label: `[fetch:${cfg.name}]`,
+        })
+
+      case 'sse': {
+        return new SSEClientTransport(new URL(cfg.url), {
+          requestInit: cfg.headers
+            ? { headers: cfg.headers }
+            : undefined,
+        })
       }
+
+      default:
+        throw new Error(`Unknown transport: ${cfg.transport}`)
     }
-    this.backends.clear()
-    this.toolBackend.clear()
-    this.connected = false
   }
 
-  /** Number of connected backends. */
+  // ─── Teardown ────────────────────────────
+
+  /** Close all backend connections. Each backend gets its own timeout. */
+  async disconnectAll(): Promise<void> {
+    this.shuttingDown = true
+
+    for (const name of this.healthTimers.keys()) {
+      this._stopHealthCheck(name)
+    }
+
+    const timeoutMs = 5_000
+    const promises = Array.from(this.backends.entries()).map(
+      async ([name, { client }]) => {
+        const timer = setTimeout(() => {
+          console.warn(`[bridge] close timeout for "${name}", forcing`)
+        }, timeoutMs)
+        try {
+          await client.close()
+        } catch {
+          // best-effort
+        } finally {
+          clearTimeout(timer)
+        }
+      },
+    )
+
+    await Promise.allSettled(promises)
+    this.backends.clear()
+    this.toolBackend.clear()
+  }
+
   get backendCount(): number {
     return this.backends.size
   }
 
-  /** Number of discovered tools. */
   get toolCount(): number {
     return this.toolBackend.size
   }

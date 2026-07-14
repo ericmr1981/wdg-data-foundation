@@ -1,20 +1,20 @@
-# Graph Report - .  (2026-07-13)
+# Graph Report - wdg-data-foundation  (2026-07-13)
 
 ## Corpus Check
-- cluster-only mode — file stats not available
+- 762 files · ~317,593 words
+- Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3213 nodes · 6485 edges · 284 communities (185 shown, 99 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 82 edges (avg confidence: 0.73)
+- 2963 nodes · 5342 edges · 308 communities (192 shown, 116 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 47 edges (avg confidence: 0.68)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `fa8b5cf7`
+- Built from commit: `38347d86`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- getErrorMessage
 - getSessionUser
 - normalizeBrand
 - excel-export.ts
@@ -35,7 +35,6 @@
 - mcp-fetch.ts
 - compilerOptions
 - import_bonjur_sales_daily.py
-- runner.ts
 - TaskScheduler
 - index.ts
 - UnifiedMcpBridge
@@ -160,18 +159,17 @@
 - mcp-tamkoko-sales.spec.ts
 - mcp-upload-tamkoko.spec.ts
 - wdg-deploy.sh
-- graphify.js
+- route.ts
 - health.sh
 - wdg.sh
 - deploy-from-acr.sh
 - seed_notification_schedule.py
 - next.config.js
-- getSession
+- route.ts
 - page.tsx
 - devDependencies
-- signAgentToken
+- route.ts
 - get-inventory-summary.ts
-- apps.jsx
 - get-meituan-tuangou-recon.ts
 - dependencies
 - get-rules-history.ts
@@ -179,15 +177,14 @@
 - get-taobao-recon.ts
 - get-txn-detail.ts
 - get-unclassified.ts
-- data.js
-- manifest.json
+- route.ts
 - list-rule-groups.ts
 - preview-match.ts
 - query-bonjur-qimai-sales.ts
-- supabase.js
+- route.ts
 - query-financial-kpi-trend.ts
-- FakeWS
-- compilerOptions
+- route.ts
+- route.ts
 - query-status.ts
 - query-store-report-trend.ts
 - rerun-match-by-file.ts
@@ -209,10 +206,10 @@
 - init.sh
 - backup_pg.sh
 - cleanup_db.py
-- middleware.js
+- route.ts
 - react-markdown
 - react-syntax-highlighter
-- db_test.sh
+- route.ts
 - install_systemd.sh
 - __init__.py
 - local-preview.sh
@@ -227,49 +224,65 @@
 - uninstall_systemd.sh
 - verify_data_sync.sh
 - migrate-all.sh
-- @tanstack/react-table
+- route.ts
 - .mcp.json
 - next-env.d.ts
-- proxy.ts
 - xlsx-js-style
 - supabase.ts
 - secret-crypto.test.ts
 - AGENT_MD_FILE_PATH
+- import_gelatomiiix_cash_register.py
+- route.ts
+- import_gelatomiiix_product_sales.py
+- import_gelatomiiix_income_detail.py
+- import_bonjur_product_sales.py
+- import_bonjur_income_detail.py
 - route.ts
 - route.ts
-- probe-agent-ws.mjs
-- probe-portal-token.mjs
-- ops_logger.py
-- create-store.ts
-- get-inventory-turnover.ts
-- get-pipeline-kpi.ts
-- get-proposal.ts
-- get-rules.ts
-- list-categories.ts
-- query-income-metrics.ts
-- query-qimai-revenue.ts
-- next.config.js
+- route.ts
+- providers.tsx
 - react
 - react-markdown
 - @supabase/supabase-js
 - @types/node
-- verify-chat.mjs
-- next
 - react
-- remark-gfm
-- zod
+- route.ts
+- route.ts
+- IngestFileManager
+- token-tracker.ts
+- main
+- query-financial-overview.ts
+- DataFrame
+- date
+- datetime
+- DataFrame
+- date
+- providers.tsx
+- query-counterparty.ts
+- query-financial-overview.ts
+- datetime
+- overview-panel.tsx
+- date
+- query-financial-overview.ts
+- route.ts
+- DataFrame
+- query-gelatomiiix-income.ts
+- upload-bonjur-income-detail.ts
+- route.ts
+- route.ts
+- route.ts
 
 ## God Nodes (most connected - your core abstractions)
-1. `getSessionUser()` - 208 edges
-2. `assertRole()` - 137 edges
-3. `getErrorMessage()` - 132 edges
-4. `pool` - 119 edges
-5. `normalizeBrand()` - 95 edges
-6. `mcpFetch()` - 62 edges
-7. `useBrand()` - 48 edges
-8. `getDmSchema()` - 44 edges
-9. `getCfgSchema()` - 43 edges
-10. `parsePeriod()` - 42 edges
+1. `getSessionUser()` - 153 edges
+2. `assertRole()` - 88 edges
+3. `pool` - 74 edges
+4. `normalizeBrand()` - 73 edges
+5. `mcpFetch()` - 62 edges
+6. `useBrand()` - 48 edges
+7. `getDmSchema()` - 40 edges
+8. `getCfgSchema()` - 35 edges
+9. `main()` - 28 edges
+10. `ConversationManager` - 24 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `registerChatEventsRoutes()` --indirect_call--> `events()`  [INFERRED]
@@ -286,23 +299,19 @@
 ## Import Cycles
 - None detected.
 
-## Communities (284 total, 99 thin omitted)
-
-### Community 0 - "getErrorMessage"
-Cohesion: 0.04
-Nodes (77): GET(), POST(), GET(), ChannelRow, GET(), GET(), GET(), GET() (+69 more)
+## Communities (308 total, 116 thin omitted)
 
 ### Community 1 - "getSessionUser"
-Cohesion: 0.05
-Nodes (69): GET(), POST(), PUT(), GET(), POST(), PUT(), normCode(), normDirection() (+61 more)
+Cohesion: 0.04
+Nodes (68): POST(), GET(), POST(), proxy(), POST(), GET(), POST(), GET() (+60 more)
 
 ### Community 2 - "normalizeBrand"
-Cohesion: 0.09
-Nodes (52): applyBrandSql(), POST(), sliceFromMarker(), POST(), POST(), POST(), GET(), GET() (+44 more)
+Cohesion: 0.13
+Nodes (35): POST(), POST(), POST(), GET(), DELETE(), GET(), GET(), POST() (+27 more)
 
 ### Community 3 - "excel-export.ts"
-Cohesion: 0.06
-Nodes (60): xlsx, AdminRuleGroupsPage(), AdminRulesCopyPage(), TrendSeriesKey, calcDelta(), CARD_ORDER, fmtCurrency(), fmtDeltaPct() (+52 more)
+Cohesion: 0.10
+Nodes (38): calcDelta(), CARD_ORDER, fmtCurrency(), fmtDeltaPct(), fmtMonths(), fmtPct(), fmtValue(), KpiCards() (+30 more)
 
 ### Community 4 - "ChatWidget.tsx"
 Cohesion: 0.06
@@ -313,88 +322,80 @@ Cohesion: 0.08
 Nodes (41): aggregateKpiTotal(), DimByStoreRow, num(), OverviewRow, pivotDimByStore(), pivotTrendByStore(), TrendByStoreRow, TrendMetric (+33 more)
 
 ### Community 6 - "web.ts"
-Cohesion: 0.08
-Nodes (21): ChatEmitter, AnthropicContentBlock, AnthropicDelta, AnthropicSDKMessage, AnthropicUsage, ChatAttachment, ChatErrorCode, ChatIncoming (+13 more)
+Cohesion: 0.07
+Nodes (23): ChatEmitter, AnthropicContentBlock, AnthropicDelta, AnthropicSDKMessage, AnthropicUsage, ChatAttachment, ChatErrorCode, ChatIncoming (+15 more)
 
 ### Community 7 - "test_import_tamkoko_cash_register.py"
-Cohesion: 0.05
-Nodes (36): aggregate_by_order_no(), calculate_sha256(), finalize_source_file(), _get_db_config(), import_one_file(), is_already_imported(), main(), parse_date() (+28 more)
+Cohesion: 0.09
+Nodes (16): _has_db(), Tests for scripts/import_tamkoko_cash_register.py, sanity: fixture 文件存在且订单号都带反引号, SHA256 命中且 status='success' 时返回 source_file_id,主流程据此 SKIPPED, SHA256 未命中或 status != 'success' 时返回 None, replace=true 时按 ODS 中 biz_date 年/月判定旧 source_file 并删除, 用 tests/test_fixtures/cash_register_sample_3rows.csv 跑 import_one_file,     验证 O, 退款 fixture 应合并为 1 个净订单(SUM 后全 0)+ 1 个普通订单 (+8 more)
 
 ### Community 8 - "server.ts"
 Cohesion: 0.07
-Nodes (30): POST(), runWithMcpContext(), describeZod(), handleJsonRpcRequest(), handleToolsCall(), jsonRpcError(), JsonRpcRequestSchema, JsonRpcResponse (+22 more)
+Nodes (32): POST(), runWithMcpContext(), describeZod(), handleJsonRpcRequest(), handleToolsCall(), jsonRpcError(), JsonRpcRequestSchema, JsonRpcResponse (+24 more)
 
 ### Community 9 - "classify_txn"
 Cohesion: 0.07
 Nodes (42): _check_field2(), classify_txn(), _direction_matches(), _load_rules(), _matches(), Path, 加载 JSON 规则，按 priority ASC 排序（低 priority = 高优先级）, 检查 match_field2 AND 条件（可选） (+34 more)
 
 ### Community 10 - "runner.test.ts"
-Cohesion: 0.12
-Nodes (9): ConversationMessage, ConversationSummary, LlmSummarizer, makeEventId(), StoredEvent, MockAnthropic, MockResponse, cleanupTestDb() (+1 more)
+Cohesion: 0.11
+Nodes (23): buildSessionContextMessage(), buildSystemBlocks(), AgentRunner, EmitterLike, extractTextContent(), extractToolCalls(), RunnerStep, sanitizeJsonSchema() (+15 more)
 
 ### Community 11 - "store.ts"
 Cohesion: 0.10
 Nodes (33): registerAdminConfigRoutes(), CANDIDATE_PATHS, __dirname, loadDefaultAgentMd(), AgentConfig, AgentConfigParams, AgentConfigSlot, DbConfigRow (+25 more)
 
 ### Community 12 - "test_import_tamkoko_inventory.py"
-Cohesion: 0.08
-Nodes (37): calculate_sha256(), InventoryRow, main(), parse_inventory_excel(), _pick_sheet(), 返回 (accepted, rejected_with_reason)。, 注册 raw.ingest_file，返回 source_file_id。幂等：同 (brand, hash) 复用。      month 入参允许 'YYY, cfg.material_sku UPSERT。first_seen_period 仅在 INSERT 时写入。 (+29 more)
+Cohesion: 0.12
+Nodes (19): 导入 5 月 fixture 后 ODS 应有 50+ 行，cfg.material_sku 有相同 SKU 数。, 第二次导入 5 月后，first_seen_period 仍是 2026-05（不被更新为 last）。, 灌入 4/5 月后，v_cogs_monthly 与 v_store_monthly_kpi 行为正确。, 4 月盘点约 80 个 SKU（去除完全空行后）。, 5 月文件含 '4月' 和 '5月' 两个 sheet，应选 '5月'（按 period 匹配）。, 鲜牛乳奶基底 SKU 001365 库存金额 2112（5 月）。, 分类列只在分组首行填值，后续行空 → 解析时向上回填。, amount = unit_price × qty 重算应与 Excel H 列一致（容差 0.01）。 (+11 more)
 
 ### Community 13 - "test_notification_sweep.py"
 Cohesion: 0.09
 Nodes (33): all_brand_codes(), 跨品牌表名映射 — sweep 子任务用 建表时如发现实际表名与本文件不符,直接改这里  任务 3 探索: dev DB 中 bank_rule_map 是按, _max_date(), _normalize_pattern(), _pattern_hash(), date, 4 个 sweep 子任务实现。 所有函数签名: sweep_xxx(conn, brands: list[str] | None) -> int 返回: 本次, 检测 bank_rule_map 重复 pattern;按 brand 路由到 {cfg_schema}.bank_rule_map (+25 more)
 
 ### Community 14 - "useBrand"
-Cohesion: 0.08
-Nodes (26): BrandRow, CategoryDictionaryPage(), Lvl1Row, Lvl2Row, AdminStoresPage(), StoreRow, UploadPage(), CounterpartySummary (+18 more)
+Cohesion: 0.07
+Nodes (29): BrandRow, CategoryDictionaryPage(), Lvl1Row, Lvl2Row, PipelinePage(), AdminStoresPage(), StoreRow, UploadPage() (+21 more)
 
 ### Community 15 - "db.ts"
-Cohesion: 0.16
-Nodes (19): POST(), POST(), ensureBrandCategoryTables(), ensureDefaultCategoryTables(), NOTE: We intentionally use a minimal canonical structure compatible with existin, GET(), normDirection(), normLvl1Code() (+11 more)
+Cohesion: 0.17
+Nodes (12): POST(), resolveBrandCfgSchema(), POST(), ensureBrandCategoryTables(), ensureDefaultCategoryTables(), NOTE: We intentionally use a minimal canonical structure compatible with existin, getTargetBrands(), POST() (+4 more)
 
 ### Community 16 - "registry.ts"
 Cohesion: 0.12
 Nodes (27): AGENT_MD_CACHE_CONTROL, buildSystemPrompt(), PageCtx, __dirname, __filename, findFileByName(), listDirCount(), listOne() (+19 more)
 
 ### Community 17 - "import_yufeng_bank_txn.py"
-Cohesion: 0.14
-Nodes (31): assert_brand_exists(), calculate_sha256(), check_ingest_file(), create_ingest_file(), delete_existing_data(), do_import(), dry_run_import(), find_bank_files() (+23 more)
+Cohesion: 0.17
+Nodes (24): DataFrame, assert_brand_exists(), assert_store_exists(), delete_existing_data(), do_import(), dry_run_import(), find_bank_files(), get_dm_schema() (+16 more)
 
 ### Community 18 - "mcp-fetch.ts"
 Cohesion: 0.09
-Nodes (22): mcpFetch(), getMcpBaseUrl(), getMcpCookieHeader(), McpRequestContext, storage, GetCoverageByFileInput, getCoverageByFileTool, GetGelatoWechatReconInput (+14 more)
+Nodes (22): mcpFetch(), getMcpBaseUrl(), getMcpCookieHeader(), McpRequestContext, storage, GetCandidatesInput, getCandidatesTool, GetPipelineKpiInput (+14 more)
 
 ### Community 19 - "compilerOptions"
 Cohesion: 0.06
 Nodes (31): dom, dom.iterable, e2e, esnext, next-env.d.ts, .next/types/**/*.ts, ./src/*, **/*.ts (+23 more)
 
-### Community 20 - "import_bonjur_sales_daily.py"
-Cohesion: 0.18
-Nodes (22): calculate_sha256(), check_ingest_file(), create_ingest_file(), delete_existing_data(), do_import(), dry_run_import(), ensure_table_exists(), find_sales_files() (+14 more)
-
-### Community 21 - "runner.ts"
-Cohesion: 0.11
-Nodes (23): buildSessionContextMessage(), buildSystemBlocks(), AgentRunner, EmitterLike, extractTextContent(), extractToolCalls(), RunnerStep, sanitizeJsonSchema() (+15 more)
-
 ### Community 22 - "TaskScheduler"
-Cohesion: 0.16
+Cohesion: 0.14
 Nodes (12): registerWeeklyBankReview(), getHandler(), handlers, registerTaskHandler(), sleep(), TaskScheduler, StepStatus, TaskDefinition (+4 more)
 
 ### Community 23 - "index.ts"
-Cohesion: 0.09
-Nodes (23): GetBrandStoresInput, getBrandStoresTool, GetUnclassifiedByFileInput, getUnclassifiedByFileTool, queryBonjurSalesDetailsTool, queryBonjurSalesProductsTool, QueryFinancialOverviewInput, queryFinancialOverviewTool (+15 more)
+Cohesion: 0.10
+Nodes (20): CreateStoreInput, createStoreTool, GetProposalInput, getProposalTool, queryBonjurSalesDetailsTool, queryBonjurSalesProductsTool, baseInput, queryGelatomiiixSalesChannelsTool (+12 more)
 
 ### Community 24 - "UnifiedMcpBridge"
 Cohesion: 0.10
 Nodes (7): BackendEntry, McpCallResult, ToolDef, UnifiedMcpBridge, FetchTransport, FetchTransportOptions, MockMcpBridge
 
 ### Community 25 - "wdg_scheduler_daemon.py"
-Cohesion: 0.10
-Nodes (22): BaseHTTPRequestHandler, BlockingScheduler, build_scheduler(), _cron_kwargs(), load_jobs_from_db(), main(), _make_job_func(), _query_schedule() (+14 more)
+Cohesion: 0.15
+Nodes (13): BaseHTTPRequestHandler, BlockingScheduler, build_scheduler(), _cron_kwargs(), main(), _make_job_func(), WDG Notification Scheduler Daemon - 启动时从 ops.notification_schedule 读 enabled 行 -, 构造 BlockingScheduler 并按 load_jobs_from_db() 注册 jobs (+5 more)
 
 ### Community 26 - "server.ts"
-Cohesion: 0.09
-Nodes (18): registerAdminCronRoutes(), registerAdminTaskRoutes(), registerTestChatRoute(), TestChatBody, TestChatDeps, registerTestConnectionRoute(), registerAdminToolRoutes(), registerChatEventsRoutes() (+10 more)
+Cohesion: 0.15
+Nodes (15): registerAdminCronRoutes(), registerAdminTaskRoutes(), registerTestChatRoute(), TestChatBody, TestChatDeps, registerTestConnectionRoute(), registerAdminToolRoutes(), ALLOWED_MIME (+7 more)
 
 ### Community 27 - "page.tsx"
 Cohesion: 0.13
@@ -409,32 +410,32 @@ Cohesion: 0.10
 Nodes (8): AgentRunnerDeps, fakeReq, WebChannel, Notification, NotificationType, Notifier, NullNotifier, WebNotifier
 
 ### Community 30 - "test_install_helpers.py"
-Cohesion: 0.12
-Nodes (24): detect_pg_version(), env_file_contents(), initdb_command(), pg_hba_local_md5_line(), postgres_conf_overrides(), Pure functions used by install_systemd.sh.  设计原则: 全部是纯函数, 不碰文件系统, 不调外部命令, 不依赖网络。, 从 /usr/lib/postgresql/<ver>/bin/postgres 路径里抠出版本号。, 生成 127.0.0.1/32 md5 鉴权行 (追加到 pg_hba.conf 末尾)。 (+16 more)
+Cohesion: 0.14
+Nodes (19): env_file_contents(), initdb_command(), pg_hba_local_md5_line(), postgres_conf_overrides(), Pure functions used by install_systemd.sh.  设计原则: 全部是纯函数, 不碰文件系统, 不调外部命令, 不依赖网络。, 生成 127.0.0.1/32 md5 鉴权行 (追加到 pg_hba.conf 末尾)。, 生成 postgresql.conf 的覆盖段 (append-only, 不会覆盖已有设置)。      监听 loopback only, 显式端口, un, 构造 initdb 命令 (argv 形式, 方便测试)。      必须用 sudo -u postgres 跑 (PG 拒绝非 postgres 用户 in (+11 more)
 
 ### Community 31 - "ApprovalDetail.tsx"
-Cohesion: 0.18
-Nodes (19): allowedLvl1ByDirection(), LVL1_DIRECTION, LVL1_OPTIONS, LVL2_OPTIONS, txnDirection(), ApprovalDetail(), ApprovalDetailProps, lvl1CodeToName() (+11 more)
+Cohesion: 0.20
+Nodes (17): allowedLvl1ByDirection(), LVL1_DIRECTION, LVL1_OPTIONS, LVL2_OPTIONS, txnDirection(), ApprovalDetail(), ApprovalDetailProps, lvl1CodeToName() (+9 more)
 
 ### Community 32 - "agent-config-store.ts"
-Cohesion: 0.11
-Nodes (17): AgentConfig, AgentConfigSlot, applyConfigToGlobals(), CANDIDATE_PATHS, defaultConfig(), __dirname, g, loadDefaultAgentMd() (+9 more)
+Cohesion: 0.12
+Nodes (17): AgentConfig, AgentConfigSlot, applyConfigToGlobals(), CANDIDATE_PATHS, DEFAULT_PARAMS, defaultConfig(), __dirname, g (+9 more)
 
 ### Community 33 - "OpsLogger"
-Cohesion: 0.14
-Nodes (10): OpsLogger, pipeline_step(), 创建 pipeline_step_run 记录（开始步骤）          Returns:             step_id 或 None（如果创建失, 更新 pipeline_step_run 记录（结束步骤）          Args:             step_name: 步骤名称, 标记步骤开始          Args:             step_name: 步骤名称             step_order: 执行顺序, 标记步骤结束          Args:             step_name: 步骤名称             status: 状态 (succes, 标记 Pipeline 结束          Args:             status: 运行状态 (success / failed), Context manager wrapping a pipeline step for automatic lifecycle management. (+2 more)
+Cohesion: 0.08
+Nodes (26): create_ops_logger(), OpsLogger, pipeline_step(), 创建 pipeline_step_run 记录（开始步骤）          Returns:             step_id 或 None（如果创建失, 更新 pipeline_step_run 记录（结束步骤）          Args:             step_name: 步骤名称, 标记步骤开始          Args:             step_name: 步骤名称             step_order: 执行顺序, 标记步骤结束          Args:             step_name: 步骤名称             status: 状态 (succes, 标记 Pipeline 结束          Args:             status: 运行状态 (success / failed) (+18 more)
 
 ### Community 34 - "types.ts"
 Cohesion: 0.11
-Nodes (18): PipelineKpi, PipelinePage(), Lvl1Option, Lvl2Option, RulesPage(), PipelineKpi, PipelinePage(), Lvl1Option (+10 more)
+Nodes (17): PipelineKpi, Lvl1Option, Lvl2Option, RulesPage(), PipelineKpi, PipelinePage(), Lvl1Option, Lvl2Option (+9 more)
 
 ### Community 35 - "route.ts"
 Cohesion: 0.16
 Nodes (19): GET(), formatTs(), NotificationsPage(), SEVERITY_BG, TABS, TYPE_LABELS, formatTime(), NotificationBell() (+11 more)
 
 ### Community 36 - "page.tsx"
-Cohesion: 0.13
-Nodes (18): BalanceSheet(), BalanceSheetProps, CashflowProps, CashflowStatement(), CounterpartySummary, CounterpartyTab(), CounterpartyTabProps, TxnDetail (+10 more)
+Cohesion: 0.09
+Nodes (23): BalanceSheet(), BalanceSheetProps, CashflowProps, CashflowStatement(), CounterpartySummary, CounterpartyTab(), CounterpartyTabProps, TxnDetail (+15 more)
 
 ### Community 37 - "compilerOptions"
 Cohesion: 0.09
@@ -449,16 +450,12 @@ Cohesion: 0.12
 Nodes (21): BankEntryChannel, BankEntryData, BankEntryRateSection(), CHANNEL_COLORS, CHANNEL_LABELS, CounterpartySummary, CycleRow, DouyinReconSection() (+13 more)
 
 ### Community 40 - "admin-stores.ts"
-Cohesion: 0.15
-Nodes (20): assertBrandCode(), assertStoreCode(), assertStoreName(), Caller, columnExists(), CreateStoreInput, CreateStoreResult, handleCreateStore() (+12 more)
+Cohesion: 0.12
+Nodes (25): DELETE(), GET(), normStoreCode(), POST(), assertBrandCode(), assertStoreCode(), assertStoreName(), Caller (+17 more)
 
 ### Community 41 - "dev.sh"
 Cohesion: 0.28
 Nodes (21): cmd_clean(), cmd_down(), cmd_logs(), cmd_prune_data(), cmd_reset(), cmd_restart(), cmd_status(), cmd_up() (+13 more)
-
-### Community 42 - "import_gelatomiiix_cash_register.py"
-Cohesion: 0.17
-Nodes (20): calculate_sha256(), check_ingest_file(), create_ingest_file(), delete_existing_by_source(), ensure_table_exists(), extract_payment_method(), insert_rows(), main() (+12 more)
 
 ### Community 43 - "errors.ts"
 Cohesion: 0.12
@@ -474,51 +471,39 @@ Nodes (21): autoprefixer, @playwright/test, postcss, tailwindcss, @types/react, 
 
 ### Community 46 - "dependencies"
 Cohesion: 0.10
-Nodes (21): csv-parser, @dnd-kit/sortable, @dnd-kit/utilities, @modelcontextprotocol/server, puppeteer-core, react-dom, recharts, dependencies (+13 more)
-
-### Community 47 - "import_bonjur_income_detail.py"
-Cohesion: 0.17
-Nodes (20): calculate_sha256(), check_ingest_file(), create_ingest_file(), ensure_table_exists(), extract_month_from_filename(), insert_rows(), main(), map_channel() (+12 more)
+Nodes (21): @dnd-kit/sortable, @modelcontextprotocol/server, next, puppeteer-core, react-dom, remark-gfm, @tanstack/react-table, dependencies (+13 more)
 
 ### Community 48 - "import_gelatomiiix_income_detail.py"
-Cohesion: 0.17
-Nodes (20): calculate_sha256(), check_ingest_file(), create_ingest_file(), extract_month_from_filename(), get_target_table(), insert_rows(), main(), parse_date() (+12 more)
+Cohesion: 0.27
+Nodes (10): CrossBrandStoreError, load_valid_stores(), _query_valid_stores(), 导入脚本的门店合法性校验工具。  核心约束：跨品牌导入是历史 bug 的根源（gelatomiiix_ods.income_detail 曾被 tamkoko, CSV 内的 store_code 不属于该 brand 的合法 store 集合。, 加载 brand 下所有 enabled 的 store_code 集合。带进程内缓存。, 确认 store_code 是 brand 的合法门店；否则抛 CrossBrandStoreError。, 决定最终写入 *_ods.* 的 store_code。      优先级：     1. override（CLI/--store-code 显式传入）—— (+2 more)
 
 ### Community 49 - "import_gelatomiiix_product_sales.py"
-Cohesion: 0.18
-Nodes (19): calculate_sha256(), check_ingest_file(), create_ingest_file(), delete_existing_by_source(), ensure_table_exists(), insert_rows(), main(), normalize_date() (+11 more)
+Cohesion: 0.20
+Nodes (16): delete_existing_batch(), find_delivery_files(), get_schema_from_brand(), import_data(), parse_excel(), parse_path_delivery(), process_file(), DataFrame (+8 more)
 
 ### Community 50 - "test_verify_helpers.py"
 Cohesion: 0.15
 Nodes (18): build_health_checks(), check_url(), HealthCheck, parse_journalctl_fatal(), Pure functions used by verify_systemd.sh.  verify_systemd.sh 调用 build_health_che, 单个健康检查项。name 给日志看, command 跑在子 shell。, 从 journalctl 输出里挑出所有 FATAL 行。      大小写不敏感 (PG 写 "FATAL:" 也可能写 "fatal error")。, 包一层 curl 调用, 方便测试时注入 fake。      真实调用: curl_fn = lambda u: subprocess... 见 verify (+10 more)
 
 ### Community 51 - "analyze-unclassified.ts"
-Cohesion: 0.21
-Nodes (15): BANK_TABLE_BY_BRAND, loadTxns(), POST(), AnalysisResult, BRANDS, buildUserPrompt(), LlmProposalRecord, parseInput() (+7 more)
+Cohesion: 0.30
+Nodes (10): AnalysisResult, BRANDS, buildUserPrompt(), LlmProposalRecord, parseInput(), parseModelResponse(), RouteInput, UnclassifiedTxnForAnalysis (+2 more)
 
 ### Community 52 - "stream-processor.ts"
-Cohesion: 0.47
-Nodes (4): processStream(), ProcessStreamResult, stripCjkSpaces(), events()
+Cohesion: 0.16
+Nodes (11): getUserId(), AgentClaims, initAuth(), reFetchJwks(), verifyAgentToken(), getJwksUrl(), ContentBlock, DbMessageRow (+3 more)
 
 ### Community 53 - "test_import_yufeng_bank_txn.py"
-Cohesion: 0.10
-Nodes (19): Tests for scripts/import_yufeng_bank_txn.py, get_ods_schema('tamkoko') must return brand_tamkoko_ods, get_dm_schema('tamkoko') must return brand_tamkoko_dm, parse_path must correctly extract metadata from tamkoko bank file paths, parse_path must correctly extract metadata from tamkoko wz_bjwxc bank file paths, parse_path must correctly extract metadata from gelatomiiix bank file paths, parse_path must correctly extract metadata from bonjur bank file paths, parse_path must correctly extract metadata from yufeng bank file paths (+11 more)
+Cohesion: 0.24
+Nodes (10): ClientAgentConfig(), McpBackend, Props, AgentConfigEditor(), PARAM_META, Props, THINKING_OPTIONS, AgentConfigParams (+2 more)
 
 ### Community 54 - "ConversationManager"
-Cohesion: 0.09
-Nodes (13): getUserId(), registerConversationRoutes(), AgentClaims, initAuth(), reFetchJwks(), verifyAgentToken(), getJwksUrl(), ContentBlock (+5 more)
+Cohesion: 0.07
+Nodes (13): registerChatEventsRoutes(), registerConversationRoutes(), ConversationManager, ConversationMessage, ConversationSummary, LlmSummarizer, makeEventId(), StoredEvent (+5 more)
 
 ### Community 55 - "import_bonjur_product_sales.py"
-Cohesion: 0.19
-Nodes (18): calculate_sha256(), check_ingest_file(), create_ingest_file(), delete_existing_by_source(), ensure_table_exists(), insert_rows(), main(), normalize_date() (+10 more)
-
-### Community 56 - "import_bonjur_sales_self_service_daily.py"
-Cohesion: 0.20
-Nodes (18): calculate_sha256(), check_ingest_file(), create_ingest_file(), delete_existing_by_source(), ensure_table_exists(), insert_rows(), main(), normalize_date() (+10 more)
-
-### Community 57 - "import_xintiandi_delivery.py"
-Cohesion: 0.19
-Nodes (17): delete_existing_batch(), find_delivery_files(), get_connection(), get_schema_from_brand(), import_data(), parse_excel(), parse_path(), process_file() (+9 more)
+Cohesion: 0.09
+Nodes (35): applyBrandSql(), POST(), sliceFromMarker(), parsePeriod(), GET(), GET(), GET(), GET() (+27 more)
 
 ### Community 58 - "page.tsx"
 Cohesion: 0.12
@@ -537,16 +522,16 @@ Cohesion: 0.49
 Nodes (16): blue(), check_endpoint(), check_endpoint_hdr(), check_lima_vm(), check_port_fwd(), check_service(), green(), red() (+8 more)
 
 ### Community 62 - "callAgent"
-Cohesion: 0.17
-Nodes (16): DELETE(), GET(), isAdmin(), POST(), isAdmin(), POST(), POST(), POST() (+8 more)
+Cohesion: 0.24
+Nodes (10): isAdmin(), POST(), POST(), POST(), Page(), AgentCallResult, AgentConfigView, callAgent() (+2 more)
 
 ### Community 63 - "providers.tsx"
-Cohesion: 0.29
-Nodes (4): metadata, BrandSelector(), Providers(), BrandProvider()
+Cohesion: 0.24
+Nodes (9): load_jobs_from_db(), _query_schedule(), 从 DB 读所有 schedule 行 (id, task_name, enabled, cron_expr, brands_filter), 返回 [{'id', 'task_name', 'cron_expr', 'brands_filter'}, ...]     跳过 disabled 行 +, TDD tests for wdg_scheduler_daemon — only the load_jobs_from_db() helper. The fu, load_jobs_from_db 只返回 enabled=true 的行, cron 表达式非法 → 跳过该行(不抛), test_load_jobs_handles_invalid_cron_gracefully() (+1 more)
 
 ### Community 64 - "route.ts"
-Cohesion: 0.20
-Nodes (12): coerceRow(), DELETE(), GET(), POST(), toNum(), validatePeriod(), InventoryForm(), Props (+4 more)
+Cohesion: 0.52
+Nodes (6): coerceRow(), DELETE(), GET(), POST(), toNum(), validatePeriod()
 
 ### Community 65 - "page.tsx"
 Cohesion: 0.17
@@ -561,12 +546,12 @@ Cohesion: 0.40
 Nodes (14): check_docker(), create_bonjur_compat_view(), create_schemas(), execute_sql_file(), import_sample_data(), install_python_deps(), log_error(), log_info() (+6 more)
 
 ### Community 68 - "run_pipeline_oneclick.py"
-Cohesion: 0.21
-Nodes (13): check_brand_schema(), check_table_exists(), check_view_exists(), find_input_files(), get_db_connection(), main(), Path, 检查品牌的 ODS/CFG/DM 表/视图是否存在 (+5 more)
+Cohesion: 0.28
+Nodes (14): delete_existing_data(), do_import(), dry_run_import(), find_sales_files(), main(), map_store_code(), normalize_month(), parse_amount() (+6 more)
 
 ### Community 69 - "route.ts"
-Cohesion: 0.14
-Nodes (22): POST(), GET(), getBaseUrl(), POST(), getAgentConfig(), ALLOWED_WRITE_TOOLS, ChatUserRole, filterToolsByRole() (+14 more)
+Cohesion: 0.23
+Nodes (11): POST(), GET(), ChatMessage, ChatSession, g, getOrCreateSession(), getSession(), resetSession() (+3 more)
 
 ### Community 70 - "check-tools-registry.mjs"
 Cohesion: 0.14
@@ -577,8 +562,8 @@ Cohesion: 0.23
 Nodes (13): BRANDS, buildCron(), deriveDom(), deriveDow(), deriveFrequency(), deriveTime(), describeCron(), fmtTs() (+5 more)
 
 ### Community 73 - "ClientAgentConfig.tsx"
-Cohesion: 0.27
-Nodes (9): McpBackend, Props, AgentConfigEditor(), PARAM_META, Props, THINKING_OPTIONS, AgentConfigParams, setAgentMd() (+1 more)
+Cohesion: 0.15
+Nodes (22): date, insert_rows(), main(), normalize_date(), normalize_month(), parse_path_fallback(), DataFrame, Parse inputs path with fallback for non-standard paths. (+14 more)
 
 ### Community 74 - "prompt.ts"
 Cohesion: 0.27
@@ -589,8 +574,8 @@ Cohesion: 0.24
 Nodes (11): AGENT_WS_PORT, DENY_PREFIXES, formatAccessLine(), log(), PORT, proxyHttp(), proxyWs(), server (+3 more)
 
 ### Community 76 - "ValueError"
-Cohesion: 0.21
-Nodes (14): calculate_sha256(), extract_month_from_filename(), get_target_table(), main(), map_channel(), parse_date(), parse_path(), 从文件名提取最晚年月,支持 '企迈 收入明细表 2026-02-01 至 2026-03-31.csv (+6 more)
+Cohesion: 0.29
+Nodes (15): buildAllRows(), buildStoreReportWorkbook(), ExportInput, ABS_VALUE_KEYS, ALL_METRICS, FILL_HEADER, FONT_HEADER, SERIES_KEYS (+7 more)
 
 ### Community 77 - "test_import_tamkoko_income_detail.py"
 Cohesion: 0.15
@@ -605,24 +590,24 @@ Cohesion: 0.17
 Nodes (11): name, private, scripts, build, dev, lint, smoke:browser, smoke:local-docker (+3 more)
 
 ### Community 80 - "ChatShell.jsx"
-Cohesion: 0.09
-Nodes (20): AppCard(), firstChar(), ChatShell(), normalizeContent(), normalizeSession(), autoResize(), Composer(), fileToBase64() (+12 more)
+Cohesion: 0.31
+Nodes (12): InventoryRow, main(), parse_inventory_excel(), _pick_sheet(), 返回 (accepted, rejected_with_reason)。, cfg.material_sku UPSERT。first_seen_period 仅在 INSERT 时写入。, 解析 Excel → InventoryRow 列表。     - 多 sheet 时按 period 匹配月份     - 分类列向下 filldown, run_import() (+4 more)
 
 ### Community 81 - "extract_match_candidates.py"
 Cohesion: 0.33
 Nodes (10): extract_candidates_for_unclassified(), extract_match_candidates(), filter_candidates(), is_noise(), is_number_string(), 从银行流水的多个字段提取 match_value 候选      Args:         counterparty_name: 对方单位名称, 为单条未分类流水提取候选（适合 API 返回格式）      Args:         bank_txn_data: 包含 counterparty_name, 检查字符串是否为纯数字（含小数点、中文数字） (+2 more)
 
 ### Community 82 - "_store_guard.py"
-Cohesion: 0.27
-Nodes (10): CrossBrandStoreError, load_valid_stores(), _query_valid_stores(), 导入脚本的门店合法性校验工具。  核心约束：跨品牌导入是历史 bug 的根源（gelatomiiix_ods.income_detail 曾被 tamkoko, CSV 内的 store_code 不属于该 brand 的合法 store 集合。, 加载 brand 下所有 enabled 的 store_code 集合。带进程内缓存。, 确认 store_code 是 brand 的合法门店；否则抛 CrossBrandStoreError。, 决定最终写入 *_ods.* 的 store_code。      优先级：     1. override（CLI/--store-code 显式传入）—— (+2 more)
+Cohesion: 0.33
+Nodes (6): detect_pg_version(), 从 /usr/lib/postgresql/<ver>/bin/postgres 路径里抠出版本号。, 从 /usr/lib/postgresql/<ver>/bin/postgres 路径里抠出版本号, test_detect_pg_version_from_binpath(), test_detect_pg_version_invalid_path_raises(), ValueError
 
 ### Community 83 - "test_inventory_summary_api.py"
 Cohesion: 0.31
 Nodes (9): Integration tests for /api/tamkoko/inventory/summary.  These hit a live dev serv, _req(), test_delete_admin_succeeds(), test_delete_not_found_returns_404(), test_get_returns_list(), test_post_negative_amount_rejected(), test_post_then_upsert_then_audit(), test_unauth_get_returns_401() (+1 more)
 
 ### Community 84 - "route.ts"
-Cohesion: 0.33
-Nodes (7): GET(), GET(), buildMeituanDailyQuery(), MEITUAN_RECON_SUPPORTED_BRANDS, ReconOpts, buildMeituanTuangouQuery(), TuangouOpts
+Cohesion: 0.26
+Nodes (10): aggregate_by_order_no(), import_one_file(), main(), parse_date(), parse_path_cash_register(), 按 订单号 SUM 求净订单,跳过 汇总 行      Args:         rows: csv.DictReader 解析出的行列表(每行 = 一个订单, replace=true 时调用:按 ODS 内 biz_date 年/月删除旧 source_file      实现:       1. SELECT DI, Parse path: inputs/{brand}/{store}/sales/cash_register/{YYYY-MM}/{filename} (+2 more)
 
 ### Community 85 - "page.tsx"
 Cohesion: 0.24
@@ -637,8 +622,8 @@ Cohesion: 0.49
 Nodes (9): do_logs(), do_restart(), ensure_vm_running(), err(), log(), main(), dev_restart_ui.sh script, usage() (+1 more)
 
 ### Community 91 - "page.tsx"
-Cohesion: 0.27
-Nodes (9): allowedLvl1ByDirection(), ConflictRule, LVL1_DIRECTION, LVL1_OPTIONS, LVL2_OPTIONS, MatchPage(), PendingItem, QuickMatchButton() (+1 more)
+Cohesion: 0.70
+Nodes (4): extractMonthFromFilename(), extractMonthFromXlsx(), parseCellDate(), POST()
 
 ### Community 92 - "mcp-bridge.ts"
 Cohesion: 0.33
@@ -673,12 +658,12 @@ Cohesion: 0.25
 Nodes (7): activeWebsockets, llmCallTotal, llmLatency, mcpCallTotal, mcpLatency, registry, taskStatusGauge
 
 ### Community 101 - "route.ts"
-Cohesion: 0.54
-Nodes (6): GET(), buildTaobaoDailyQuery(), buildTaobaoHybridQuery(), buildTaobaoReconQuery(), ReconOpts, TAOBAO_RECON_SUPPORTED_BRANDS
+Cohesion: 0.07
+Nodes (20): GET(), getBankChannelCaseSql(), getChannelCaseSql(), NOT_DEPLOYED_BRANDS, UNSUPPORTED_BRANDS, NOT_DEPLOYED_BRANDS, UNSUPPORTED_BRANDS, getErrorMessage() (+12 more)
 
 ### Community 102 - "overview-panel.tsx"
-Cohesion: 0.32
-Nodes (5): formatCurrency(), formatPercent(), OverviewData, OverviewPanel(), OverviewPanelProps
+Cohesion: 0.50
+Nodes (3): plugin, $schema, .opencode/plugins/graphify.js
 
 ### Community 103 - "page.tsx"
 Cohesion: 0.32
@@ -687,10 +672,6 @@ Nodes (6): ClientSkillList(), Props, SkillSummary, loadSkills(), Page(), SkillSu
 ### Community 104 - "page.tsx"
 Cohesion: 0.29
 Nodes (5): ALL_STATUSES, formatTime(), Task, TasksAdminPage(), TaskStatus
-
-### Community 107 - "auth.js"
-Cohesion: 0.16
-Nodes (17): handler(), TODO: 接管理后台写操作时再加 RLS + service_role 校验, handler(), config, handler(), pickReply(), registerAbort(), streamText() (+9 more)
 
 ### Community 108 - "page.tsx"
 Cohesion: 0.38
@@ -708,21 +689,21 @@ Nodes (5): http-proxy, dependencies, http-proxy, @supabase/supabase-js, @supabas
 Cohesion: 0.60
 Nodes (5): record_fail(), record_pass(), record_skip(), section(), verify-chat-agent.sh script
 
-### Community 115 - "route.ts"
-Cohesion: 0.60
-Nodes (4): GET(), BuildCycleQueryOpts, buildCycleReconQuery(), CYCLE_RECON_SUPPORTED_BRANDS
-
 ### Community 116 - "route.ts"
-Cohesion: 0.60
-Nodes (5): makeError(), POST(), VALID_DIRECTIONS, VALID_MATCH_FIELDS, VALID_MATCH_TYPES
+Cohesion: 0.50
+Nodes (4): buildCashflowLines(), CashflowRow, GET(), LineItem
 
 ### Community 117 - "page.tsx"
 Cohesion: 0.47
 Nodes (4): loadAgentStatus(), Page(), ChatResult, TestChatClient()
 
 ### Community 118 - "token-tracker.ts"
-Cohesion: 0.47
-Nodes (4): createTokenTracker(), getTokenLimits(), TokenLevel, TokenUsage
+Cohesion: 0.22
+Nodes (11): getBaseUrl(), POST(), getAgentConfig(), ALLOWED_WRITE_TOOLS, ChatUserRole, filterToolsByRole(), isWriteAllowedForRole(), checkRateLimit() (+3 more)
+
+### Community 119 - "get-unmatched-orders.ts"
+Cohesion: 0.27
+Nodes (4): GetUnmatchedOrdersInput, getUnmatchedOrdersTool, ListCategoriesInput, listCategoriesTool
 
 ### Community 120 - "package.json"
 Cohesion: 0.40
@@ -732,25 +713,21 @@ Nodes (4): name, private, type, version
 Cohesion: 0.70
 Nodes (4): Finding, iter_files(), main(), Path
 
-### Community 122 - "isAdmin"
-Cohesion: 0.23
-Nodes (15): AdminAppsPage(), AdminPage(), CategoryTabs(), SearchBar(), isAdmin(), deleteApp(), getApps(), getConfig() (+7 more)
-
 ### Community 123 - "route.ts"
 Cohesion: 0.70
 Nodes (4): DELETE(), GET(), proxy(), PUT()
+
+### Community 124 - "page.tsx"
+Cohesion: 0.27
+Nodes (9): allowedLvl1ByDirection(), ConflictRule, LVL1_DIRECTION, LVL1_OPTIONS, LVL2_OPTIONS, MatchPage(), PendingItem, QuickMatchButton() (+1 more)
 
 ### Community 125 - "counterparty-tab.tsx"
 Cohesion: 0.40
 Nodes (3): CounterpartySummary, CounterpartyTabProps, TxnDetail
 
 ### Community 126 - "page.tsx"
-Cohesion: 0.60
-Nodes (4): AgentTask, fetchTasks(), NotificationsPage(), statusColor()
-
-### Community 128 - "opencode.json"
-Cohesion: 0.50
-Nodes (3): plugin, $schema, .opencode/plugins/graphify.js
+Cohesion: 0.13
+Nodes (14): ArgumentParser, connection, delete_imported_data(), ensure_table_exists(), get_connection(), get_db_config(), insert_batch(), parse_path() (+6 more)
 
 ### Community 129 - "check-acr-update.sh"
 Cohesion: 0.67
@@ -768,21 +745,9 @@ Nodes (3): backup_if_exists(), default_if_missing(), upgrade_existing_project.sh
 Cohesion: 0.83
 Nodes (3): die(), log(), seed-agent-config.sh script
 
-### Community 135 - "route.ts"
-Cohesion: 0.83
-Nodes (3): GET(), POST(), proxy()
-
 ### Community 136 - "route.ts"
-Cohesion: 0.83
-Nodes (3): GET(), POST(), proxy()
-
-### Community 137 - "route.ts"
-Cohesion: 0.83
-Nodes (3): GET(), POST(), proxy()
-
-### Community 138 - "route.ts"
-Cohesion: 0.83
-Nodes (3): GET(), POST(), proxy()
+Cohesion: 0.52
+Nodes (6): get_target_table(), main(), map_channel(), parse_date(), strip_backtick(), to_numeric()
 
 ### Community 139 - "page.tsx"
 Cohesion: 0.67
@@ -804,45 +769,33 @@ Nodes (3): RecordSchema, SubmitProposalInput, submitProposalTool
 Cohesion: 0.83
 Nodes (3): callMcpTool(), mcpCtx(), mcpHeaders()
 
-### Community 153 - "getSession"
-Cohesion: 0.17
-Nodes (15): AdminPromptsPage(), emptyForm, iconOptions, sidebarItems, ChatPage(), parseJwtSub(), readCookieSession(), LaunchPage() (+7 more)
+### Community 147 - "route.ts"
+Cohesion: 0.21
+Nodes (10): BalanceRow, buildBalanceLines(), GET(), LineItem, GET(), TrendSeriesKey, GET(), TrendSeriesKey (+2 more)
+
+### Community 153 - "route.ts"
+Cohesion: 0.13
+Nodes (15): GET(), GET(), GET(), GET(), getSalesByProduct(), getSalesDetails(), getSalesOverview(), ChannelRow (+7 more)
 
 ### Community 156 - "devDependencies"
 Cohesion: 0.11
 Nodes (19): autoprefixer, jsdom, devDependencies, autoprefixer, jsdom, playwright, postcss, tailwindcss (+11 more)
 
-### Community 157 - "signAgentToken"
-Cohesion: 0.21
-Nodes (12): getSessionUserFromCookie(), handler(), handler(), handler(), handler(), agentPath(), getBearer(), proxy() (+4 more)
-
-### Community 159 - "apps.jsx"
-Cohesion: 0.18
-Nodes (10): emptyForm, iconOptions, sidebarItems, sidebarItems, AdminButton(), AdminCard(), AdminInput(), AdminModal() (+2 more)
+### Community 157 - "route.ts"
+Cohesion: 0.60
+Nodes (3): processStream(), ProcessStreamResult, stripCjkSpaces()
 
 ### Community 161 - "dependencies"
 Cohesion: 0.12
 Nodes (17): framer-motion, jose, jsonwebtoken, next, dependencies, framer-motion, jose, jsonwebtoken (+9 more)
 
-### Community 162 - "get-rules-history.ts"
-Cohesion: 0.17
-Nodes (6): GetRulesHistoryInput, getRulesHistoryTool, UploadBonjurProductSalesInput, uploadBonjurProductSalesTool, UploadBonjurSalesInput, uploadBonjurSalesSelfServiceTool
+### Community 174 - "route.ts"
+Cohesion: 0.40
+Nodes (3): Lvl1Row, Lvl2Row, TrendRow
 
-### Community 167 - "data.js"
-Cohesion: 0.33
-Nodes (11): AdminUsersPage(), emptyForm, sidebarItems, Modal(), createUser(), deleteUser(), getUsers(), resetPassword() (+3 more)
-
-### Community 168 - "manifest.json"
-Cohesion: 0.17
-Nodes (11): background_color, description, display, icons, lang, name, orientation, scope (+3 more)
-
-### Community 172 - "supabase.js"
-Cohesion: 0.27
-Nodes (3): AppCard(), firstChar(), supabase
-
-### Community 175 - "compilerOptions"
-Cohesion: 0.20
-Nodes (9): compilerOptions, baseUrl, paths, include, @/components/*, @/lib/*, src/**/*, src/components/* (+1 more)
+### Community 175 - "route.ts"
+Cohesion: 0.60
+Nodes (4): normDirection(), normLvl1Code(), POST(), PUT()
 
 ### Community 180 - "package.json"
 Cohesion: 0.20
@@ -850,43 +803,83 @@ Nodes (9): name, private, scripts, build, dev, start, test, test:watch (+1 more)
 
 ### Community 193 - "transform_sales_data"
 Cohesion: 0.22
-Nodes (9): map_store_code(), normalize_month(), parse_amount(), parse_int(), 解析金额：去除逗号，转为 numeric     空字符串/NaN → None, 解析整数     空字符串/NaN → None, 归一月份：将 YYYY-MM 转为 YYYY-MM-01, 转换营业数据：     - 字段映射     - 门店名 → store_code     - month 归一     - 金额/数量解析 (+1 more)
+Nodes (8): BalanceSheetRow, CashflowRow, CounterpartyRow, IncomeMetricsRow, KpiTrendRow, OverviewData, PaymentMetricsRow, ProfitRow
 
 ### Community 195 - "route.ts"
-Cohesion: 0.44
-Nodes (6): GET(), GET(), buildGelatoAlipayQuery(), buildGelatoWechatQuery(), GELATO_RECON_SUPPORTED_BRANDS, ReconOpts
-
-### Community 199 - "middleware.js"
-Cohesion: 0.53
-Nodes (5): config, isProtected(), middleware(), parseSessionFromCookie(), PROTECTED_PATTERNS
-
-### Community 244 - "route.ts"
 Cohesion: 0.60
-Nodes (4): CSV_HEADERS, escapeCSV(), GET(), rowToCSV()
+Nodes (5): makeError(), POST(), VALID_DIRECTIONS, VALID_MATCH_FIELDS, VALID_MATCH_TYPES
 
-### Community 245 - "route.ts"
+### Community 199 - "route.ts"
+Cohesion: 0.67
+Nodes (5): GET(), normLvl1Code(), normLvl2Code(), POST(), PUT()
+
+### Community 202 - "route.ts"
 Cohesion: 0.70
-Nodes (4): extractMonthFromFilename(), extractMonthFromXlsx(), parseCellDate(), POST()
+Nodes (4): DELETE(), GET(), isAdmin(), POST()
+
+### Community 245 - "import_gelatomiiix_cash_register.py"
+Cohesion: 0.47
+Nodes (4): createTokenTracker(), getTokenLimits(), TokenLevel, TokenUsage
+
+### Community 246 - "route.ts"
+Cohesion: 0.60
+Nodes (3): isValidCron(), PUT(), TASKS
+
+### Community 249 - "import_gelatomiiix_product_sales.py"
+Cohesion: 0.29
+Nodes (11): delete_existing_by_source(), main(), normalize_date(), parse_path_gelato(), DataFrame, date, Parse path with fallback to env defaults., read_csv() (+3 more)
+
+### Community 250 - "import_gelatomiiix_income_detail.py"
+Cohesion: 0.38
+Nodes (10): datetime, extract_month_from_filename(), get_target_table(), main(), parse_date(), parse_datetime(), process_file(), strip_backtick() (+2 more)
+
+### Community 251 - "import_bonjur_product_sales.py"
+Cohesion: 0.33
+Nodes (10): delete_existing_by_source(), main(), normalize_date(), process_file(), DataFrame, date, read_csv(), to_int() (+2 more)
+
+### Community 252 - "import_bonjur_income_detail.py"
+Cohesion: 0.42
+Nodes (8): extract_month_from_filename(), main(), map_channel(), parse_date(), process_file(), strip_backtick(), to_numeric(), transform_row()
+
+### Community 254 - "route.ts"
+Cohesion: 0.10
+Nodes (19): Tests for scripts/import_yufeng_bank_txn.py, get_ods_schema('tamkoko') must return brand_tamkoko_ods, get_dm_schema('tamkoko') must return brand_tamkoko_dm, parse_path must correctly extract metadata from tamkoko bank file paths, parse_path must correctly extract metadata from tamkoko wz_bjwxc bank file paths, parse_path must correctly extract metadata from gelatomiiix bank file paths, parse_path must correctly extract metadata from bonjur bank file paths, parse_path must correctly extract metadata from yufeng bank file paths (+11 more)
+
+### Community 256 - "route.ts"
+Cohesion: 0.60
+Nodes (3): buildPeriodBoundaries(), getPrevBoundaries(), parsePeriod()
+
+### Community 292 - "providers.tsx"
+Cohesion: 0.20
+Nodes (7): AdminRuleGroupsPage(), AdminRulesCopyPage(), metadata, BrandSelector(), Providers(), BrandOption, fetchBrands()
+
+### Community 299 - "route.ts"
+Cohesion: 0.28
+Nodes (6): InventoryForm(), Props, StoreOption, InventoryPage(), InventorySummaryRow, UpsertInventorySummaryRequest
+
+### Community 306 - "route.ts"
+Cohesion: 0.67
+Nodes (3): buildProfitLines(), GET(), LineItem
 
 ## Knowledge Gaps
-- **642 isolated node(s):** `$schema`, `.opencode/plugins/graphify.js`, `name`, `version`, `private` (+637 more)
+- **613 isolated node(s):** `CHANNEL_MAP`, `LineItem`, `CashflowRow`, `Lvl1Row`, `Lvl2Row` (+608 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **99 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **116 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `events()` connect `stream-processor.ts` to `server.ts`?**
-  _High betweenness centrality (0.109) - this node is a cross-community bridge._
-- **Why does `registerChatEventsRoutes()` connect `server.ts` to `stream-processor.ts`?**
-  _High betweenness centrality (0.109) - this node is a cross-community bridge._
-- **Why does `processStream()` connect `stream-processor.ts` to `route.ts`?**
-  _High betweenness centrality (0.055) - this node is a cross-community bridge._
-- **What connects `$schema`, `.opencode/plugins/graphify.js`, `name` to the rest of the system?**
-  _642 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Why does `events()` connect `ConversationManager` to `route.ts`?**
+  _High betweenness centrality (0.077) - this node is a cross-community bridge._
+- **Why does `registerChatEventsRoutes()` connect `ConversationManager` to `server.ts`?**
+  _High betweenness centrality (0.077) - this node is a cross-community bridge._
+- **Why does `getSessionUser()` connect `getSessionUser` to `normalizeBrand`, `route.ts`, `route.ts`, `route.ts`, `ChatWidget.tsx`, `admin-stores.ts`, `page.tsx`, `route.ts`, `db.ts`, `route.ts`, `token-tracker.ts`, `import_bonjur_product_sales.py`, `route.ts`, `callAgent`?**
+  _High betweenness centrality (0.051) - this node is a cross-community bridge._
+- **What connects `CHANNEL_MAP`, `LineItem`, `CashflowRow` to the rest of the system?**
+  _613 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `getErrorMessage` be split into smaller, more focused modules?**
-  _Cohesion score 0.041457797046470665 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.125 - nodes in this community are weakly interconnected._
 - **Should `getSessionUser` be split into smaller, more focused modules?**
-  _Cohesion score 0.04926945293917771 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.044393592677345536 - nodes in this community are weakly interconnected._
 - **Should `normalizeBrand` be split into smaller, more focused modules?**
-  _Cohesion score 0.08922621251388374 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.12594268476621417 - nodes in this community are weakly interconnected._

@@ -1,5 +1,5 @@
 import { getAgentConfig, thinkingConfigFor } from '../config/store.js';
-import { LOAD_SKILL_NAME } from '../skills/load-skill-tool.js';
+import { LOAD_SKILL_NAME, handleLoadSkill } from '../skills/load-skill-tool.js';
 import { isToolEnabled } from '../api/admin/tools.js';
 import { buildSystemBlocks, buildSessionContextMessage } from './prompt.js';
 export class AgentRunner {
@@ -255,11 +255,18 @@ export class AgentRunner {
                         let resultContent;
                         let isError = false;
                         try {
-                            const result = await this.deps.mcpBridge.call(toolName, toolInput);
-                            resultContent = result.success
-                                ? (typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2))
-                                : 'MCP error: ' + (result.error || 'unknown');
-                            isError = !result.success;
+                            if (toolName === LOAD_SKILL_NAME) {
+                                const loadResult = handleLoadSkill(toolInput);
+                                resultContent = loadResult.content;
+                                isError = loadResult.content.startsWith('ERROR:');
+                            }
+                            else {
+                                const result = await this.deps.mcpBridge.call(toolName, toolInput);
+                                resultContent = result.success
+                                    ? (typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2))
+                                    : 'MCP error: ' + (result.error || 'unknown');
+                                isError = !result.success;
+                            }
                         }
                         catch (e) {
                             resultContent = 'Tool call failed: ' + (e?.message ?? String(e));
