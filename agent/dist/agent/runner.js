@@ -176,6 +176,12 @@ export class AgentRunner {
                         await emitFrame({
                             type: 'content_block_stop', payload: { index: i },
                         }, 5);
+                        // R-fix: also send a text_block event so the UI's WebSocket handler
+                        // (which only renders text_block, not content_block_delta) shows the message.
+                        await emitFrame({
+                            type: 'text_block',
+                            payload: { index: i, text, turnId: response.id },
+                        }, 5);
                     }
                     else if (block.type === 'thinking') {
                         await emitFrame({
