@@ -152,9 +152,9 @@ async function main() {
   registerChatUploadRoutes(app, anthropic)
 
   // 先连接内置 wdg 后端（primary），再启动 HTTP
-  await mcpBridge.connectPrimary(mcpBackends.filter(b => b.required !== false))
+  await mcpBridge.connectPrimary(mcpBackends)
   // 外部后端异步连接（secondary，不阻塞）
-  mcpBridge.startSecondary(mcpBackends.filter(b => b.required === false))
+  mcpBridge.startSecondary(mcpBackends)
   await app.listen({ port: HTTP_PORT, host: '127.0.0.1' })
 
   await webChannel.start()

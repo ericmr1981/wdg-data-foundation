@@ -265,6 +265,7 @@ function normalizeBackends(raw: BackendConfig[] | null | undefined): BackendConf
       ...b,
       transport: b.transport ?? 'fetch',
       timeoutMs: b.timeoutMs ?? 30_000,
+      required: b.required ?? false, // 缺省为 secondary:不阻塞启动
     })
   }
   return out
