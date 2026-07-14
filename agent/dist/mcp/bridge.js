@@ -21,6 +21,7 @@ const DEFAULT_HEALTH_CHECK_MS = 30_000;
 export class UnifiedMcpBridge {
     backends = new Map();
     toolBackend = new Map();
+    cachedTools = [];
     statuses = new Map();
     healthTimers = new Map();
     shuttingDown = false;
@@ -30,7 +31,7 @@ export class UnifiedMcpBridge {
      * succeed or fail. Returns true if all primaries connected.
      */
     async connectPrimary(configs) {
-        const primaries = configs.filter(c => c.required !== false);
+        const primaries = configs.filter(c => c.required === true);
         if (primaries.length === 0)
             return true;
         // Retry up to 3 times with increasing delay
@@ -56,7 +57,7 @@ export class UnifiedMcpBridge {
      * These will reconnect automatically on failure.
      */
     startSecondary(configs) {
-        const secondaries = configs.filter(c => c.required === false);
+        const secondaries = configs.filter(c => c.required !== true);
         for (const cfg of secondaries) {
             this._connectWithRetry(cfg);
         }
@@ -98,8 +99,11 @@ export class UnifiedMcpBridge {
         this.backends.set(cfg.name, { client, config: cfg, name: cfg.name });
         this._setStatus(cfg.name, 'connected', { connectedAt: new Date().toISOString(), lastError: null });
         console.log(`[bridge] connected to "${cfg.name}" at ${cfg.url}`);
-        // Start health checks for non-primary backends
-        if (cfg.required === false) {
+        // Discover tools from this backend
+        await this.refreshToolRoutes();
+        this._logStatus();
+        // Start health checks for secondary backends
+        if (cfg.required !== true) {
             this._startHealthCheck(cfg);
         }
     }
@@ -179,6 +183,7 @@ export class UnifiedMcpBridge {
     // ─── Tool routes ────────────────────────
     async refreshToolRoutes() {
         this.toolBackend.clear();
+        this.cachedTools = [];
         for (const [name, { client }] of this.backends) {
             try {
                 const { tools } = await client.listTools();
@@ -188,6 +193,12 @@ export class UnifiedMcpBridge {
                         console.warn(`[bridge] tool "${tool.name}" routed to "${existing}", overwritten by "${name}"`);
                     }
                     this.toolBackend.set(tool.name, name);
+                    this.cachedTools.push({
+                        name: tool.name,
+                        description: tool.description ?? '',
+                        inputSchema: (tool.inputSchema ?? {}),
+                        _backend: name,
+                    });
                 }
                 this._setStatus(name, 'connected', { toolCount: tools.length });
             }
@@ -232,24 +243,7 @@ export class UnifiedMcpBridge {
     }
     // ─── Tool discovery ──────────────────────
     async listTools() {
-        const all = [];
-        for (const [, { client, name }] of this.backends) {
-            try {
-                const { tools } = await client.listTools();
-                for (const t of tools) {
-                    all.push({
-                        name: t.name,
-                        description: t.description ?? '',
-                        inputSchema: (t.inputSchema ?? {}),
-                        _backend: name,
-                    });
-                }
-            }
-            catch (e) {
-                console.error(`[bridge] listTools failed for "${name}": ${e?.message ?? e}`);
-            }
-        }
-        return all;
+        return this.cachedTools;
     }
     // ─── Tool execution ──────────────────────
     async call(toolName, args) {
@@ -272,10 +266,13 @@ export class UnifiedMcpBridge {
             };
         }
         try {
-            const result = await entry.client.callTool({
-                name: toolName,
-                arguments: args ?? {},
-            });
+            const result = await Promise.race([
+                entry.client.callTool({
+                    name: toolName,
+                    arguments: args ?? {},
+                }),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Tool call timed out after 10s')), 10_000)),
+            ]);
             const text = result.content
                 ?.filter((c) => c.type === 'text')
                 .map((c) => c.text)
@@ -348,6 +345,7 @@ export class UnifiedMcpBridge {
         await Promise.allSettled(promises);
         this.backends.clear();
         this.toolBackend.clear();
+        this.cachedTools = [];
     }
     get backendCount() {
         return this.backends.size;

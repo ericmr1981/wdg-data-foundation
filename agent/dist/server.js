@@ -77,14 +77,15 @@ async function main() {
     // 业务模块 wire-up
     const notifier = new WebNotifier(null);
     const mcpBridge = new UnifiedMcpBridge();
-    // WDG 内置后端 — 始终启用
+    // WDG 内置后端 — 始终启用（primary）
     const mcpBackends = [
         {
             name: 'wdg',
             url: MCP_URL,
             transport: 'fetch',
+            required: true,
             headers: { 'x-mcp-session': 'internal', 'x-wdg-user-id': 'agent-system' },
-            timeoutMs: 60_000,
+            timeoutMs: 15_000,
         },
     ];
     // 外部 MCP 后端 — 从 DB agent.config.mcp_backends 读取

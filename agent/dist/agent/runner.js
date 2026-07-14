@@ -4,12 +4,15 @@ import { isToolEnabled } from '../api/admin/tools.js';
 import { buildSystemBlocks, buildSessionContextMessage } from './prompt.js';
 export class AgentRunner {
     deps;
+    _globalToolCallCount = new Map();
     constructor(deps) {
         this.deps = deps;
     }
     async handle(msg, emitter) {
         const cfg = getAgentConfig();
         console.log('[runner] handle start convId=' + (msg.conversationId ?? 'null'));
+        // Reset per-conversation tool call dedup counter
+        this._globalToolCallCount.clear();
         // 1. 解析会话
         const conv = await this.deps.conversation.getOrCreate(msg);
         console.log('[runner] getOrCreate done convId=' + conv.conversationId);
@@ -248,10 +251,26 @@ export class AgentRunner {
                         content: (response.content || []).map((c) => ({ ...c })),
                     });
                     const toolResults = [];
+                    const toolCallCount = new Map();
                     for (const tu of toolUses) {
                         const toolName = tu.name;
                         const toolInput = tu.input || {};
-                        console.log('[runner] calling tool: ' + toolName);
+                        // Limit repeated calls to the same tool (max 2 per conversation turn loop)
+                        const count = toolCallCount.get(toolName) ?? 0;
+                        const totalCount = Array.from(toolCallCount.values()).reduce((a, b) => a + b, 0);
+                        const globalCount = this._globalToolCallCount.get(toolName) ?? 0;
+                        if (globalCount >= 2) {
+                            console.log(`[runner] tool "${toolName}" already called ${globalCount}x, skipping`);
+                            toolResults.push({
+                                type: 'tool_result',
+                                tool_use_id: tu.id,
+                                content: `Tool "${toolName}" has already been called ${globalCount} times in this conversation. Do not call it again — use the previous result or try a different approach.`,
+                                is_error: false,
+                            });
+                            continue;
+                        }
+                        this._globalToolCallCount.set(toolName, globalCount + 1);
+                        console.log(`[runner] calling tool: ${toolName} (call #${globalCount + 1})`);
                         let resultContent;
                         let isError = false;
                         try {

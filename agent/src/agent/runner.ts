@@ -30,6 +30,7 @@ export interface AgentRunnerDeps {
 type EmitterLike = ChatEmitter | { send: (f: any) => Promise<void> }
 
 export class AgentRunner {
+  private _globalToolCallCount = new Map<string, number>()
   constructor(private deps: AgentRunnerDeps) {}
 
   async handle(
@@ -38,6 +39,9 @@ export class AgentRunner {
   ): Promise<{ conversationId: string; messageId?: string }> {
     const cfg = getAgentConfig()
     console.log('[runner] handle start convId=' + (msg.conversationId ?? 'null'))
+
+    // Reset per-conversation tool call dedup counter
+    this._globalToolCallCount.clear()
 
     // 1. 解析会话
     const conv = await this.deps.conversation.getOrCreate(msg)
@@ -308,10 +312,29 @@ export class AgentRunner {
           } as any)
 
           const toolResults: any[] = []
+          const toolCallCount = new Map<string, number>()
           for (const tu of toolUses) {
             const toolName = (tu as any).name as string
             const toolInput = (tu as any).input || {}
-            console.log('[runner] calling tool: ' + toolName)
+
+            // Limit repeated calls to the same tool (max 2 per conversation turn loop)
+            const count = toolCallCount.get(toolName) ?? 0
+            const totalCount = Array.from(toolCallCount.values()).reduce((a, b) => a + b, 0)
+            const globalCount = this._globalToolCallCount.get(toolName) ?? 0
+
+            if (globalCount >= 2) {
+              console.log(`[runner] tool "${toolName}" already called ${globalCount}x, skipping`)
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: (tu as any).id as string,
+                content: `Tool "${toolName}" has already been called ${globalCount} times in this conversation. Do not call it again — use the previous result or try a different approach.`,
+                is_error: false,
+              })
+              continue
+            }
+
+            this._globalToolCallCount.set(toolName, globalCount + 1)
+            console.log(`[runner] calling tool: ${toolName} (call #${globalCount + 1})`)
 
             let resultContent: string
             let isError = false
