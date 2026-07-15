@@ -250,7 +250,8 @@ export default async function HomePage() {
              WHERE store_code = $1 AND period = $2
           `, [row.store_code, row.max_period]);
           const turnRow = turnRes.rows[0] as { turnover_times: number | null } | undefined;
-          latestTurnover = turnRow?.turnover_times ?? null;
+          const turnoverVal = turnRow?.turnover_times;
+          latestTurnover = turnoverVal == null ? null : Number(turnoverVal);
         }
         inventoryStores.push({
           brand_code: brand.brand_code,

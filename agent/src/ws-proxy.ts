@@ -64,7 +64,18 @@ const proxyHttp = (clientReq: http.IncomingMessage, clientRes: http.ServerRespon
     headers: { ...clientReq.headers, host: `${UI_HOST}:${UI_PORT}` },
   })
   upstream.on('response', (upRes) => {
-    clientRes.writeHead(upRes.statusCode ?? 502, upRes.headers)
+    const headers: http.OutgoingHttpHeaders = { ...upRes.headers }
+    const loc = headers.location
+    if (
+      typeof loc === 'string' &&
+      /^https?:\/\/(127\.0\.0\.1|localhost):(3001|4101|4102)\b/i.test(loc)
+    ) {
+      headers.location = loc.replace(
+        /^https?:\/\/(127\.0\.0\.1|localhost):(3001|4101|4102)/i,
+        `http://${clientReq.headers.host}`,
+      )
+    }
+    clientRes.writeHead(upRes.statusCode ?? 502, headers)
     upRes.pipe(clientRes)
     writeAccessLog(formatAccessLine(clientReq, upRes.statusCode ?? 502, clientRes.getHeader('content-length') as string | undefined))
   })
