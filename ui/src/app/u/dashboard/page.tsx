@@ -106,7 +106,6 @@ function PeriodSelector({ span, period, setSpan, setPeriod }: { span: SpanId; pe
     if (span === 'quarter') return ['2025-Q1','2025-Q2','2025-Q3','2025-Q4','2026-Q1','2026-Q2'];
     return ['2025','2026'];
   }, [span]);
-  useEffect(() => { setPeriod(options[options.length - 1] || '2026-01'); }, [span]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="flex items-center gap-3 flex-wrap">
       <select value={span} onChange={e => setSpan(e.target.value as SpanId)} className="border rounded px-2 py-1 text-sm bg-white">
@@ -417,16 +416,15 @@ const CLICKABLE_KPIS: TrendKey[] = ['revenue', 'expenses', 'gross_margin_rate', 
 export default function DashboardPage() {
   const { brand } = useBrand();
   const [span, setSpan] = useState<SpanId>('month');
-  const [period, setPeriod] = useState('2026-01');
+  const [period, setPeriod] = useState<string>('');
   const [store, setStore] = useState('all');
-  const [periodReady, setPeriodReady] = useState(false);
   const [overview, setOverview] = useState<OverviewData | null>(null);
 
-  // Auto-select latest month with data for the current brand
+  // Auto-select latest month with data for the current brand.
+  // Only runs when brand changes; period starts as '' so the data fetch
+  // (which depends on period) waits for this to populate.
   useEffect(() => {
     if (!brand) return;
-    setPeriodReady(false);
-    // Use kpi-trend API to detect latest available month (lightweight — just last 12m of monthly)
     fetch(`/api/financial/kpi-trend?brand=${brand}&period=2026-06&span=month&store=all`)
       .then(r => r.json())
       .then(d => {
@@ -435,8 +433,7 @@ export default function DashboardPage() {
           if (latest) setPeriod(latest);
         }
       })
-      .catch(() => {})
-      .finally(() => setPeriodReady(true));
+      .catch(() => {});
   }, [brand]);
 
   // Once the latest month is detected, pass it to PeriodSelector as initialPeriod.
@@ -453,6 +450,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!brand) { setLoading(false); return; }
+    if (!period) return; // wait for kpi-trend to populate the latest month first
     setLoading(true);
     setError(null);
 
