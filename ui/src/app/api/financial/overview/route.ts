@@ -83,15 +83,14 @@ export async function GET(request: Request) {
     // depends on inventory_monthly_summary. For brands without inventory it falls back to
     // the bank-MATERIAL approximation inside the view. Only fall back to the local bank
     // approximation when the view itself returns NULL (e.g. all months in range lack opening).
-    let grossMarginRate: number;
-    let netProfitRate: number;
+    let grossMarginRate: number | null;
     const gmFromView = gmRate;
     if (gmFromView != null) {
       grossMarginRate = gmFromView;
     } else {
-      grossMarginRate = revenue > 0 ? (revenue + materialCost) / revenue : 0;
+      grossMarginRate = revenue > 0 && materialCost < 0 ? (revenue + materialCost) / revenue : null;
     }
-    netProfitRate = npRate ?? 0;
+    const netProfitRate = npRate ?? 0;
 
     // Qimai-based gross margin (营业净收 / 营业额). Uses the same COGS as the bank-based formula.
     // Both numbers share the same cost base; only the revenue denominator differs.
@@ -155,8 +154,8 @@ export async function GET(request: Request) {
       // Match the current-period rule: prefer the view's gross_profit_rate_pct (cogs-based for
       // tamkoko) over the bank-MATERIAL approximation; only fall back when the view returned NULL.
       const prevGmRateVal = prevGmRate != null ? prevGmRate
-        : (prevRev > 0 ? (prevRev + prevMat) / prevRev : 0);
-      vsGm = revenue > 0 ? grossMarginRate - prevGmRateVal : 0;
+        : (prevRev > 0 && prevMat < 0 ? (prevRev + prevMat) / prevRev : null);
+      vsGm = grossMarginRate != null && prevGmRateVal != null && revenue > 0 ? grossMarginRate - prevGmRateVal : 0;
       // Unified formula (all brands). Use the view's pre-computed prev-period net_profit_rate_pct.
       vsNp = revenue > 0 ? netProfitRate - (prevNpRate ?? 0) : 0;
       vsOcf = prevOcf !== 0 ? (operatingCashflow - prevOcf) / Math.abs(prevOcf) : 0;
