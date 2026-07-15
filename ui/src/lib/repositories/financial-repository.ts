@@ -47,7 +47,7 @@ export async function getCogsTotal(
 // ── Financial overview (combines 4 queries) ──
 
 export async function getFinancialOverview(
-  dmSchema: string, period: string, span: string, store: string
+  dmSchema: string, odsSchema: string, period: string, span: string, store: string
 ): Promise<OverviewData> {
   const boundaries = buildPeriodBoundaries(period, span);
   if (!boundaries) {
@@ -86,9 +86,8 @@ export async function getFinancialOverview(
     WHERE period >= to_char($1::date, 'YYYY-MM')
       AND period <  to_char($2::date, 'YYYY-MM')
       ${scCogs.clause}
-  `, [start, end, ...scCogs.params]);
+  `, [start, end, ...scCogs.params]).catch(() => ({ rows: [{ cogs_total: '0' }] }));
 
-  const odsSchema = dmSchema.replace('_dm', '_ods');
   const scQimai = buildStoreCondition(store, 3);
   const qimaiPromise = pool.query<{ qimai_net: string; qimai_gross: string }>(`
     SELECT
@@ -98,7 +97,7 @@ export async function getFinancialOverview(
     WHERE NOT COALESCE(is_member_payment, FALSE)
       AND NOT COALESCE(is_refund, FALSE)
       AND biz_date >= $1::date AND biz_date < $2::date ${scQimai.clause}
-  `, [start, end, ...scQimai.params]);
+  `, [start, end, ...scQimai.params]).catch(() => ({ rows: [] }));
 
   const [profitRes, cfRes, balanceRes, cogsRes, qimaiRes] = await Promise.all([
     profitPromise, cfPromise, balancePromise, cogsPromise, qimaiPromise,

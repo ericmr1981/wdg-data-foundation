@@ -55,6 +55,7 @@ export async function GET(request: Request) {
       }
       throw err;
     }
+    const odsSchema = brand === 'gelatomiiix' ? 'gelatomiiix_ods' : getOdsSchema(brand);
 
     const [
       overview,
@@ -64,7 +65,7 @@ export async function GET(request: Request) {
       gmRate,
       expenses,
     ] = await Promise.all([
-      getFinancialOverview(dmSchema, period, span, store),
+      getFinancialOverview(dmSchema, odsSchema, period, span, store),
       getBeginningBalance(dmSchema, period, span, store),
       getActiveStoreCount(dmSchema, period, span, store),
       getKpiRate(dmSchema, period, span, store, 'net_profit_rate_pct'),
@@ -140,7 +141,7 @@ export async function GET(request: Request) {
 
     if (prevPeriodStr) {
       const [prevOverview, prevNpRate, prevGmRate] = await Promise.all([
-        getFinancialOverview(dmSchema, prevPeriodStr, span, store),
+        getFinancialOverview(dmSchema, odsSchema, prevPeriodStr, span, store),
         getKpiRate(dmSchema, prevPeriodStr, span, store, 'net_profit_rate_pct'),
         getKpiRate(dmSchema, prevPeriodStr, span, store, 'gross_profit_rate_pct'),
       ]);
