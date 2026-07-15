@@ -19,15 +19,12 @@ export class AgentRunner {
         // 2. 加载历史
         const history = await this.deps.conversation.getMessages(conv.conversationId, 10);
         console.log('[runner] getMessages done count=' + history.length);
-        // 3. 持久化用户消息（仅当 Tool Runner 路径时；手动 tool loop 路径在下文独立处理）
-        const isToolRunnerPath = process.env.RUNNER_USE_TOOL_RUNNER !== '0';
-        if (isToolRunnerPath) {
-            await this.deps.conversation.appendMessage({
-                conversationId: conv.conversationId,
-                role: 'user',
-                content: msg.content,
-            }).catch((e) => console.error('[runner] appendMessage(user) failed:', e.message));
-        }
+        // 3. 持久化用户消息（两个执行路径共享，放在 tool loop 之前）
+        await this.deps.conversation.appendMessage({
+            conversationId: conv.conversationId,
+            role: 'user',
+            content: msg.content,
+        }).catch((e) => console.error('[runner] appendMessage(user) failed:', e.message));
         // 4. 工具集
         console.log('[runner] listTools start...');
         const tools = (await this.deps.mcpBridge.listTools())
@@ -324,13 +321,7 @@ export class AgentRunner {
                 break;
             }
             console.log('[runner] tool loop done');
-            const prevMsgCount = history.length;
-            await this.deps.conversation.appendMessage({
-                conversationId: conv.conversationId,
-                role: 'user',
-                content: msg.content,
-            }).catch((e) => console.error('[runner] appendMessage(user) failed:', e.message));
-            for (let i = prevMsgCount; i < loopMessages.length; i++) {
+            for (let i = history.length; i < loopMessages.length; i++) {
                 const m = loopMessages[i];
                 if (m.role === 'user')
                     continue;
