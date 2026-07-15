@@ -89,7 +89,7 @@ export async function getFinancialOverview(
   `, [start, end, ...scCogs.params]);
 
   const odsSchema = dmSchema.replace('_dm', '_ods');
-  const scQimai = buildStoreCondition(store, 2);
+  const scQimai = buildStoreCondition(store, 3);
   const qimaiPromise = pool.query<{ qimai_net: string; qimai_gross: string }>(`
     SELECT
       COALESCE(SUM(net_amt), 0)::numeric   AS qimai_net,
