@@ -8,6 +8,7 @@ import { initRegistry as _ } from '../skills/registry.js'  // trigger init
 import { LOAD_SKILL_NAME, handleLoadSkill } from '../skills/load-skill-tool.js'
 import { isToolEnabled } from '../api/admin/tools.js'
 import { buildSystemBlocks, buildSessionContextMessage } from './prompt.js'
+import { reconstructContentBlocks } from '../conversation/content-blocks.js'
 import type { ChatEmitter } from '../channels/chat-emitter.js'
 
 export interface RunnerStep {
@@ -98,9 +99,13 @@ export class AgentRunner {
 
     const messages: Anthropic.MessageParam[] = [
       ...history.map(m => {
-        const c = m.content
-        const content = typeof c === 'string' ? [{ type: 'text', text: c }] : c
-        return { role: m.role as any, content: content as any }
+        const blocks = reconstructContentBlocks({
+          content: m.content,
+          tool_calls: (m as any).toolCalls,
+          tool_results: (m as any).toolResults,
+          thinking: (m as any).thinking ?? null,
+        })
+        return { role: m.role as any, content: blocks as any }
       }),
       { role: 'user', content: userContent },
     ]
@@ -114,74 +119,121 @@ export class AgentRunner {
     if (!useToolRunner) console.warn('[runner] RUNNER_USE_TOOL_RUNNER=0 — using non-streaming fallback')
 
     if (useToolRunner) {
-      const iter = (this.deps.anthropic.beta.messages.toolRunner as any)(
-        {
-          model: cfg.model,
-          max_tokens: cfg.params.maxTokens,
-          system: system as any,
-          tools: tools as any,
-          messages: messages as any,
-          stream: true,
-          ...(thinkingCfg ?? {}),
-        },
-        msg.signal ? { signal: msg.signal } : undefined,
-      )
-      const stream = await (async () => {
-        for await (const s of iter) return s as any
-        throw new Error('toolRunner finished without yielding a stream')
-      })()
+      try {
+        const iter = (this.deps.anthropic.beta.messages.toolRunner as any)(
+          {
+            model: cfg.model,
+            max_tokens: cfg.params.maxTokens,
+            system: system as any,
+            tools: tools as any,
+            messages: messages as any,
+            stream: true,
+            ...(thinkingCfg ?? {}),
+          },
+          msg.signal ? { signal: msg.signal } : undefined,
+        )
+        const stream = await (async () => {
+          for await (const s of iter) return s as any
+          throw new Error('toolRunner finished without yielding a stream')
+        })()
 
-      let finalAssistantContent = ''
-      let finalToolCalls: any = null
+        let finalAssistantContent = ''
+        let finalToolCalls: any = null
+        let streamStarted = false
 
-      await new Promise<void>((resolve, reject) => {
-        let settled = false
-        const finish = (err?: unknown) => {
-          if (settled) return
-          settled = true
-          if (err) reject(err)
-          else resolve()
+        await new Promise<void>((resolve, reject) => {
+          let settled = false
+          let timedOut = false
+
+          const finish = (err?: unknown) => {
+            if (settled) return
+            settled = true
+            if (timedOut) return // already handled
+            if (err) reject(err)
+            else resolve()
+          }
+
+          // LLM 超时: 60s 内未收到任何 streamEvent 则判定无响应
+          const LLM_TIMEOUT_MS = 60_000
+          const timeoutTimer = setTimeout(async () => {
+            if (settled || streamStarted) return
+            timedOut = true
+            settled = true
+            console.error('[runner] LLM timeout — no stream events for ' + LLM_TIMEOUT_MS + 'ms')
+            await this.sendError(conv.conversationId, emitter, 'LLM 在 ' + (LLM_TIMEOUT_MS / 1000) + 's 内未响应，正在诊断连接...')
+
+            // 自动触发连接测试
+            const diag = await this.diagnoseLlmConnection(cfg.model)
+            await this.sendError(conv.conversationId, emitter,
+              'LLM 连接诊断完成: ' + (diag.ok
+                ? '连接正常，超时可能是模型负载高 (' + diag.detail + ')'
+                : '连接失败: ' + diag.detail),
+            )
+            reject(new Error('LLM timeout after ' + LLM_TIMEOUT_MS + 'ms' + (diag.ok ? '' : ' — ' + diag.detail)))
+          }, LLM_TIMEOUT_MS)
+
+          stream.on('streamEvent', (event: any) => {
+            streamStarted = true
+            clearTimeout(timeoutTimer)
+            const frame: any = { type: event.type, payload: event }
+            this.recordAndSend(conv.conversationId, emitter, frame).catch(
+              (e: Error) => console.error('[runner] recordAndSend failed:', e),
+            )
+          })
+
+          stream.on('finalMessage', (finalMessage: any) => {
+            clearTimeout(timeoutTimer)
+            this.recordAndSend(conv.conversationId, emitter, {
+              type: 'message',
+              payload: finalMessage,
+            } as any).catch(
+              (e: Error) => console.error('[runner] recordAndSend final failed:', e),
+            )
+            finalAssistantContent = extractTextContent(finalMessage)
+            finalToolCalls = extractToolCalls(finalMessage)
+          })
+
+          stream.on('error', async (err: any) => {
+            clearTimeout(timeoutTimer)
+            await this.sendError(conv.conversationId, emitter,
+              'LLM 流错误: ' + (err?.message ?? String(err)),
+            )
+            finish(err)
+          })
+
+          stream.on('aborted', async () => {
+            clearTimeout(timeoutTimer)
+            await this.recordAndSend(conv.conversationId, emitter, {
+              type: 'interrupted',
+              payload: { reason: 'user_interrupt' },
+            })
+            console.log('[runner] tool runner aborted (user interrupt)')
+            finish()
+          })
+
+          stream.on('end', () => {
+            clearTimeout(timeoutTimer)
+            finish()
+          })
+        })
+
+        if (finalAssistantContent || finalToolCalls) {
+          this.deps.conversation.appendMessage({
+            conversationId: conv.conversationId,
+            role: 'assistant',
+            content: finalAssistantContent,
+            toolCalls: finalToolCalls,
+          }).catch((e: Error) => console.error('[runner] appendMessage(assistant) failed:', e.message))
         }
-
-        stream.on('streamEvent', (event: any) => {
-          const frame: any = { type: event.type, payload: event }
-          this.recordAndSend(conv.conversationId, emitter, frame).catch(
-            (e: Error) => console.error('[runner] recordAndSend failed:', e),
-          )
-        })
-
-        stream.on('finalMessage', (finalMessage: any) => {
-          this.recordAndSend(conv.conversationId, emitter, {
-            type: 'message',
-            payload: finalMessage,
-          } as any).catch(
-            (e: Error) => console.error('[runner] recordAndSend final failed:', e),
-          )
-          finalAssistantContent = extractTextContent(finalMessage)
-          finalToolCalls = extractToolCalls(finalMessage)
-        })
-
-        stream.on('error', (err: any) => {
-          finish(err)
-        })
-
-        stream.on('aborted', () => {
-          finish()
-        })
-
-        stream.on('end', () => finish())
-      })
-
-      if (finalAssistantContent || finalToolCalls) {
-        this.deps.conversation.appendMessage({
-          conversationId: conv.conversationId,
-          role: 'assistant',
-          content: finalAssistantContent,
-          toolCalls: finalToolCalls,
-        }).catch((e: Error) => console.error('[runner] appendMessage(assistant) failed:', e.message))
+      } catch (err: any) {
+        console.error('[runner] tool runner path error:', err?.message ?? String(err))
+        await this.sendError(conv.conversationId, emitter,
+          err?.message ?? '未知错误',
+        ).catch(() => {})
       }
     } else {
       // ── 手动 tool loop + 模拟流式推送 ──
+      const runManualLoop = async () => {
       console.log('[runner] starting manual tool loop, model=' + cfg.model)
       const MAX_TOOL_TURNS = 10
       const loopMessages = [...messages] as any[]
@@ -409,9 +461,43 @@ export class AgentRunner {
           }).catch((e: Error) => console.error('[runner] appendMessage(assistant) failed:', e.message))
         }
       }
+      }
+      try {
+        await runManualLoop()
+      } catch (err: any) {
+        console.error('[runner] manual loop error:', err?.message ?? String(err))
+        await this.sendError(conv.conversationId, emitter,
+          err?.message ?? '手动循环未知错误',
+        ).catch(() => {})
+      }
     }
 
     return { conversationId: conv.conversationId }
+  }
+
+  private async sendError(
+    conversationId: string,
+    emitter: EmitterLike,
+    message: string,
+  ): Promise<void> {
+    await this.recordAndSend(conversationId, emitter, {
+      type: 'error',
+      payload: { message },
+    })
+  }
+
+  private async diagnoseLlmConnection(model: string): Promise<{ ok: boolean; detail: string }> {
+    try {
+      const ping = await this.deps.anthropic.messages.create({
+        model,
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'ping' }],
+      } as any, { signal: AbortSignal.timeout(15_000) })
+      const stopReason = (ping as any).stop_reason ?? '?'
+      return { ok: true, detail: 'model=' + model + ' stop_reason=' + stopReason }
+    } catch (err: any) {
+      return { ok: false, detail: err?.message ?? String(err) }
+    }
   }
 
   private async recordAndSend(
