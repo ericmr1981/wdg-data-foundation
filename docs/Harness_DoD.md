@@ -17,5 +17,9 @@
 - 涉及分类规则、override、匹配模式、覆盖率阀门的改动，必须写明影响品牌（Bonjur / Yufeng）与影响范围。
 - 涉及 dashboard / Metabase / UI 的改动，必须给出入口路径或页面说明。
 - 涉及数据清理、重跑、迁移的动作，必须给出回滚或重建方式。
+<<<<<<< HEAD
+- 涉及部署/迁移（VPS）：本仓库不维护；历史材料已归档，见 `docs/VPS_ARCHIVE.md`。
+=======
 - 涉及部署/上线：本仓库不维护具体部署流程；但必须保证核心能力在本地可复现，并提供清晰的 smoke（UI/Metabase/DB 任一即可）。
+>>>>>>> origin/main
 - 涉及 Metabase：必须保证 seed 脚本可重复执行（idempotent by name），避免手工 UI 改到漂移。

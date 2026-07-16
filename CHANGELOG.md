@@ -1,8 +1,35 @@
 # Progress Log
 
+<<<<<<< HEAD
+## 2026-04-07
+- Fixed (repo): 将“配送明细”并入原有 `/upload` 数据源体系，而不是继续走独立 `xintiandi` 上传入口
+  - `ui/src/app/upload/page.tsx`: 数据源下拉新增 `delivery / 配送明细`
+  - `ui/src/app/api/upload/route.ts`: 新增 `source === 'delivery'` → `import_xintiandi_delivery.py`
+  - 后端文件类型白名单补齐 `.xls`
+- Improved (UI): 收口上传页交互
+  - `ui/src/app/upload/page.tsx`: 默认开启“触发导入”
+  - 新增数据源说明卡、配送明细预期字段提示、上传成功后的导入摘要卡片
+  - 对 `delivery` 增加“打开新天地看板”下一步入口
+- verification (local): `cd ui && npx tsc --noEmit` + `bash scripts/run_change_guard.sh`
+- next: VPS 同步 upload 入口改动并验证 `/upload` 页面可选择“配送明细”
+
+## 2026-04-02 (4402a46 + delta)
+- Fixed (repo): docker-compose.yml port 8081→8082 for Metabase (regression prevention)
+  - Previous fix (4f8ee61) was applied via direct API on VPS but NOT captured in compose
+  - Compose still defaulted to METABASE_PORT=8081 (wrong); health check script (archived) already used 8082
+- Fixed (repo): metabase_seed_dashboard.py — added `month_values_for_brand()` function
+  - Month filter (date/month-year) now populated from actual brand_ods.bank_txn months
+  - Without this: [[ AND extract(year from t.txn_time) = extract(year from {{month_date}}) ]]
+    expands to ALL years → full table scan → "waiting for results"
+  - Wrapped in try/except — returns [] gracefully if DB has no data yet
+- Fixed (repo): metabase_seed_bonjur_ops_dashboard.py — added same Month values_source_config
+- commit: 4402a46 (ops: solidify WDG VPS compose + ops scripts)
+- verification: bash scripts/run_change_guard.sh → 16/16 pytest PASS ✅
+=======
 ## 2026-03-27 14:20
 - goal: Upload 回执补全（返回 source_file_id / 导入状态）+ 新增品牌/门店体验收口
 - bet: /api/upload 计算文件 sha256 并回读 raw.ingest_file（best-effort）；Brand 下拉在当前 brand 不可用时自动切换到第一个可用品牌
+>>>>>>> origin/main
 
 ## 2026-04-01 12:46
 - Fixed: 部署环境 Metabase 所有 Dashboard 卡在 “Waiting for results”
@@ -24,6 +51,10 @@
 - verification:
   - command: python3 -m py_compile scripts/metabase_seed_dashboard.py && python3 scripts/metabase_seed_dashboard.py --help
   - result: pass (--help 正常显示，语法检查通过)
+<<<<<<< HEAD
+  - L2: VPS 生成了 gelatomiiix dashboard (id=8) → http://<VPS_HOST>:8082/dashboard/8
+=======
+>>>>>>> origin/main
 - decision: keep
 - guard: py_compile ✅ + 部署环境 验证 ✅
 - next: 在 部署环境 浏览器验证 dashboard 数据正确性；支持 bonjur 品牌
@@ -57,6 +88,12 @@
   - gelatomiiix Card 74: 17 rows ✅
   - bonjur Card 92: 17 rows ✅
 - dashboards:
+<<<<<<< HEAD
+  - yufeng: http://<VPS_HOST>:8082/dashboard/9
+  - gelatomiiix: http://<VPS_HOST>:8082/dashboard/8
+  - bonjur: http://<VPS_HOST>:8082/dashboard/10
+=======
+>>>>>>> origin/main
 
 ## 2026-03-31 19:50
 - goal: 修复 Metabase dashboard 查询慢（数据计算量太大）
@@ -94,6 +131,14 @@
   - 所有 Card 查询 time < 200ms
 - decision: keep
 - dashboards:
+<<<<<<< HEAD
+  - 蜜可诗: http://<VPS_HOST>:8082/dashboard/8
+  - 榆枫与山: http://<VPS_HOST>:8082/dashboard/9
+  - 本就: http://<VPS_HOST>:8082/dashboard/10
+  - Bonjur营业: http://<VPS_HOST>:8082/dashboard/4
+  - Bonjur财务: http://<VPS_HOST>:8082/dashboard/5
+=======
+>>>>>>> origin/main
 
 ## 2026-03-31 20:20
 - goal: 继续排查”页面仍然转圈”而非仅 API 查询是否成功

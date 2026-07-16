@@ -23,7 +23,10 @@ from classify import classify_txn, _load_rules, MATCH_FIELD_ORDER
 
 # ── 测试数据 fixtures ────────────────────────────────────
 
+<<<<<<< HEAD
+=======
 # Optional fixture: CSV export of legacy rules (may not exist in a clean local repo)
+>>>>>>> origin/main
 FIXTURES_DIR = Path(__file__).parent / 'fixtures'
 
 _csv_candidates = sorted(FIXTURES_DIR.glob('yufeng_bank_rule_map_*.csv'))
