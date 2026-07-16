@@ -50,8 +50,8 @@
     "semantic_hash": "8a1a70d07c5bd22ee72cf09694bf713c"
   },
   "agent/src/agent/runner.ts": {
-    "mtime": 1784178057.4219077,
-    "ast_hash": "130ef87438bb7a62212590046923c9d7",
+    "mtime": 1784096395.9933076,
+    "ast_hash": "b1de2891bcb4c4c92ac2547c750b428c",
     "semantic_hash": ""
   },
   "agent/src/api/admin/__tests__/test-chat-phase0.test.ts": {
@@ -395,9 +395,9 @@
     "semantic_hash": "580bc981f6b955d1af5a766314166be0"
   },
   "deploy/systemd/wdg-deploy.sh": {
-    "mtime": 1784174502.903101,
-    "ast_hash": "e6e3e1b34410f09f1ff1c26de0ff4421",
-    "semantic_hash": ""
+    "mtime": 1783004271.701943,
+    "ast_hash": "210dac509e1cdfe2fb2f874d9a884893",
+    "semantic_hash": "210dac509e1cdfe2fb2f874d9a884893"
   },
   "features.json": {
     "mtime": 1779857537.6734912,
@@ -3075,9 +3075,9 @@
     "semantic_hash": "4033fde6b683866a7cb84580276b4bcd"
   },
   "ui/src/mcp/tools/query-store-report-snapshot.ts": {
-    "mtime": 1784129497.054984,
-    "ast_hash": "c5dc7d2f35be39fcad762b7ea6eb4281",
-    "semantic_hash": ""
+    "mtime": 1783700334.856152,
+    "ast_hash": "d14e68ec7c3d21a17c12c7f01364a172",
+    "semantic_hash": "d14e68ec7c3d21a17c12c7f01364a172"
   },
   "ui/src/mcp/tools/query-store-report-trend.ts": {
     "mtime": 1781170481.340052,

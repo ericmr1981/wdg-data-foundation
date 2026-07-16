@@ -331,11 +331,5 @@
   "329": "query-tamkoko-sales-combined.ts",
   "330": "layout.tsx",
   "331": "bridge.test.ts",
-  "332": "content-blocks.ts",
-  "333": "query-income-metrics.ts",
-  "334": "query-payment-metrics.ts",
-  "335": "query-qimai-revenue.ts",
-  "336": "upload-gelatomiiix-income-detail.ts",
-  "337": "query-store-report-snapshot.ts",
-  "338": "page.tsx"
+  "332": "content-blocks.ts"
 }

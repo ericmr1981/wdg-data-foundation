@@ -50,8 +50,8 @@
     "semantic_hash": "8a1a70d07c5bd22ee72cf09694bf713c"
   },
   "agent/src/agent/runner.ts": {
-    "mtime": 1784178057.4219077,
-    "ast_hash": "130ef87438bb7a62212590046923c9d7",
+    "mtime": 1784033098.7974582,
+    "ast_hash": "cf7128d56a7effcfdcbf75f963301556",
     "semantic_hash": ""
   },
   "agent/src/api/admin/__tests__/test-chat-phase0.test.ts": {
@@ -195,9 +195,9 @@
     "semantic_hash": "03689d2bf3e68cd91a7f8d4b7585212d"
   },
   "agent/src/config/store.ts": {
-    "mtime": 1784045104.510898,
-    "ast_hash": "ee1f66bc719dd456e5e853abcef492f2",
-    "semantic_hash": ""
+    "mtime": 1783873464.0267034,
+    "ast_hash": "83980b08d599b34422e7d3da6d34be26",
+    "semantic_hash": "83980b08d599b34422e7d3da6d34be26"
   },
   "agent/src/conversation/__tests__/reconstruct-content-blocks.test.ts": {
     "mtime": 1783650452.9915385,
@@ -265,8 +265,8 @@
     "semantic_hash": "eb5fe95d7d13eb9cc5269a2392e74906"
   },
   "agent/src/server.ts": {
-    "mtime": 1784045128.1579869,
-    "ast_hash": "3409b48f01bb8451c6cb22b2962a4f20",
+    "mtime": 1784033069.3349357,
+    "ast_hash": "23373241e7bfa80350a3159cfd8535ff",
     "semantic_hash": ""
   },
   "agent/src/skills/load-skill-tool.ts": {
@@ -320,9 +320,9 @@
     "semantic_hash": "6e019f662109bcb4005607a32d309e16"
   },
   "agent/src/ws-proxy.ts": {
-    "mtime": 1784115194.2878497,
-    "ast_hash": "ed4196d23546e9cd703ea72c657458ed",
-    "semantic_hash": ""
+    "mtime": 1781704496.9686742,
+    "ast_hash": "d02b47d5e11eda29356f2def895b1ebe",
+    "semantic_hash": "d02b47d5e11eda29356f2def895b1ebe"
   },
   "agent/test/helpers/mock-anthropic.ts": {
     "mtime": 1781396158.4149241,
@@ -395,9 +395,9 @@
     "semantic_hash": "580bc981f6b955d1af5a766314166be0"
   },
   "deploy/systemd/wdg-deploy.sh": {
-    "mtime": 1784174502.903101,
-    "ast_hash": "e6e3e1b34410f09f1ff1c26de0ff4421",
-    "semantic_hash": ""
+    "mtime": 1783004271.701943,
+    "ast_hash": "210dac509e1cdfe2fb2f874d9a884893",
+    "semantic_hash": "210dac509e1cdfe2fb2f874d9a884893"
   },
   "features.json": {
     "mtime": 1779857537.6734912,
@@ -1870,8 +1870,8 @@
     "semantic_hash": ""
   },
   "ui/src/app/api/financial/overview/route.ts": {
-    "mtime": 1784122463.6214757,
-    "ast_hash": "8b2ee420a43977e7fa7bccc156842d74",
+    "mtime": 1783956555.6220694,
+    "ast_hash": "e4f95693726bc650a1e3230e1b1d6b0b",
     "semantic_hash": ""
   },
   "ui/src/app/api/financial/payment-metrics/route.ts": {
@@ -2425,9 +2425,9 @@
     "semantic_hash": "74b31cad5b2483c38993994bbc45c28d"
   },
   "ui/src/app/u/dashboard/page.tsx": {
-    "mtime": 1784089538.9744997,
-    "ast_hash": "7daf1e3f8466bba2e4bf95592ef4e4c2",
-    "semantic_hash": ""
+    "mtime": 1783332163.2972775,
+    "ast_hash": "a4c3e267e3c95d34072e07d24af5c0c3",
+    "semantic_hash": "a4c3e267e3c95d34072e07d24af5c0c3"
   },
   "ui/src/app/u/financial/StatementTable.tsx": {
     "mtime": 1780668834.5791283,
@@ -2490,9 +2490,9 @@
     "semantic_hash": "4e40bbe0d86173f9d9f2d09affbc90ae"
   },
   "ui/src/app/u/page.tsx": {
-    "mtime": 1784115192.5433214,
-    "ast_hash": "3cd9828b9341234350719fa6ab043be6",
-    "semantic_hash": ""
+    "mtime": 1783323109.373341,
+    "ast_hash": "6d4641f9f9dd668b3c4ab0501ee38f70",
+    "semantic_hash": "6d4641f9f9dd668b3c4ab0501ee38f70"
   },
   "ui/src/app/u/payment/page.tsx": {
     "mtime": 1780668834.5826483,
@@ -3075,9 +3075,9 @@
     "semantic_hash": "4033fde6b683866a7cb84580276b4bcd"
   },
   "ui/src/mcp/tools/query-store-report-snapshot.ts": {
-    "mtime": 1784129497.054984,
-    "ast_hash": "c5dc7d2f35be39fcad762b7ea6eb4281",
-    "semantic_hash": ""
+    "mtime": 1783700334.856152,
+    "ast_hash": "d14e68ec7c3d21a17c12c7f01364a172",
+    "semantic_hash": "d14e68ec7c3d21a17c12c7f01364a172"
   },
   "ui/src/mcp/tools/query-store-report-trend.ts": {
     "mtime": 1781170481.340052,
@@ -3825,8 +3825,8 @@
     "semantic_hash": ""
   },
   "ui/src/lib/repositories/financial-repository.ts": {
-    "mtime": 1784119026.2309616,
-    "ast_hash": "ac6252886c8a7d888350b72cb31ec272",
+    "mtime": 1783957604.8314898,
+    "ast_hash": "77bcf1392824354fc2dfc9f6ed885b6d",
     "semantic_hash": ""
   },
   "ui/src/lib/repositories/financial-types.ts": {
