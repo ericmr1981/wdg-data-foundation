@@ -10,6 +10,13 @@ set -euo pipefail
 
 cd /opt/wdg
 
+# Ensure RUNNER_USE_TOOL_RUNNER is not set to '0' — production uses the
+# tool runner path (true streaming). Delete the line if found.
+if grep -q '^RUNNER_USE_TOOL_RUNNER=0' /opt/wdg/.env 2>/dev/null; then
+  echo "removing RUNNER_USE_TOOL_RUNNER=0 from .env (using tool runner streaming)"
+  sed -i '/^RUNNER_USE_TOOL_RUNNER=0/d' /opt/wdg/.env
+fi
+
 # Save current HEAD so we can detect "Already up to date." and skip
 # the (slow) npm ci + systemctl restart.
 PREV_HEAD=$(git rev-parse HEAD)

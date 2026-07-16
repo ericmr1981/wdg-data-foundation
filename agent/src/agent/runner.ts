@@ -108,9 +108,10 @@ export class AgentRunner {
     // 6. thinking config(R2: {thinking, output_config} 整体 spread;off → null)
     const thinkingCfg = thinkingConfigFor(cfg.params.thinkingLevel)
 
-    // 7. 调用 Tool Runner / messages.create(env 旁路)
+    // 7. 调用 Tool Runner (真实 Anthropic SDK 流式)
+    //    若要回退到手动循环(messages.create 非流式)，设 RUNNER_USE_TOOL_RUNNER=0
     const useToolRunner = process.env.RUNNER_USE_TOOL_RUNNER !== '0'
-    console.log('[runner] useToolRunner=' + useToolRunner + ' model=' + cfg.model)
+    if (!useToolRunner) console.warn('[runner] RUNNER_USE_TOOL_RUNNER=0 — using non-streaming fallback')
 
     if (useToolRunner) {
       const iter = (this.deps.anthropic.beta.messages.toolRunner as any)(
