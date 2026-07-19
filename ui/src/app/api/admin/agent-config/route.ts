@@ -42,21 +42,32 @@ export async function POST(req: NextRequest) {
   if (body.params && typeof body.params === 'object') agentBody.params = body.params
   if (body.baseURL !== undefined || body.apiKey !== undefined || body.model !== undefined) {
     const credentials: Record<string, unknown> = {}
+    // 约定:表单“留空” = 保留 DB 原值,不显式清空。
+    // UI 刷新页面后这些字段都是空串,如果按老逻辑全转 null,会覆盖 DB。
     if ('baseURL' in body) {
-      credentials.baseURL = body.baseURL
-        ? (typeof body.baseURL === 'string' && body.baseURL.trim() ? body.baseURL.trim() : null)
-        : null
+      if (typeof body.baseURL === 'string' && body.baseURL.trim()) {
+        credentials.baseURL = body.baseURL.trim()
+      }
     }
     if ('apiKey' in body) {
-      credentials.apiKey = (typeof body.apiKey === 'string' && body.apiKey !== '') ? body.apiKey : null
+      if (typeof body.apiKey === 'string' && body.apiKey !== '') {
+        credentials.apiKey = body.apiKey
+      }
     }
     if ('model' in body) {
       credentials.model = (typeof body.model === 'string' && body.model.trim()) ? body.model.trim() : 'claude-opus-4-8'
     }
-    agentBody.credentials = credentials
+    // 只在至少有一个有意义的 credentials 字段时才发 agentBody.credentials
+    // 否则不发 (相当于“表单没动这部分”)
+    if (Object.keys(credentials).length > 0) {
+      agentBody.credentials = credentials
+    }
   }
   if (typeof body.jwksUrl !== 'undefined') {
-    agentBody.jwksUrl = (typeof body.jwksUrl === 'string' && body.jwksUrl.trim()) ? body.jwksUrl.trim() : null
+    // 空串 → 保留 DB 原值;非空字符串才发
+    if (typeof body.jwksUrl === 'string' && body.jwksUrl.trim()) {
+      agentBody.jwksUrl = body.jwksUrl.trim()
+    }
   }
   if (Array.isArray(body.mcpBackends)) {
     agentBody.mcpBackends = body.mcpBackends
