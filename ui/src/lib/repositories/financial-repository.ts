@@ -49,46 +49,90 @@ export async function getCogsTotal(
 export async function getFinancialOverview(
   dmSchema: string, odsSchema: string, period: string, span: string, store: string
 ): Promise<OverviewData> {
-  const boundaries = buildPeriodBoundaries(period, span);
-  if (!boundaries) {
+  const isAll = period === 'all';
+  const boundaries = isAll ? null : buildPeriodBoundaries(period, span);
+  if (!isAll && !boundaries) {
     return { profit: [], cashflow: [], balance: null, cogs_total: '0', qimai_net: null, qimai_gross: null };
   }
-  const { start, end } = boundaries;
 
-  const scProfit = buildStoreCondition(store, 3);
+  const profitParams: (string | number)[] = [];
+  let profitDateClause = '';
+  if (!isAll && boundaries) {
+    profitDateClause = 'AND month >= $1::date AND month < $2::date';
+    profitParams.push(boundaries.start, boundaries.end);
+  }
+  if (store !== 'all') {
+    profitDateClause += ` AND store_code = $${profitParams.length + 1}`;
+    profitParams.push(store);
+  }
   const profitPromise = pool.query<ProfitRow>(`
     SELECT lvl1_code, sum(amount) as amount
     FROM ${dmSchema}.v_profit_statement
-    WHERE month >= $1::date AND month < $2::date ${scProfit.clause}
+    WHERE 1=1 ${profitDateClause}
     GROUP BY lvl1_code
-  `, [start, end, ...scProfit.params]);
+  `, profitParams);
 
-  const scCf = buildStoreCondition(store, 3);
+  const cfParams: (string | number)[] = [];
+  let cfDateClause = '';
+  if (!isAll && boundaries) {
+    cfDateClause = 'AND month >= $1::date AND month < $2::date';
+    cfParams.push(boundaries.start, boundaries.end);
+  }
+  if (store !== 'all') {
+    cfDateClause += ` AND store_code = $${cfParams.length + 1}`;
+    cfParams.push(store);
+  }
   const cfPromise = pool.query<CashflowRow>(`
     SELECT activity, sum(net_amount) as net_amount
     FROM ${dmSchema}.v_cashflow_statement
-    WHERE month >= $1::date AND month < $2::date ${scCf.clause}
+    WHERE 1=1 ${cfDateClause}
     GROUP BY activity
-  `, [start, end, ...scCf.params]);
+  `, cfParams);
 
-  const scBal = buildStoreCondition(store, 2);
+  const balParams: (string | number)[] = [];
+  let balDateClause = '';
+  if (!isAll && boundaries) {
+    balDateClause = 'AND month < $1::date';
+    balParams.push(boundaries.end);
+  }
+  if (store !== 'all') {
+    balDateClause += ` AND store_code = $${balParams.length + 1}`;
+    balParams.push(store);
+  }
   const balancePromise = pool.query<BalanceSheetRow>(`
     SELECT cash_balance
     FROM ${dmSchema}.v_balance_sheet
-    WHERE month < $1::date ${scBal.clause}
+    WHERE 1=1 ${balDateClause}
     ORDER BY month DESC LIMIT 1
-  `, [end, ...scBal.params]);
+  `, balParams);
 
-  const scCogs = buildStoreCondition(store, 3);
+  const cogsParams: (string | number)[] = [];
+  let cogsDateClause = '';
+  if (!isAll && boundaries) {
+    cogsDateClause = `AND period >= to_char($1::date, 'YYYY-MM')
+      AND period <  to_char($2::date, 'YYYY-MM')`;
+    cogsParams.push(boundaries.start, boundaries.end);
+  }
+  if (store !== 'all') {
+    cogsDateClause += ` AND store_code = $${cogsParams.length + 1}`;
+    cogsParams.push(store);
+  }
   const cogsPromise = pool.query<{ cogs_total: string }>(`
     SELECT COALESCE(SUM(cogs_amt), 0)::numeric AS cogs_total
     FROM ${dmSchema}.v_cogs_monthly
-    WHERE period >= to_char($1::date, 'YYYY-MM')
-      AND period <  to_char($2::date, 'YYYY-MM')
-      ${scCogs.clause}
-  `, [start, end, ...scCogs.params]).catch(() => ({ rows: [{ cogs_total: '0' }] }));
+    WHERE 1=1 ${cogsDateClause}
+  `, cogsParams).catch(() => ({ rows: [{ cogs_total: '0' }] }));
 
-  const scQimai = buildStoreCondition(store, 3);
+  const qimaiParams: (string | number)[] = [];
+  let qimaiDateClause = '';
+  if (!isAll && boundaries) {
+    qimaiDateClause = 'AND biz_date >= $1::date AND biz_date < $2::date';
+    qimaiParams.push(boundaries.start, boundaries.end);
+  }
+  if (store !== 'all') {
+    qimaiDateClause += ` AND store_code = $${qimaiParams.length + 1}`;
+    qimaiParams.push(store);
+  }
   const qimaiPromise = pool.query<{ qimai_net: string; qimai_gross: string }>(`
     SELECT
       COALESCE(SUM(net_amt), 0)::numeric   AS qimai_net,
@@ -96,8 +140,8 @@ export async function getFinancialOverview(
     FROM ${odsSchema}.income_detail
     WHERE NOT COALESCE(is_member_payment, FALSE)
       AND NOT COALESCE(is_refund, FALSE)
-      AND biz_date >= $1::date AND biz_date < $2::date ${scQimai.clause}
-  `, [start, end, ...scQimai.params]).catch(() => ({ rows: [] }));
+      ${qimaiDateClause}
+  `, qimaiParams).catch(() => ({ rows: [] }));
 
   const [profitRes, cfRes, balanceRes, cogsRes, qimaiRes] = await Promise.all([
     profitPromise, cfPromise, balancePromise, cogsPromise, qimaiPromise,
@@ -181,6 +225,8 @@ export async function getBalanceSheet(
 export async function getBeginningBalance(
   dmSchema: string, period: string, span: string, store: string
 ): Promise<BalanceSheetRow[]> {
+  // Beginning balance is undefined for "all" — caller (route) renders null.
+  if (period === 'all') return [];
   const boundaries = buildPeriodBoundaries(period, span);
   if (!boundaries) return [];
   const sc = buildStoreCondition(store, 2);
@@ -199,6 +245,14 @@ export async function getActiveStoreCount(
   dmSchema: string, period: string, span: string, store: string
 ): Promise<number> {
   if (store !== 'all') return 1;
+  // For "all" period, count distinct stores across all time in v_profit_statement.
+  if (period === 'all') {
+    const result = await pool.query<{ cnt: string }>(`
+      SELECT count(DISTINCT store_code) as cnt
+      FROM ${dmSchema}.v_profit_statement
+    `);
+    return Number(result.rows[0]?.cnt || 0);
+  }
   const boundaries = buildPeriodBoundaries(period, span);
   if (!boundaries) return 0;
   const result = await pool.query<{ cnt: string }>(`
@@ -214,14 +268,26 @@ export async function getActiveStoreCount(
 export async function getKpiRate(
   dmSchema: string, period: string, span: string, store: string, field: 'net_profit_rate_pct' | 'gross_profit_rate_pct'
 ): Promise<number | null> {
-  const boundaries = buildPeriodBoundaries(period, span);
-  if (!boundaries) return null;
-  const sc = buildStoreCondition(store, 3);
+  const isAll = period === 'all';
+  const boundaries = isAll ? null : buildPeriodBoundaries(period, span);
+  if (!isAll && !boundaries) return null;
+
+  const params: (string | number)[] = [];
+  let dateClause = '';
+  if (!isAll && boundaries) {
+    dateClause = 'AND month >= $1::date AND month < $2::date';
+    params.push(boundaries.start, boundaries.end);
+  }
+  if (store !== 'all') {
+    dateClause += ` AND store_code = $${params.length + 1}`;
+    params.push(store);
+  }
+
   const result = await pool.query<{ rate_pct: string | null }>(`
     SELECT AVG(${field}) as rate_pct
     FROM ${dmSchema}.v_store_monthly_kpi
-    WHERE month >= $1::date AND month < $2::date ${sc.clause}
-  `, [boundaries.start, boundaries.end, ...sc.params]);
+    WHERE 1=1 ${dateClause}
+  `, params);
   const raw = result.rows[0]?.rate_pct;
   return raw != null ? Number(raw) / 100 : null;
 }
@@ -231,15 +297,27 @@ export async function getKpiRate(
 export async function getOperatingExpenses(
   dmSchema: string, period: string, span: string, store: string
 ): Promise<number> {
-  const boundaries = buildPeriodBoundaries(period, span);
-  if (!boundaries) return 0;
-  const sc = buildStoreCondition(store, 3);
+  const isAll = period === 'all';
+  const boundaries = isAll ? null : buildPeriodBoundaries(period, span);
+  if (!isAll && !boundaries) return 0;
+
+  const params: (string | number)[] = [];
+  let dateClause = '';
+  if (!isAll && boundaries) {
+    dateClause = 'AND month >= $1::date AND month < $2::date';
+    params.push(boundaries.start, boundaries.end);
+  }
+  if (store !== 'all') {
+    dateClause += ` AND store_code = $${params.length + 1}`;
+    params.push(store);
+  }
+
   const result = await pool.query<{ operating_expenses: string }>(`
     SELECT COALESCE(SUM(ABS(amount)), 0)::numeric AS operating_expenses
     FROM ${dmSchema}.v_profit_statement
     WHERE lvl1_code IN ('MATERIAL','HR','MKT','RENT_UTIL','SHIP','ADMIN','TAX_SURCHARGE')
-      AND month >= $1::date AND month < $2::date ${sc.clause}
-  `, [boundaries.start, boundaries.end, ...sc.params]);
+      ${dateClause}
+  `, params);
   return Number(result.rows[0]?.operating_expenses || 0);
 }
 
@@ -248,11 +326,27 @@ export async function getOperatingExpenses(
 export async function getQimaiRevenue(
   dmSchema: string, odsSchema: string, incomeOds: string, period: string, span: string, store: string
 ): Promise<{ bank_revenue: number; qimai_revenue: number | null }> {
-  const boundaries = buildPeriodBoundaries(period, span);
-  if (!boundaries) return { bank_revenue: 0, qimai_revenue: null };
+  const isAll = period === 'all';
+  const boundaries = isAll ? null : buildPeriodBoundaries(period, span);
+  if (!isAll && !boundaries) return { bank_revenue: 0, qimai_revenue: null };
 
-  const sc = buildStoreCondition(store, 2);
-  const storeParams = store !== 'all' ? [boundaries.end, store] : [boundaries.end];
+  // For "all" period, cumulative through CURRENT_DATE; otherwise boundaries.end.
+  const storeParams: (string | number)[] = [];
+  let bankDateClause = '';
+  let qimaiDateClause = '';
+  if (isAll) {
+    bankDateClause = 'AND month < CURRENT_DATE';
+    qimaiDateClause = 'AND biz_date < CURRENT_DATE';
+  } else if (boundaries) {
+    bankDateClause = 'AND month < $1::date';
+    qimaiDateClause = 'AND biz_date < $1::date';
+    storeParams.push(boundaries.end);
+  }
+  if (store !== 'all') {
+    bankDateClause += ` AND store_code = $${storeParams.length + 1}`;
+    qimaiDateClause += ` AND store_code = $${storeParams.length + 1}`;
+    storeParams.push(store);
+  }
 
   let bankRevenue = 0;
   try {
@@ -261,7 +355,7 @@ export async function getQimaiRevenue(
       FROM ${dmSchema}.v_profit_statement
       WHERE section = 'revenue' AND lvl1_code = 'REV_BIZ'
         AND lvl2_code != 'OTHER_CH'
-        AND month < $1::date ${sc.clause}
+        ${bankDateClause}
     `, storeParams);
     bankRevenue = Number(brRes.rows[0]?.bank_revenue || 0);
   } catch { /* view not ready */ }
@@ -272,7 +366,7 @@ export async function getQimaiRevenue(
       SELECT COALESCE(SUM(net_amt), 0)::numeric as qimai_revenue
       FROM ${incomeOds}.income_detail
       WHERE NOT is_member_payment AND NOT is_refund
-        AND biz_date < $1::date ${sc.clause}
+        ${qimaiDateClause}
     `, storeParams);
     qimaiRevenue = Number(qiRes.rows[0]?.qimai_revenue || 0);
   } catch { /* income_detail not available */ }
