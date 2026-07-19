@@ -44,6 +44,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ brand: string }
 
   try {
     const user = await getSessionUser(req);
+    if (!user) return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
     assertRole(user, ['admin', 'operator']);
     const url = new URL(req.url);
     const store_code = url.searchParams.get('store_code');
@@ -99,6 +100,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ brand: string 
 
   try {
     const user = await getSessionUser(req);
+    if (!user) return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
     assertRole(user, ['admin', 'operator']);
     const body = (await req.json()) as UpsertInventorySummaryRequest;
     const { store_code, period, total_amount, note } = body;
@@ -123,9 +125,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ brand: string 
       return NextResponse.json({ success: false, error: 'store not found for brand' }, { status: 400 });
     }
 
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'unauthorized' }, { status: 401 });
-    }
     await pool.query(
       `INSERT INTO ${odsSchema}.inventory_monthly_summary
          (store_code, period, total_amount, note, updated_by)
