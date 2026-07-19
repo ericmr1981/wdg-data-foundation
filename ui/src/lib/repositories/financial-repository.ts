@@ -245,12 +245,15 @@ export async function getActiveStoreCount(
   dmSchema: string, period: string, span: string, store: string
 ): Promise<number> {
   if (store !== 'all') return 1;
-  // For "all" period, count distinct stores across all time in v_profit_statement.
   if (period === 'all') {
-    const result = await pool.query<{ cnt: string }>(`
-      SELECT count(DISTINCT store_code) as cnt
-      FROM ${dmSchema}.v_profit_statement
-    `);
+    // storeCount = currently enabled stores. ops.stores is the source of truth and is
+    // period-independent, so we always read it for 'all'. Derive brand_code from dmSchema
+    // (strip _dm suffix; strip legacy brand_ prefix if present).
+    const brandCode = dmSchema.replace(/_dm$/, '').replace(/^brand_/, '');
+    const result = await pool.query<{ cnt: string }>(
+      `SELECT count(*) as cnt FROM ops.stores WHERE enabled = true AND brand_code = $1`,
+      [brandCode]
+    );
     return Number(result.rows[0]?.cnt || 0);
   }
   const boundaries = buildPeriodBoundaries(period, span);
