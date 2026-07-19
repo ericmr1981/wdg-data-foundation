@@ -102,17 +102,48 @@ function useStores(brand: string) {
 
 function PeriodSelector({ span, period, setSpan, setPeriod }: { span: SpanId; period: string; setSpan: (v: SpanId) => void; setPeriod: (v: string) => void }) {
   const options = useMemo(() => {
-    if (span === 'month') return ['2025-03','2025-04','2025-05','2025-06','2025-07','2025-08','2025-09','2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05','2026-06'];
-    if (span === 'quarter') return ['2025-Q1','2025-Q2','2025-Q3','2025-Q4','2026-Q1','2026-Q2'];
-    return ['2025','2026'];
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = today.getMonth();
+    if (span === 'month') {
+      const arr: string[] = ['all'];
+      for (let i = 0; i < 18; i++) {
+        const d = new Date(y, m - i, 1);
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        arr.push(`${d.getFullYear()}-${mm}`);
+      }
+      return arr;
+    }
+    if (span === 'quarter') {
+      const curQ = Math.floor(m / 3) + 1;
+      const arr: string[] = ['all'];
+      for (let i = 0; i < 9; i++) {
+        const qOffset = i;
+        const yearOff = Math.floor((curQ - 1 - qOffset) / 4);
+        const qNum = ((curQ - 1 - qOffset) % 4 + 4) % 4 + 1;
+        const qy = y - yearOff;
+        arr.push(`${qy}-Q${qNum}`);
+      }
+      return arr;
+    }
+    const arr: string[] = ['all'];
+    for (let i = 0; i < 4; i++) {
+      arr.push(String(y - i));
+    }
+    return arr;
   }, [span]);
+
   return (
     <div className="flex items-center gap-3 flex-wrap">
       <select value={span} onChange={e => setSpan(e.target.value as SpanId)} className="border rounded px-2 py-1 text-sm bg-white">
-        <option value="month">月度</option><option value="quarter">季度</option><option value="year">年度</option>
+        <option value="month">月度</option>
+        <option value="quarter">季度</option>
+        <option value="year">年度</option>
       </select>
       <select value={period} onChange={e => setPeriod(e.target.value)} className="border rounded px-2 py-1 text-sm bg-white">
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
+        {options.map(o => (
+          <option key={o} value={o}>{o === 'all' ? '全部' : o}</option>
+        ))}
       </select>
     </div>
   );
@@ -416,7 +447,7 @@ const CLICKABLE_KPIS: TrendKey[] = ['revenue', 'expenses', 'gross_margin_rate', 
 export default function DashboardPage() {
   const { brand } = useBrand();
   const [span, setSpan] = useState<SpanId>('month');
-  const [period, setPeriod] = useState<string>('');
+  const [period, setPeriod] = useState<string>('all');
   const [store, setStore] = useState('all');
   const [overview, setOverview] = useState<OverviewData | null>(null);
 
