@@ -34,7 +34,7 @@ export function InventoryForm({ stores }: Props) {
     }
     setSubmitting(true);
     try {
-      const res = await fetch('/api/tamkoko/inventory/summary', {
+      const res = await fetch('/api/inventory/tamkoko/summary', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ store_code: storeCode, period, total_amount: num, note: note || null }),
