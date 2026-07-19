@@ -462,7 +462,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!brand) { setLoading(false); return; }
-    if (!period) return; // wait for kpi-trend to populate the latest month first
+    if (!period) return; // period defaults to 'all', this guard is unreachable
     setLoading(true);
     setError(null);
 
