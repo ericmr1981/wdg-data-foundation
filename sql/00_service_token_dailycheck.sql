@@ -1,0 +1,14 @@
+-- ============================================================================
+-- ops.service_token 行(name=dailycheck-mcp)
+-- SHA-256 hash 由部署时算出(env DAILYCHECK_MCP_TOKEN)。
+-- 占位:这里只放注释 + 占位 INSERT 模板,部署时手动算 hash 后替换。
+-- ============================================================================
+
+-- 计算 raw-token 的 SHA-256:
+--   echo -n "$DAILYCHECK_MCP_TOKEN" | shasum -a 256
+-- 替换下方 'TOKEN_HASH_PLACEHOLDER' 后执行。
+--
+-- INSERT INTO ops.service_token (name, token_hash, enabled)
+-- VALUES ('dailycheck-mcp', 'TOKEN_HASH_PLACEHOLDER', true)
+-- ON CONFLICT (name) DO UPDATE
+--   SET token_hash = EXCLUDED.token_hash, enabled = true;
