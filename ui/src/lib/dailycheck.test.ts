@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 
 // 通过 stub global.fetch 测试。da = dailycheck helpers。
@@ -21,6 +21,11 @@ interface FetchCall {
   url: string;
   init: RequestInit;
 }
+
+let originalFetch: typeof fetch | undefined;
+
+test.beforeEach(() => { originalFetch = globalThis.fetch; });
+test.afterEach(() => { if (originalFetch) globalThis.fetch = originalFetch; });
 
 function stubFetch(responses: Array<{ status: number; body: unknown }>): FetchCall[] {
   const calls: FetchCall[] = [];

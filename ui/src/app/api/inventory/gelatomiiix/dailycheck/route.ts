@@ -3,9 +3,8 @@ import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { getErrorMessage } from '@/lib/query-types';
 import {
   listWarehouses,
-  getWarehouseTotal,
   getTurnoverTop,
-  getCategoryDistribution,
+  getItemsList,
   DailyCheckUnavailableError,
   DailyCheckToolError,
 } from '@/lib/dailycheck';
@@ -31,11 +30,17 @@ export async function GET(req: Request) {
       throw e;
     }
 
-    const [total_stock, top_turnover, categories] = await Promise.all([
-      getWarehouseTotal(FIXED_WAREHOUSE_CODE),
-      getTurnoverTop(FIXED_WAREHOUSE_CODE, 20),
-      getCategoryDistribution(FIXED_WAREHOUSE_CODE),
-    ]);
+    const items = await getItemsList(FIXED_WAREHOUSE_CODE);
+    const top_turnover = await getTurnoverTop(FIXED_WAREHOUSE_CODE, 20);
+
+    const total_stock = items.reduce((acc, it) => acc + Number(it.current_stock ?? 0), 0);
+    const catMap = new Map<string, number>();
+    for (const it of items) {
+      catMap.set(it.category, (catMap.get(it.category) ?? 0) + Number(it.current_stock ?? 0));
+    }
+    const categories = Array.from(catMap.entries())
+      .map(([category, total_stock]) => ({ category, total_stock }))
+      .sort((a, b) => a.category.localeCompare(b.category, 'zh-Hans-CN'));
 
     const payload: DailyCheckBoardPayload = {
       warehouse_code: FIXED_WAREHOUSE_CODE,

@@ -98,8 +98,12 @@ export async function listWarehouses(): Promise<Warehouse[]> {
   return callTool<Warehouse[]>('warehouse_list');
 }
 
+export async function getItemsList(whCode: string): Promise<Array<{ category: string; current_stock: number }>> {
+  return callTool('items_list', { warehouse_code: whCode });
+}
+
 export async function getWarehouseTotal(whCode: string): Promise<number> {
-  const items = await callTool<Array<{ current_stock: number }>>('items_list', { warehouse_code: whCode });
+  const items = await getItemsList(whCode);
   return items.reduce((acc, it) => acc + Number(it.current_stock ?? 0), 0);
 }
 
@@ -113,9 +117,7 @@ export async function getTurnoverTop(whCode: string, limit = 20): Promise<Consum
 }
 
 export async function getCategoryDistribution(whCode: string): Promise<CategoryBucket[]> {
-  const items = await callTool<Array<{ category: string; current_stock: number }>>(
-    'items_list', { warehouse_code: whCode },
-  );
+  const items = await getItemsList(whCode);
   const map = new Map<string, number>();
   for (const it of items) {
     map.set(it.category, (map.get(it.category) ?? 0) + Number(it.current_stock ?? 0));

@@ -43,8 +43,8 @@ export default async function InventoryPage({
          ON v.store_code = m.store_code AND v.period = m.period`
     : '';
   const extraCols = brand === 'tamkoko'
-    ? `v.cogs_amt, v.opening_amt, v.closing_amt, v.turnover_times, v.turnover_days,`
-    : `NULL::numeric AS cogs_amt, NULL::numeric AS opening_amt, NULL::numeric AS closing_amt, NULL::numeric AS turnover_times, NULL::numeric AS turnover_days,`;
+    ? `v.cogs_amt, v.opening_amt, v.closing_amt, v.turnover_times, v.turnover_days`
+    : `NULL::numeric AS cogs_amt, NULL::numeric AS opening_amt, NULL::numeric AS closing_amt, NULL::numeric AS turnover_times, NULL::numeric AS turnover_days`;
 
   const rowsRes = await pool.query(
     `SELECT
@@ -52,7 +52,6 @@ export default async function InventoryPage({
        m.created_at, m.updated_at,
        s.store_name,
        ${extraCols}
-       ${brand === 'tamkoko' ? 's.brand_code AS _brand' : 'NULL::text AS _brand'}
      FROM ${odsSchema}.inventory_monthly_summary m
      LEFT JOIN ops.stores s
        ON s.store_code = m.store_code AND s.brand_code = $1
