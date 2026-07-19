@@ -13,14 +13,15 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const brandParam = searchParams.get('brand') || '';
-    const period = searchParams.get('period') || '';
+    const period = searchParams.get('period') || 'all';
     const span = searchParams.get('span') || 'month';
     const store = searchParams.get('store') || 'all';
     const brand = normalizeBrand(brandParam);
     if (!brand) return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
 
-    const boundaries = parsePeriod(period, span);
-    if (!boundaries) return NextResponse.json({ success: false, error: 'Invalid period' }, { status: 400 });
+    const isAll = period === 'all';
+    const boundaries = isAll ? null : parsePeriod(period, span);
+    if (!isAll && !boundaries) return NextResponse.json({ success: false, error: 'Invalid period' }, { status: 400 });
 
     const dmSchema = await getDmSchemaSafe(brand);
     const odsSchema = getOdsSchema(brand);
