@@ -514,7 +514,7 @@ export default function DashboardPage() {
       ) : (
         <>
           {/* All cards in one aligned grid: 5 clickable KPI + 4 auxiliary */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-5 gap-3">
+          <div data-testid="kpi-grid" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-5 gap-3">
             {CLICKABLE_KPIS.map(k => {
               // Gross margin card shows two layers: big = 营业净收 (primary, qimai net),
               // small = 营业额 (secondary, qimai gross). Falls back to bank-based

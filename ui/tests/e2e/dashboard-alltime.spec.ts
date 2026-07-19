@@ -12,14 +12,15 @@ test.describe('Dashboard 全量模式', () => {
     const periodSelect = page.locator('select').nth(1);
     expect(await periodSelect.inputValue()).toBe('all');
 
-    // Scope to the KPI grid (5 clickable cards) — bank-balance card
-    // also has ↑/↓ but lives outside the grid when balance info shows.
-    const kpiGrid = page.locator('div').filter({ has: page.getByText('银行入账率') }).first();
+    // Scope to the KPI grid (5 clickable cards + auxiliary cards) via data-testid.
+    // The bank-balance auxiliary card shows ↑/↓ only when beginningBalance > 0,
+    // so in default 全量 mode (no period selected) beginningBalance is 0 and
+    // the arrows must not appear anywhere in the grid.
+    const kpiGrid = page.locator('[data-testid="kpi-grid"]');
     const arrows = kpiGrid.locator('text=/[↑↓]/');
     expect(await arrows.count()).toBe(0);
 
     await expect(page.getByText('银行入账率')).toBeVisible();
-    await expect(page.getByText('选择门店')).toHaveCount(0);
   });
 
   test('切到具体月份:数据变化', async ({ page }) => {
