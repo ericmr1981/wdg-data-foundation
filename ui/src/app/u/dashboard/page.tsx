@@ -462,7 +462,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!brand) { setLoading(false); return; }
-    if (!period) return; // period defaults to 'all', this guard is unreachable
     setLoading(true);
     setError(null);
 
