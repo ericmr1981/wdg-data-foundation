@@ -11,7 +11,7 @@ import { getCounterpartyData } from '@/lib/repositories/financial-repository';
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
   const { searchParams } = new URL(request.url);
-  const period = searchParams.get('period') || 'all';
+  const period = searchParams.get('period') || '';
   const span = searchParams.get('span') || 'month';
   const store = searchParams.get('store') || 'all';
   const counterparty = searchParams.get('counterparty') || '';
