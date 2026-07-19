@@ -12,7 +12,10 @@ test.describe('Dashboard 全量模式', () => {
     const periodSelect = page.locator('select').nth(1);
     expect(await periodSelect.inputValue()).toBe('all');
 
-    const arrows = page.locator('text=/[↑↓]/');
+    // Scope to the KPI grid (5 clickable cards) — bank-balance card
+    // also has ↑/↓ but lives outside the grid when balance info shows.
+    const kpiGrid = page.locator('div').filter({ has: page.getByText('银行入账率') }).first();
+    const arrows = kpiGrid.locator('text=/[↑↓]/');
     expect(await arrows.count()).toBe(0);
 
     await expect(page.getByText('银行入账率')).toBeVisible();
