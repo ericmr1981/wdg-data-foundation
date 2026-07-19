@@ -164,11 +164,15 @@ export async function GET(request: Request) {
     const prevParams: (string | number)[] = [];
     let prevDateClause = '';
     if (prevBoundaries) {
+      const startIdx = prevParams.length + 1;
+      const endIdx = prevParams.length + 2;
       prevParams.push(prevBoundaries[0], prevBoundaries[1]);
-      prevDateClause = ` AND t.txn_time >= $${prevParams.length - 1}::date AND t.txn_time < $${prevParams.length}::date`;
+      prevDateClause = ` AND t.txn_time >= $${startIdx}::date AND t.txn_time < $${endIdx}::date`;
     } else if (!isAll && startDate && endDate) {
+      const startIdx = prevParams.length + 1;
+      const endIdx = prevParams.length + 2;
       prevParams.push(startDate, endDate);
-      prevDateClause = ` AND t.txn_time >= $${prevParams.length - 1}::date AND t.txn_time < $${prevParams.length}::date`;
+      prevDateClause = ` AND t.txn_time >= $${startIdx}::date AND t.txn_time < $${endIdx}::date`;
     }
     if (store !== 'all') {
       prevDateClause += ` AND t.store_code = $${prevParams.length + 1}`;
