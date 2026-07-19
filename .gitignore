@@ -7,6 +7,14 @@
 Account.private.md
 mb_key_*.md
 
+# dev container / gitattributes (local-only)
+.devcontainer/
+.gitattributes
+
+# local postgres data + backups (do not commit)
+.pgdata/
+db_backup/
+
 # secrets docs
 /docs/VPS_MIGRATION_SECRETS.md
 /docs/VPS_MIGRATION_PLAN_PRIVATE.md
@@ -56,6 +64,9 @@ scripts/load_bonjur_batches.mjs
 # playwright / MCP dev files
 .playwright-mcp/
 .superpowers/
+
+# git worktrees (project-local isolation)
+.worktrees/
 
 # supabase local dev temp files
 supabase/.branches/
