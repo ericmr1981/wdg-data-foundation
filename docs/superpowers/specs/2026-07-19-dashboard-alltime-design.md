@@ -86,6 +86,7 @@ Browser (Dashboard page)
 | `qimaiNetRevenue / qimaiGrossRevenue` | 全量 SUM |
 | `vsPrevPeriod.*` | 全部为 0(无对比期) |
 | `kpi-trend.monthly[*]` | 包含品牌或门店的所有月份 |
+| `kpi-trend.current_month / prev_month` | null(全量无"当月/上月"概念);`ExpenseBreakdown` 显示空(用 `prev?.expenses || []` 已防 NPE) |
 
 ## 5. 改动清单
 
