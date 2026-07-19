@@ -249,12 +249,21 @@ export async function getActiveStoreCount(
     // storeCount = currently enabled stores. ops.stores is the source of truth and is
     // period-independent, so we always read it for 'all'. Derive brand_code from dmSchema
     // (strip _dm suffix; strip legacy brand_ prefix if present).
+    // Fallback to distinct store_codes in v_profit_statement when ops.stores has no
+    // rows for the brand (some brands e.g. gelatomiiix / tamkoko are not seeded there
+    // yet) so the dashboard still shows a meaningful count.
     const brandCode = dmSchema.replace(/_dm$/, '').replace(/^brand_/, '');
-    const result = await pool.query<{ cnt: string }>(
+    const opsRes = await pool.query<{ cnt: string }>(
       `SELECT count(*) as cnt FROM ops.stores WHERE enabled = true AND brand_code = $1`,
       [brandCode]
     );
-    return Number(result.rows[0]?.cnt || 0);
+    const opsCount = Number(opsRes.rows[0]?.cnt || 0);
+    if (opsCount > 0) return opsCount;
+    const txRes = await pool.query<{ cnt: string }>(`
+      SELECT count(DISTINCT store_code) as cnt
+      FROM ${dmSchema}.v_profit_statement
+    `);
+    return Number(txRes.rows[0]?.cnt || 0);
   }
   const boundaries = buildPeriodBoundaries(period, span);
   if (!boundaries) return 0;
