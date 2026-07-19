@@ -172,7 +172,7 @@ function KpiCard({ label, value, prefix = '¥', vsPrev, isRate = false, invert =
     : isRate
       ? `${(subValue * 100).toFixed(1)}%`
       : `${prefix}${subValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const vs = vsPrev !== undefined;
+  const vs = vsPrev !== undefined && vsPrev !== 0;
   const good = vs ? (invert ? vsPrev <= 0 : vsPrev >= 0) : true;
   const nullTooltip = value == null && isRate ? '首期缺期初库存，毛利率/净利润率暂不显示。从有上月期末的月份开始展示。' : undefined;
   return (
@@ -198,7 +198,7 @@ function KpiCard({ label, value, prefix = '¥', vsPrev, isRate = false, invert =
 }
 
 // ── Tooltip bar chart (x-axis baseline, pos↑ neg↓) ────
-function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: TrendKey; format?: (v: number) => string }) {
+function TrendChart({ data, trendKey, format, period }: { data: MonthlyKpi[]; trendKey: TrendKey; format?: (v: number) => string; period?: string }) {
   const [tooltip, setTooltip] = useState<{ month: string; value: number | null; x: number; y: number } | null>(null);
   const sorted = [...data].reverse();
   // Filter out null values for range calculation (null bars render as "—" placeholder).
@@ -211,7 +211,7 @@ function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: 
 
   return (
     <div className="bg-white border rounded-lg p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">{TREND_LABELS[trendKey]}趋势</h3>
+      <h3 className="text-sm font-semibold text-gray-700 mb-3">{TREND_LABELS[trendKey]}趋势{period === 'all' ? '(全部历史)' : ''}</h3>
       <div className="relative" style={{ height: '300px' }}>
         {/* y-axis labels */}
         <div className="absolute left-0 text-[9px] text-gray-400" style={{ top: '4px' }}>{fmt(range)}</div>
@@ -226,7 +226,7 @@ function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: 
               return (
                 <div key={d.month} className="flex-1 flex flex-col items-center justify-center relative" style={{ height: '100%' }}>
                   <div className="text-[10px] text-gray-400" style={{ marginTop: `${halfH - 6}px` }}>—</div>
-                  <div className="absolute text-[9px] text-gray-400" style={{ bottom: '-18px' }}>{d.month.slice(5)}</div>
+                  <div className="absolute text-[9px] text-gray-400" style={{ bottom: '-18px' }}>{d.month.slice(2)}</div>
                 </div>
               );
             }
@@ -251,7 +251,7 @@ function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: 
                     onMouseLeave={() => setTooltip(null)}
                   />
                 )}
-                <div className="absolute text-[9px] text-gray-400" style={{ bottom: '-18px' }}>{d.month.slice(5)}</div>
+                <div className="absolute text-[9px] text-gray-400" style={{ bottom: '-18px' }}>{d.month.slice(2)}</div>
               </div>
             );
           })}
@@ -451,25 +451,6 @@ export default function DashboardPage() {
   const [store, setStore] = useState('all');
   const [overview, setOverview] = useState<OverviewData | null>(null);
 
-  // Auto-select latest month with data for the current brand.
-  // Only runs when brand changes; period starts as '' so the data fetch
-  // (which depends on period) waits for this to populate.
-  useEffect(() => {
-    if (!brand) return;
-    fetch(`/api/financial/kpi-trend?brand=${brand}&period=2026-06&span=month&store=all`)
-      .then(r => r.json())
-      .then(d => {
-        if (d?.data?.monthly?.length) {
-          const latest = d.data.monthly[d.data.monthly.length - 1].month;
-          if (latest) setPeriod(latest);
-        }
-      })
-      .catch(() => {});
-  }, [brand]);
-
-  // Once the latest month is detected, pass it to PeriodSelector as initialPeriod.
-  // The first render of PeriodSelector will use this value; its span-change
-  // useEffect won't fire until the user actually changes span.
   const [bankRevenue, setBankRevenue] = useState<number | null>(null);
   const [qimaiRevenue, setQimaiRevenue] = useState<number | null>(null);
   const [kpiTrend, setKpiTrend] = useState<KpiTrendData | null>(null);
@@ -502,8 +483,8 @@ export default function DashboardPage() {
       }).catch(() => {});
   }, [brand, period, span, store]);
 
-  // Bank entry rate: only show when a specific store is selected
-  const showEntryRate = store !== 'all' && bankRevenue !== null && qimaiRevenue !== null;
+  // Bank entry rate: show whenever both bank and qimai revenue are available
+  const showEntryRate = bankRevenue !== null && qimaiRevenue !== null;
   const entryRate = showEntryRate && qimaiRevenue! > 0 ? Math.min(bankRevenue! / qimaiRevenue!, 1) : null;
 
   return (
@@ -568,7 +549,7 @@ export default function DashboardPage() {
               <div className="text-sm font-bold text-blue-900 mt-1">
                 ¥{overview.cashBalance.toLocaleString(undefined, { minimumFractionDigits: 0 })}
               </div>
-              {overview.beginningBalance > 0 && (
+              {(overview.beginningBalance ?? 0) > 0 && (
                 <div className="text-[10px] text-blue-500 mt-0.5">
                   期初 ¥{overview.beginningBalance.toLocaleString(undefined, { minimumFractionDigits: 0 })}
                   <span className="ml-1">
@@ -586,24 +567,17 @@ export default function DashboardPage() {
               <div className="text-[11px] text-green-600">店均营收</div>
               <div className="text-lg font-bold text-green-900">¥{overview.revenuePerStore.toLocaleString(undefined, { minimumFractionDigits: 0 })}</div>
             </div>
-            {store !== 'all' ? (
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                <div className="text-[11px] text-purple-600">银行入账率</div>
-                <div className="text-lg font-bold text-purple-900">
-                  {entryRate !== null ? `${(entryRate * 100).toFixed(1)}%` : (qimaiRevenue === null ? '无企迈数据' : '加载中...')}
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+              <div className="text-[11px] text-purple-600">银行入账率</div>
+              <div className="text-lg font-bold text-purple-900">
+                {entryRate !== null ? `${(entryRate * 100).toFixed(1)}%` : (qimaiRevenue === null ? '无企迈数据' : '加载中...')}
+              </div>
+              {bankRevenue !== null && qimaiRevenue !== null && (
+                <div className="text-[10px] text-purple-500 mt-0.5 leading-tight">
+                  银行 ¥{bankRevenue.toLocaleString()}<br />企迈 ¥{qimaiRevenue.toLocaleString()}
                 </div>
-                {bankRevenue !== null && qimaiRevenue !== null && (
-                  <div className="text-[10px] text-purple-500 mt-0.5 leading-tight">
-                    银行 ¥{bankRevenue.toLocaleString()}<br />企迈 ¥{qimaiRevenue.toLocaleString()}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                <div className="text-[11px] text-gray-500">银行入账率</div>
-                <div className="text-lg font-bold text-gray-400">选择门店</div>
-              </div>
-            )}
+              )}
+            </div>
             <div className={`${overview.cashRunway !== null ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'} border rounded-lg p-3`}>
               <div className={`text-[11px] ${overview.cashRunway !== null ? 'text-amber-600' : 'text-gray-500'}`}>现金流月数</div>
               <div className={`text-lg font-bold ${overview.cashRunway !== null ? 'text-amber-900' : 'text-gray-700'}`}>
@@ -622,7 +596,7 @@ export default function DashboardPage() {
           {/* Charts: trend on top, expense below */}
           <div className="space-y-4">
             {kpiTrend?.monthly && kpiTrend.monthly.length > 0 ? (
-              <TrendChart data={kpiTrend.monthly} trendKey={activeTrend}
+              <TrendChart data={kpiTrend.monthly} trendKey={activeTrend} period={period}
                 format={activeTrend === 'gross_margin_rate' || activeTrend === 'net_profit_rate'
                   ? (v) => `${(v * 100).toFixed(1)}%`
                   : (v) => `¥${v.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
