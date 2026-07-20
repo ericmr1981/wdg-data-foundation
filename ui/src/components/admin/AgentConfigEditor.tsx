@@ -140,6 +140,12 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
     setRestartMessage(null);
     try {
       const r = await fetch('/api/admin/restart-agent', { method: 'POST' });
+      // 503: 后端明确分类的"agent 不可达 / 不健康" — 直接红字, 不进 90s 轮询
+      if (r.status === 503) {
+        const data = await r.json().catch(() => ({}));
+        setRestartMessage('❌ ' + (data.message ?? 'Agent 不可达'));
+        return;
+      }
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setRestartMessage('✅ Agent 正在重启...');
 
