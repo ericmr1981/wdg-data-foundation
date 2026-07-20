@@ -29,7 +29,7 @@ Formula: turnover_times = COGS / ((opening + closing) / 2); turnover_days = 30 /
     if (store_code) qs.set('store_code', store_code);
     if (period) qs.set('period', period);
 
-    const res = await mcpFetch(`/api/inventory/${brand}/summary?${qs}`, {
+    const res = await mcpFetch(`/api/tamkoko/inventory/summary?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
 

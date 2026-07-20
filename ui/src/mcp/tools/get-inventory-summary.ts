@@ -29,7 +29,7 @@ Use this for "某店某月盘点录入了吗?谁改的?什么时候?值多少?" 
     if (store_code) qs.set('store_code', store_code);
     if (period) qs.set('period', period);
 
-    const res = await mcpFetch(`/api/inventory/${brand}/summary?${qs}`, {
+    const res = await mcpFetch(`/api/tamkoko/inventory/summary?${qs}`, {
       headers: { 'x-mcp-session': 'internal' },
     });
 

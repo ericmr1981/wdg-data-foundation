@@ -9,11 +9,10 @@ interface StoreOption {
 }
 
 interface Props {
-  brand: 'tamkoko' | 'gelatomiiix';
   stores: StoreOption[];
 }
 
-export function InventoryEntryForm({ brand, stores }: Props) {
+export function InventoryForm({ stores }: Props) {
   const router = useRouter();
   const today = new Date();
   const defaultPeriod = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -35,7 +34,7 @@ export function InventoryEntryForm({ brand, stores }: Props) {
     }
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/inventory/${brand}/summary`, {
+      const res = await fetch('/api/tamkoko/inventory/summary', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ store_code: storeCode, period, total_amount: num, note: note || null }),
