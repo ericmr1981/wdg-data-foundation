@@ -73,6 +73,8 @@
 - 企迈端: 查 `income_detail` (Qimai平台数据)
 - 用于入账率计算
 
+> 5 个 financial API 接受 `period='all'` 作为"全量" sentinel,等同于不限日期范围,返回品牌或门店的全部历史聚合。`income-metrics` / `payment-metrics` 已长期支持;`overview` / `kpi-trend` / `qimai-revenue` 自 2026-07-19 起支持。
+
 ---
 
 ## 数据血缘

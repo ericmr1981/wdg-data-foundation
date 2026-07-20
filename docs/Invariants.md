@@ -1,10 +1,13 @@
-# Invariants｜WDG
+# Invariants (Local-dev)
 
-## 项目级硬约束
-- `ProjectTasks.md` 是项目状态、范围、决策、变更记录的单一真源；任何实质性改动都要同步更新。
-- 不能把“部分完成”写成“已交付”；端到端未验收的能力只能标记为 `in_progress`。
-- 不主动扩 scope；发现额外问题要记录，不顺手扩成另一个项目。
+> 本仓库只维护本地开发。
 
+<<<<<<< HEAD
+- 不在仓库中明文提交任何真实密钥（API key / DB password / cookie / token）。
+- 变更必须可回滚：优先追加式 SQL（CREATE OR REPLACE / IF NOT EXISTS），避免破坏性 DROP。
+- 任何会影响 schema/ETL 行为的变更：必须跑 `bash scripts/run_change_guard.sh`。
+- 文档若提到部署/迁移（VPS）：统一归档，不在本仓库维护（见 `docs/VPS_ARCHIVE.md`）。
+=======
 ## 数据与分类约束
 - 一期只围绕两类输入：营业日报、银行流水。
 - 品牌隔离策略固定为：同库按品牌拆 schema；Bonjur 与 Yufeng 不交叉写入/汇总。
@@ -29,3 +32,4 @@
 ## 文档约束
 - 新文件优先放在本项目目录内，并在 `ProjectTasks.md` 中挂路径。
 - `Summary.md` 只保留高密度摘要，不堆运行细节；细节进 `docs/` 或 `ProjectTasks.md`。
+>>>>>>> origin/main

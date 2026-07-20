@@ -31,7 +31,7 @@ function getPrevPeriod(period: string, span: string): string {
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
   const { searchParams } = new URL(request.url);
-  const period = searchParams.get('period') || '';
+  const period = searchParams.get('period') || 'all';
   const span = searchParams.get('span') || 'month';
   const store = searchParams.get('store') || 'all';
 
@@ -43,8 +43,9 @@ export async function GET(request: Request) {
     if (!brand) return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
     if (!['month', 'quarter', 'year'].includes(span)) return NextResponse.json({ success: false, error: 'Invalid span' }, { status: 400 });
 
-    const boundaries = parsePeriod(period, span);
-    if (!boundaries) return NextResponse.json({ success: false, error: 'Invalid period' }, { status: 400 });
+    const isAll = period === 'all';
+    const boundaries = isAll ? null : parsePeriod(period, span);
+    if (!isAll && !boundaries) return NextResponse.json({ success: false, error: 'Invalid period' }, { status: 400 });
 
     let dmSchema: string;
     try {
@@ -113,7 +114,7 @@ export async function GET(request: Request) {
         ? (qimaiGross - cogsTotal) / qimaiGross : null;
     const operatingCashflow = Number(overview.cashflow.find(r => r.activity === 'operating')?.net_amount || 0);
     const cashBalance = Number(overview.balance?.cash_balance || 0);
-    const beginningBalance = Number(beginBalanceRes[0]?.cash_balance || 0);
+    const beginningBalance = isAll ? null : Number(beginBalanceRes[0]?.cash_balance || 0);
 
     // Ignore records count (offset/cancellation with negative amount)
     let ignoreCount = 0;
@@ -135,10 +136,10 @@ export async function GET(request: Request) {
     const revenuePerStore = storeCount > 0 ? Math.round((revenue / storeCount) * 100) / 100 : 0;
 
     // Previous period for comparison
-    const prevPeriodStr = getPrevPeriod(period, span);
+    const prevPeriodStr = isAll ? '' : getPrevPeriod(period, span);
     let vsRevenue = 0, vsGm = 0, vsNp = 0, vsOcf = 0;
 
-    if (prevPeriodStr) {
+    if (!isAll && prevPeriodStr) {
       const [prevOverview, prevNpRate, prevGmRate] = await Promise.all([
         getFinancialOverview(dmSchema, odsSchema, prevPeriodStr, span, store),
         getKpiRate(dmSchema, prevPeriodStr, span, store, 'net_profit_rate_pct'),

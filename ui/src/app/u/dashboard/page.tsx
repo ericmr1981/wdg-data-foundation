@@ -102,17 +102,48 @@ function useStores(brand: string) {
 
 function PeriodSelector({ span, period, setSpan, setPeriod }: { span: SpanId; period: string; setSpan: (v: SpanId) => void; setPeriod: (v: string) => void }) {
   const options = useMemo(() => {
-    if (span === 'month') return ['2025-03','2025-04','2025-05','2025-06','2025-07','2025-08','2025-09','2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05','2026-06'];
-    if (span === 'quarter') return ['2025-Q1','2025-Q2','2025-Q3','2025-Q4','2026-Q1','2026-Q2'];
-    return ['2025','2026'];
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = today.getMonth();
+    if (span === 'month') {
+      const arr: string[] = ['all'];
+      for (let i = 0; i < 18; i++) {
+        const d = new Date(y, m - i, 1);
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        arr.push(`${d.getFullYear()}-${mm}`);
+      }
+      return arr;
+    }
+    if (span === 'quarter') {
+      const curQ = Math.floor(m / 3) + 1;
+      const arr: string[] = ['all'];
+      for (let i = 0; i < 9; i++) {
+        const qOffset = i;
+        const yearOff = Math.floor((curQ - 1 - qOffset) / 4);
+        const qNum = ((curQ - 1 - qOffset) % 4 + 4) % 4 + 1;
+        const qy = y - yearOff;
+        arr.push(`${qy}-Q${qNum}`);
+      }
+      return arr;
+    }
+    const arr: string[] = ['all'];
+    for (let i = 0; i < 4; i++) {
+      arr.push(String(y - i));
+    }
+    return arr;
   }, [span]);
+
   return (
     <div className="flex items-center gap-3 flex-wrap">
       <select value={span} onChange={e => setSpan(e.target.value as SpanId)} className="border rounded px-2 py-1 text-sm bg-white">
-        <option value="month">月度</option><option value="quarter">季度</option><option value="year">年度</option>
+        <option value="month">月度</option>
+        <option value="quarter">季度</option>
+        <option value="year">年度</option>
       </select>
       <select value={period} onChange={e => setPeriod(e.target.value)} className="border rounded px-2 py-1 text-sm bg-white">
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
+        {options.map(o => (
+          <option key={o} value={o}>{o === 'all' ? '全部' : o}</option>
+        ))}
       </select>
     </div>
   );
@@ -141,7 +172,7 @@ function KpiCard({ label, value, prefix = '¥', vsPrev, isRate = false, invert =
     : isRate
       ? `${(subValue * 100).toFixed(1)}%`
       : `${prefix}${subValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const vs = vsPrev !== undefined;
+  const vs = vsPrev !== undefined && vsPrev !== 0;
   const good = vs ? (invert ? vsPrev <= 0 : vsPrev >= 0) : true;
   const nullTooltip = value == null && isRate ? '首期缺期初库存，毛利率/净利润率暂不显示。从有上月期末的月份开始展示。' : undefined;
   return (
@@ -167,7 +198,7 @@ function KpiCard({ label, value, prefix = '¥', vsPrev, isRate = false, invert =
 }
 
 // ── Tooltip bar chart (x-axis baseline, pos↑ neg↓) ────
-function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: TrendKey; format?: (v: number) => string }) {
+function TrendChart({ data, trendKey, format, period }: { data: MonthlyKpi[]; trendKey: TrendKey; format?: (v: number) => string; period?: string }) {
   const [tooltip, setTooltip] = useState<{ month: string; value: number | null; x: number; y: number } | null>(null);
   const sorted = [...data].reverse();
   // Filter out null values for range calculation (null bars render as "—" placeholder).
@@ -180,7 +211,7 @@ function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: 
 
   return (
     <div className="bg-white border rounded-lg p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">{TREND_LABELS[trendKey]}趋势</h3>
+      <h3 className="text-sm font-semibold text-gray-700 mb-3">{TREND_LABELS[trendKey]}趋势{period === 'all' ? '(全部历史)' : ''}</h3>
       <div className="relative" style={{ height: '300px' }}>
         {/* y-axis labels */}
         <div className="absolute left-0 text-[9px] text-gray-400" style={{ top: '4px' }}>{fmt(range)}</div>
@@ -195,7 +226,7 @@ function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: 
               return (
                 <div key={d.month} className="flex-1 flex flex-col items-center justify-center relative" style={{ height: '100%' }}>
                   <div className="text-[10px] text-gray-400" style={{ marginTop: `${halfH - 6}px` }}>—</div>
-                  <div className="absolute text-[9px] text-gray-400" style={{ bottom: '-18px' }}>{d.month.slice(5)}</div>
+                  <div className="absolute text-[9px] text-gray-400" style={{ bottom: '-18px' }}>{d.month.slice(2)}</div>
                 </div>
               );
             }
@@ -220,7 +251,7 @@ function TrendChart({ data, trendKey, format }: { data: MonthlyKpi[]; trendKey: 
                     onMouseLeave={() => setTooltip(null)}
                   />
                 )}
-                <div className="absolute text-[9px] text-gray-400" style={{ bottom: '-18px' }}>{d.month.slice(5)}</div>
+                <div className="absolute text-[9px] text-gray-400" style={{ bottom: '-18px' }}>{d.month.slice(2)}</div>
               </div>
             );
           })}
@@ -416,29 +447,10 @@ const CLICKABLE_KPIS: TrendKey[] = ['revenue', 'expenses', 'gross_margin_rate', 
 export default function DashboardPage() {
   const { brand } = useBrand();
   const [span, setSpan] = useState<SpanId>('month');
-  const [period, setPeriod] = useState<string>('');
+  const [period, setPeriod] = useState<string>('all');
   const [store, setStore] = useState('all');
   const [overview, setOverview] = useState<OverviewData | null>(null);
 
-  // Auto-select latest month with data for the current brand.
-  // Only runs when brand changes; period starts as '' so the data fetch
-  // (which depends on period) waits for this to populate.
-  useEffect(() => {
-    if (!brand) return;
-    fetch(`/api/financial/kpi-trend?brand=${brand}&period=2026-06&span=month&store=all`)
-      .then(r => r.json())
-      .then(d => {
-        if (d?.data?.monthly?.length) {
-          const latest = d.data.monthly[d.data.monthly.length - 1].month;
-          if (latest) setPeriod(latest);
-        }
-      })
-      .catch(() => {});
-  }, [brand]);
-
-  // Once the latest month is detected, pass it to PeriodSelector as initialPeriod.
-  // The first render of PeriodSelector will use this value; its span-change
-  // useEffect won't fire until the user actually changes span.
   const [bankRevenue, setBankRevenue] = useState<number | null>(null);
   const [qimaiRevenue, setQimaiRevenue] = useState<number | null>(null);
   const [kpiTrend, setKpiTrend] = useState<KpiTrendData | null>(null);
@@ -450,7 +462,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!brand) { setLoading(false); return; }
-    if (!period) return; // wait for kpi-trend to populate the latest month first
     setLoading(true);
     setError(null);
 
@@ -471,8 +482,8 @@ export default function DashboardPage() {
       }).catch(() => {});
   }, [brand, period, span, store]);
 
-  // Bank entry rate: only show when a specific store is selected
-  const showEntryRate = store !== 'all' && bankRevenue !== null && qimaiRevenue !== null;
+  // Bank entry rate: show whenever both bank and qimai revenue are available
+  const showEntryRate = bankRevenue !== null && qimaiRevenue !== null;
   const entryRate = showEntryRate && qimaiRevenue! > 0 ? Math.min(bankRevenue! / qimaiRevenue!, 1) : null;
 
   return (
@@ -502,7 +513,7 @@ export default function DashboardPage() {
       ) : (
         <>
           {/* All cards in one aligned grid: 5 clickable KPI + 4 auxiliary */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-5 gap-3">
+          <div data-testid="kpi-grid" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-5 gap-3">
             {CLICKABLE_KPIS.map(k => {
               // Gross margin card shows two layers: big = 营业净收 (primary, qimai net),
               // small = 营业额 (secondary, qimai gross). Falls back to bank-based
@@ -537,7 +548,7 @@ export default function DashboardPage() {
               <div className="text-sm font-bold text-blue-900 mt-1">
                 ¥{overview.cashBalance.toLocaleString(undefined, { minimumFractionDigits: 0 })}
               </div>
-              {overview.beginningBalance > 0 && (
+              {(overview.beginningBalance ?? 0) > 0 && (
                 <div className="text-[10px] text-blue-500 mt-0.5">
                   期初 ¥{overview.beginningBalance.toLocaleString(undefined, { minimumFractionDigits: 0 })}
                   <span className="ml-1">
@@ -555,24 +566,17 @@ export default function DashboardPage() {
               <div className="text-[11px] text-green-600">店均营收</div>
               <div className="text-lg font-bold text-green-900">¥{overview.revenuePerStore.toLocaleString(undefined, { minimumFractionDigits: 0 })}</div>
             </div>
-            {store !== 'all' ? (
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                <div className="text-[11px] text-purple-600">银行入账率</div>
-                <div className="text-lg font-bold text-purple-900">
-                  {entryRate !== null ? `${(entryRate * 100).toFixed(1)}%` : (qimaiRevenue === null ? '无企迈数据' : '加载中...')}
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+              <div className="text-[11px] text-purple-600">银行入账率</div>
+              <div className="text-lg font-bold text-purple-900">
+                {entryRate !== null ? `${(entryRate * 100).toFixed(1)}%` : (qimaiRevenue === null ? '无企迈数据' : '加载中...')}
+              </div>
+              {bankRevenue !== null && qimaiRevenue !== null && (
+                <div className="text-[10px] text-purple-500 mt-0.5 leading-tight">
+                  银行 ¥{bankRevenue.toLocaleString()}<br />企迈 ¥{qimaiRevenue.toLocaleString()}
                 </div>
-                {bankRevenue !== null && qimaiRevenue !== null && (
-                  <div className="text-[10px] text-purple-500 mt-0.5 leading-tight">
-                    银行 ¥{bankRevenue.toLocaleString()}<br />企迈 ¥{qimaiRevenue.toLocaleString()}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                <div className="text-[11px] text-gray-500">银行入账率</div>
-                <div className="text-lg font-bold text-gray-400">选择门店</div>
-              </div>
-            )}
+              )}
+            </div>
             <div className={`${overview.cashRunway !== null ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'} border rounded-lg p-3`}>
               <div className={`text-[11px] ${overview.cashRunway !== null ? 'text-amber-600' : 'text-gray-500'}`}>现金流月数</div>
               <div className={`text-lg font-bold ${overview.cashRunway !== null ? 'text-amber-900' : 'text-gray-700'}`}>
@@ -591,7 +595,7 @@ export default function DashboardPage() {
           {/* Charts: trend on top, expense below */}
           <div className="space-y-4">
             {kpiTrend?.monthly && kpiTrend.monthly.length > 0 ? (
-              <TrendChart data={kpiTrend.monthly} trendKey={activeTrend}
+              <TrendChart data={kpiTrend.monthly} trendKey={activeTrend} period={period}
                 format={activeTrend === 'gross_margin_rate' || activeTrend === 'net_profit_rate'
                   ? (v) => `${(v * 100).toFixed(1)}%`
                   : (v) => `¥${v.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}

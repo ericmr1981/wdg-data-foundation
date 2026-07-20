@@ -17,15 +17,17 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const brandParam = searchParams.get('brand') || '';
-    const period = searchParams.get('period') || '';
+    const period = searchParams.get('period') || 'all';
     const span = searchParams.get('span') || 'month';
     const store = searchParams.get('store') || 'all';
     const brand = normalizeBrand(brandParam);
     if (!brand) return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
 
-    const boundaries = parsePeriod(period, span);
-    if (!boundaries) return NextResponse.json({ success: false, error: 'Invalid period' }, { status: 400 });
-    const [startDate, endDate] = boundaries;
+    const isAll = period === 'all';
+    const boundaries = isAll ? null : parsePeriod(period, span);
+    if (!isAll && !boundaries) return NextResponse.json({ success: false, error: 'Invalid period' }, { status: 400 });
+    const startDate = isAll ? null : boundaries![0];
+    const endDate = isAll ? null : boundaries![1];
 
     const dmSchema = await getDmSchemaSafe(brand);
     const odsSchema = dmSchema.replace('_dm', '_ods');
@@ -112,8 +114,16 @@ export async function GET(request: Request) {
     });
 
     // ── Current / previous month expenses filtered by period+store ──
-    const expParams: (string | number)[] = [startDate, endDate];
-    if (store !== 'all') expParams.push(store);
+    const expParams: (string | number)[] = [];
+    let expDateClause = '';
+    if (!isAll && startDate && endDate) {
+      expDateClause = ` AND t.txn_time >= $${expParams.length + 1}::date AND t.txn_time < $${expParams.length + 2}::date`;
+      expParams.push(startDate, endDate);
+    }
+    if (store !== 'all') {
+      expDateClause += ` AND t.store_code = $${expParams.length + 1}`;
+      expParams.push(store);
+    }
 
     const expenseTrend = await pool.query(
       `WITH actuals AS (
@@ -123,8 +133,7 @@ export async function GET(request: Request) {
           COALESCE(SUM(coalesce(t.out_amt,0) - coalesce(t.in_amt,0)), 0) as amount
         FROM ${dmSchema}.bank_txn_classified_snapshot c
         JOIN ${odsSchema}.bank_txn t ON t.id = c.bank_txn_id
-        WHERE c.classified_source IN ('rule', 'override')
-          AND t.txn_time >= $1::date AND t.txn_time < $2::date${store !== 'all' ? ' AND t.store_code = $3' : ''}
+        WHERE c.classified_source IN ('rule', 'override')${expDateClause}
         GROUP BY c.lvl1_code, c.lvl2_code
       )
       SELECT
@@ -145,15 +154,30 @@ export async function GET(request: Request) {
 
     // Previous month expenses — calculate from period string
     let prevPeriodStr = '';
-    if (span === 'month') {
+    if (!isAll && span === 'month') {
       const [y, m] = period.split('-');
       const pm = Number(m) - 1;
       if (pm < 1) prevPeriodStr = `${Number(y) - 1}-12`;
       else prevPeriodStr = `${y}-${String(pm).padStart(2, '0')}`;
     }
     const prevBoundaries = prevPeriodStr ? parsePeriod(prevPeriodStr, 'month') : null;
-    const prevParams: (string | number)[] = prevBoundaries ? [prevBoundaries[0], prevBoundaries[1]] : [startDate, endDate];
-    if (store !== 'all') prevParams.push(store);
+    const prevParams: (string | number)[] = [];
+    let prevDateClause = '';
+    if (prevBoundaries) {
+      const startIdx = prevParams.length + 1;
+      const endIdx = prevParams.length + 2;
+      prevParams.push(prevBoundaries[0], prevBoundaries[1]);
+      prevDateClause = ` AND t.txn_time >= $${startIdx}::date AND t.txn_time < $${endIdx}::date`;
+    } else if (!isAll && startDate && endDate) {
+      const startIdx = prevParams.length + 1;
+      const endIdx = prevParams.length + 2;
+      prevParams.push(startDate, endDate);
+      prevDateClause = ` AND t.txn_time >= $${startIdx}::date AND t.txn_time < $${endIdx}::date`;
+    }
+    if (store !== 'all') {
+      prevDateClause += ` AND t.store_code = $${prevParams.length + 1}`;
+      prevParams.push(store);
+    }
 
     const prevExpenseTrend = await pool.query(
       `WITH actuals AS (
@@ -163,8 +187,7 @@ export async function GET(request: Request) {
           COALESCE(SUM(coalesce(t.out_amt,0) - coalesce(t.in_amt,0)), 0) as amount
         FROM ${dmSchema}.bank_txn_classified_snapshot c
         JOIN ${odsSchema}.bank_txn t ON t.id = c.bank_txn_id
-        WHERE c.classified_source IN ('rule', 'override')
-          AND t.txn_time >= $1::date AND t.txn_time < $2::date${store !== 'all' ? ' AND t.store_code = $3' : ''}
+        WHERE c.classified_source IN ('rule', 'override')${prevDateClause}
         GROUP BY c.lvl1_code, c.lvl2_code
       )
       SELECT
@@ -204,8 +227,7 @@ export async function GET(request: Request) {
       `SELECT COALESCE(SUM(CASE WHEN c.lvl1_code = 'REV_BIZ' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as revenue
        FROM ${dmSchema}.bank_txn_classified_snapshot c
        JOIN ${odsSchema}.bank_txn t ON t.id = c.bank_txn_id
-       WHERE c.classified_source IN ('rule', 'override')
-         AND t.txn_time >= $1::date AND t.txn_time < $2::date${store !== 'all' ? ' AND t.store_code = $3' : ''}`,
+       WHERE c.classified_source IN ('rule', 'override')${expDateClause}`,
       expParams
     );
     const currentRevenue = Number(revRes.rows[0]?.revenue || 0);
@@ -214,8 +236,7 @@ export async function GET(request: Request) {
       `SELECT COALESCE(SUM(CASE WHEN c.lvl1_code = 'REV_BIZ' THEN coalesce(t.in_amt,0) - coalesce(t.out_amt,0) ELSE 0 END), 0) as revenue
        FROM ${dmSchema}.bank_txn_classified_snapshot c
        JOIN ${odsSchema}.bank_txn t ON t.id = c.bank_txn_id
-       WHERE c.classified_source IN ('rule', 'override')
-         AND t.txn_time >= $1::date AND t.txn_time < $2::date${store !== 'all' ? ' AND t.store_code = $3' : ''}`,
+       WHERE c.classified_source IN ('rule', 'override')${prevDateClause}`,
       prevParams
     );
     const prevRevenue = Number(prevRevRes.rows[0]?.revenue || 0);
@@ -224,8 +245,8 @@ export async function GET(request: Request) {
       success: true,
       data: {
         monthly,
-        current_month: { revenue: currentRevenue, expenses: currentExpenses },
-        prev_month: { revenue: prevRevenue, expenses: prevExpenses },
+        current_month: isAll ? null : { revenue: currentRevenue, expenses: currentExpenses },
+        prev_month: isAll ? null : { revenue: prevRevenue, expenses: prevExpenses },
       },
     });
   } catch (error: unknown) {

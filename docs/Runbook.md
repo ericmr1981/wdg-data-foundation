@@ -13,10 +13,17 @@
 - 一键脚本：`scripts/dev.sh`
 - 一键链路：`scripts/run_pipeline_oneclick.py`
 
+<<<<<<< HEAD
+## VPS / Deploy（已归档）
+本仓库现在**只维护本地开发**。
+
+如需查看历史 VPS 部署/迁移/运维材料，请看：`docs/VPS_ARCHIVE.md`。
+=======
 ## 部署说明（本仓库不维护）
 本仓库定位为**本地开发可复现**。
 
 部署/上线/运维属于使用者自行决定的范畴（例如选择 Docker Compose、K8s、PaaS 等），建议通过 tag/release 固定版本。
+>>>>>>> origin/main
 
 ## Guard 结果处理
 - `risk=0`：可继续
