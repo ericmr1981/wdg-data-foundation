@@ -128,10 +128,10 @@ async function main() {
   registerAdminConfigRoutes(app)
   registerTestConnectionRoute(app)
   registerTestChatRoute(app)
-  registerTestRunRoute(app, { mcpBridge })
   registerAdminSkillRoutes(app)
   registerAdminToolRoutes(app)
   registerMcpStatusRoutes(app, mcpBridge)
+  registerTestRunRoute(app, { mcpBridge, runner })
 
   // WS/Channels
   const webChannel = new WebChannel(WS_PORT, null)
