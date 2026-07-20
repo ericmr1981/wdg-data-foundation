@@ -155,7 +155,10 @@ async function main() {
   await mcpBridge.connectPrimary(mcpBackends)
   // 外部后端异步连接（secondary，不阻塞）
   mcpBridge.startSecondary(mcpBackends)
-  await app.listen({ port: HTTP_PORT, host: '127.0.0.1' })
+  // Listen on all interfaces so docker port mapping can reach the server.
+  // 0.0.0.0 is required because Docker Desktop on macOS forwards to the
+  // container's bridge IP (172.17.0.x), not its loopback.
+  await app.listen({ port: HTTP_PORT, host: '0.0.0.0' })
 
   await webChannel.start()
   await cronChannel.start()
