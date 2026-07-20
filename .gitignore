@@ -58,6 +58,7 @@ put-request-body.json
 artifacts/
 docs/productdata_schema.svg
 docs/superpowers/
+graphify-out/
 scripts/restore_to_supabase.sh
 scripts/load_bonjur_batches.mjs
 
