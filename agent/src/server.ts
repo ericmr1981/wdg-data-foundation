@@ -99,14 +99,8 @@ async function main() {
   ]
   // 外部 MCP 后端 — 从 DB agent.config.mcp_backends 读取
   // admin 在 /api/admin/config 编辑，即时生效（重启后重新加载）
-  // Lima VM 环境下 127.0.0.1 指向 VM 自身，无法访问宿主机的服务。
-  // 自动将 127.0.0.1:端口 替换为 host.lima.internal:端口 以便从 VM 内部连接宿主机。
   if (cfg.mcpBackends.length > 0) {
-    const resolved = cfg.mcpBackends.map(b => ({
-      ...b,
-      url: b.url.replace(/^http:\/\/127\.0\.0\.1:/, 'http://host.lima.internal:'),
-    }))
-    mcpBackends.push(...resolved)
+    mcpBackends.push(...cfg.mcpBackends)
   }
 
   const conversation = new ConversationManager(getPool(), null)

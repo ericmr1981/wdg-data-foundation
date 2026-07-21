@@ -66,7 +66,8 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
     || baseURL !== (initial.baseURL ?? '')
     || apiKey !== ''
     || model !== initial.model
-    || jwksUrl !== (initial.jwksUrl ?? '');
+    || jwksUrl !== (initial.jwksUrl ?? '')
+    || mcpBackendsJson !== JSON.stringify(initial.mcpBackends ?? [], null, 2);
 
   function updateParam<K extends keyof AgentConfigParams>(k: K, v: number | string | null) {
     setParams(p => ({ ...p, [k]: v }));
