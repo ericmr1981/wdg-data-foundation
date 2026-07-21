@@ -29,11 +29,31 @@ export interface CategoryBucket {
   total_stock: number;
 }
 
+// 仓库级 turnover (DailyCheck warehouse_consumption 返回,
+// Σ(per-item turnover) 加权汇总,采用 stocktake 锚点的加权平均法)
+export interface WarehouseTurnover {
+  window_days: number;
+  warehouse_cogs_value: number;
+  warehouse_avg_inventory_value: number;
+  turnover_value: number;
+  items_with_turnover: number;
+  items_total: number;
+  data_quality: 'high' | 'medium' | 'low' | 'none';
+  method: string;
+}
+
+// warehouse_consumption 新返回值结构
+export interface WarehouseConsumptionResponse {
+  items: ConsumptionRow[];
+  warehouse_turnover: WarehouseTurnover;
+}
+
 export interface DailyCheckBoardPayload {
   warehouse_code: string;
   warehouse_name: string;
-  total_stock: number;            // items_list current_stock 求和
+  total_stock: number;            // items_list current_stock 求和(单位:元, 用 quantity × unit_cost)
   categories: CategoryBucket[];   // 9 类别
   top_turnover: ConsumptionRow[]; // warehouse_consumption top-20
+  warehouse_turnover: WarehouseTurnover | null; // 仓库级 30 天周转率
   fetched_at: string;             // ISO 8601
 }

@@ -15,10 +15,15 @@ export function GelatomiiixInventoryTab({ stores, initialRows }: Props) {
     <div>
       <DailyCheckBoard />
       <p className="text-sm text-gray-600 mb-4">
-        仅录入每店每月期末库存总额(CNY)。蜜可诗无 COGS 计算链路,COGS / 周转次 列展示 <code>-</code>;
-        物料级数据(件数、周转率)见上方 DailyCheck 看板。
+        蜜可诗物料级库存数据由上方 DailyCheck 看板提供(月度总额录入已停用);
+        历史月度盘点记录仍展示在下方表格中(COGS / 周转次 列展示 <code>-</code>)。
       </p>
-      <InventoryEntryForm brand="gelatomiiix" stores={stores} />
+      <InventoryEntryForm
+        brand="gelatomiiix"
+        stores={stores}
+        disabled
+        disabledReason="蜜可诗物料级库存数据由 DailyCheck 看板提供；月度总额录入已停用。"
+      />
       <InventoryMonthlyTable rows={initialRows} />
     </div>
   );

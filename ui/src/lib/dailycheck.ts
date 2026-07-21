@@ -3,7 +3,13 @@
 // /Users/ericmr/Documents/GitHub/DailyCheck/docs/integrations/dailycheck-mcp/README.md
 
 import './dailycheck-types';
-import type { Warehouse, ConsumptionRow, CategoryBucket } from './dailycheck-types';
+import type {
+  Warehouse,
+  ConsumptionRow,
+  CategoryBucket,
+  WarehouseConsumptionResponse,
+  WarehouseTurnover,
+} from './dailycheck-types';
 
 const URL = process.env.DAILYCHECK_URL || 'http://localhost:5100';
 const TIMEOUT_MS = Number(process.env.DAILYCHECK_TIMEOUT_MS || '8000');
@@ -98,29 +104,69 @@ export async function listWarehouses(): Promise<Warehouse[]> {
   return callTool<Warehouse[]>('warehouse_list');
 }
 
-export async function getItemsList(whCode: string): Promise<Array<{ category: string; current_stock: number }>> {
+export async function getItemsList(whCode: string): Promise<Array<{ category_name: string; current_stock: number; unit_cost: number }>> {
   return callTool('items_list', { warehouse_code: whCode });
 }
 
 export async function getWarehouseTotal(whCode: string): Promise<number> {
+  // 总库存价值 = Σ (current_stock × unit_cost),单位为元
   const items = await getItemsList(whCode);
-  return items.reduce((acc, it) => acc + Number(it.current_stock ?? 0), 0);
+  return items.reduce((acc, it) => acc + Number(it.current_stock ?? 0) * Number(it.unit_cost ?? 0), 0);
 }
 
-export async function getTurnoverTop(whCode: string, limit = 20): Promise<ConsumptionRow[]> {
-  return callTool<ConsumptionRow[]>('warehouse_consumption', {
-    warehouse_code: whCode,
-    days: 30,
-    sort_by: 'turnover',
-    limit,
-  });
+export async function getTurnoverTop(
+  whCode: string,
+  limit = 20,
+): Promise<{ items: ConsumptionRow[]; warehouse_turnover: WarehouseTurnover }> {
+  // DailyCheck warehouse_consumption 返回 { items, warehouse_turnover }
+  const res = await callTool<WarehouseConsumptionResponse | ConsumptionRow[]>(
+    'warehouse_consumption',
+    {
+      warehouse_code: whCode,
+      days: 30,
+      sort_by: 'turnover',
+      limit,
+    }
+  );
+  // 兼容旧的 array 形状 (DailyCheck 之前是直接返 array)
+  if (Array.isArray(res)) {
+    return {
+      items: res,
+      warehouse_turnover: {
+        window_days: 30,
+        warehouse_cogs_value: 0,
+        warehouse_avg_inventory_value: 0,
+        turnover_value: 0,
+        items_with_turnover: 0,
+        items_total: 0,
+        data_quality: 'none',
+        method: 'unavailable',
+      },
+    };
+  }
+  return {
+    items: res.items ?? [],
+    warehouse_turnover: res.warehouse_turnover ?? {
+      window_days: 30,
+      warehouse_cogs_value: 0,
+      warehouse_avg_inventory_value: 0,
+      turnover_value: 0,
+      items_with_turnover: 0,
+      items_total: 0,
+      data_quality: 'none',
+      method: 'unavailable',
+    },
+  };
 }
 
 export async function getCategoryDistribution(whCode: string): Promise<CategoryBucket[]> {
   const items = await getItemsList(whCode);
   const map = new Map<string, number>();
   for (const it of items) {
-    map.set(it.category, (map.get(it.category) ?? 0) + Number(it.current_stock ?? 0));
+    const name = it.category_name || `category_${it.category_id ?? 'unknown'}`;
+    // 类别价值 = Σ (current_stock × unit_cost)
+    const value = Number(it.current_stock ?? 0) * Number(it.unit_cost ?? 0);
+    map.set(name, (map.get(name) ?? 0) + value);
   }
   return Array.from(map.entries())
     .map(([category, total_stock]) => ({ category, total_stock }))

@@ -35,7 +35,7 @@ export function DailyCheckBoard() {
   if (state.status === 'error') {
     return <DailyCheckErrorBanner message={state.message} />;
   }
-  const { warehouse_code, warehouse_name, total_stock, categories, top_turnover, fetched_at } = state.data;
+  const { warehouse_code, warehouse_name, total_stock, categories, top_turnover, warehouse_turnover, fetched_at } = state.data;
 
   return (
     <section className="mb-6">
@@ -48,15 +48,32 @@ export function DailyCheckBoard() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
         <div className="bg-white rounded border p-4">
-          <div className="text-xs text-gray-500">当前库存总额(件数)</div>
+          <div className="text-xs text-gray-500">当前库存总额(金额 CNY)</div>
           <div className="text-2xl font-semibold tabular-nums">
-            {total_stock.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}
+            ¥{total_stock.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}
           </div>
         </div>
-        <div className="bg-white rounded border p-4 md:col-span-2">
-          <div className="text-xs text-gray-500 mb-1">类别分布(件数)</div>
+        <div className="bg-white rounded border p-4">
+          <div className="text-xs text-gray-500">总库存周转率({warehouse_turnover?.window_days ?? 30} 天)</div>
+          <div className="text-2xl font-semibold tabular-nums">
+            {warehouse_turnover && warehouse_turnover.turnover_value > 0
+              ? `${warehouse_turnover.turnover_value.toFixed(2)} 次`
+              : '-'}
+          </div>
+          {warehouse_turnover && warehouse_turnover.turnover_value > 0 && (
+            <div className="text-xs text-gray-400 mt-1">
+              COGS ¥{warehouse_turnover.warehouse_cogs_value.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}
+              ÷ 平均库存 ¥{warehouse_turnover.warehouse_avg_inventory_value.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}
+              <br />
+              锚点 {warehouse_turnover.items_with_turnover}/{warehouse_turnover.items_total} item ·
+              质量 {warehouse_turnover.data_quality}
+            </div>
+          )}
+        </div>
+        <div className="bg-white rounded border p-4 md:col-span-1">
+          <div className="text-xs text-gray-500 mb-1">类别分布(金额 CNY)</div>
           <table className="w-full text-xs">
-            <thead><tr className="text-gray-500"><th className="text-left">类别</th><th className="text-right">件数</th></tr></thead>
+            <thead><tr className="text-gray-500"><th className="text-left">类别</th><th className="text-right">金额</th></tr></thead>
             <tbody>
               {categories.length === 0 && (
                 <tr><td colSpan={2} className="py-2 text-gray-400 text-center">无数据</td></tr>
@@ -65,7 +82,7 @@ export function DailyCheckBoard() {
                 <tr key={c.category} className="border-t">
                   <td className="py-1">{c.category}</td>
                   <td className="py-1 text-right tabular-nums">
-                    {c.total_stock.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}
+                    ¥{c.total_stock.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}
                   </td>
                 </tr>
               ))}

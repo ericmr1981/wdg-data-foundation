@@ -12,7 +12,7 @@ import type { DailyCheckBoardPayload } from '@/lib/dailycheck-types';
 
 export const dynamic = 'force-dynamic';
 
-const FIXED_WAREHOUSE_CODE = 'sh_sc';   // 蜜可诗供应链仓库 — 与 ops.stores store_code 对齐
+const FIXED_WAREHOUSE_CODE = "wh_003";   // 蜜可诗供应链仓库 — 与 ops.stores store_code 对齐
 
 export async function GET(req: Request) {
   try {
@@ -31,12 +31,20 @@ export async function GET(req: Request) {
     }
 
     const items = await getItemsList(FIXED_WAREHOUSE_CODE);
-    const top_turnover = await getTurnoverTop(FIXED_WAREHOUSE_CODE, 20);
+    const turnoverResult = await getTurnoverTop(FIXED_WAREHOUSE_CODE, 20);
+    const top_turnover = turnoverResult.items;
+    const warehouse_turnover = turnoverResult.warehouse_turnover;
 
-    const total_stock = items.reduce((acc, it) => acc + Number(it.current_stock ?? 0), 0);
+    // 总额 + 类别按「价值」(current_stock × unit_cost)计算,单位为元
+    const total_stock = items.reduce(
+      (acc, it) => acc + Number(it.current_stock ?? 0) * Number(it.unit_cost ?? 0),
+      0
+    );
     const catMap = new Map<string, number>();
     for (const it of items) {
-      catMap.set(it.category, (catMap.get(it.category) ?? 0) + Number(it.current_stock ?? 0));
+      const name = (it as { category_name?: string }).category_name || `category_${(it as { category_id?: number }).category_id ?? 'unknown'}`;
+      const value = Number(it.current_stock ?? 0) * Number(it.unit_cost ?? 0);
+      catMap.set(name, (catMap.get(name) ?? 0) + value);
     }
     const categories = Array.from(catMap.entries())
       .map(([category, total_stock]) => ({ category, total_stock }))
@@ -48,6 +56,7 @@ export async function GET(req: Request) {
       total_stock,
       categories,
       top_turnover,
+      warehouse_turnover,
       fetched_at: new Date().toISOString(),
     };
     return NextResponse.json({ success: true, data: payload });

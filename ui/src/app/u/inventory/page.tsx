@@ -60,7 +60,18 @@ export default async function InventoryPage({
     [brand]
   );
 
-  const rows = rowsRes.rows as InventorySummaryRow[];
+  // pg returns numeric columns as strings — coerce to JS numbers for table rendering
+  const numericFields = ["total_amount", "cogs_amt", "opening_amt", "closing_amt", "turnover_times", "turnover_days"] as const;
+  const rows = (rowsRes.rows as Array<Record<string, unknown>>).map((r) => {
+    const out = { ...r };
+    for (const k of numericFields) {
+      if (k in out) {
+        const v = out[k];
+        out[k] = v == null ? null : (typeof v === "number" ? v : Number(v));
+      }
+    }
+    return out as unknown as InventorySummaryRow;
+  });
   const stores = storesRes.rows;
 
   return (

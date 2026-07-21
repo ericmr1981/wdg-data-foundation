@@ -11,9 +11,11 @@ interface StoreOption {
 interface Props {
   brand: 'tamkoko' | 'gelatomiiix';
   stores: StoreOption[];
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
-export function InventoryEntryForm({ brand, stores }: Props) {
+export function InventoryEntryForm({ brand, stores, disabled = false, disabledReason }: Props) {
   const router = useRouter();
   const today = new Date();
   const defaultPeriod = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -27,6 +29,7 @@ export function InventoryEntryForm({ brand, stores }: Props) {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (disabled) return;
     setError(null);
     const num = Number(amount);
     if (!isFinite(num) || num < 0) {
@@ -50,6 +53,17 @@ export function InventoryEntryForm({ brand, stores }: Props) {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (disabled) {
+    return (
+      <div className="bg-gray-50 border border-dashed border-gray-300 rounded p-4 mb-6">
+        <div className="text-sm text-gray-600">
+          <span className="font-medium text-gray-700">月度录入已停用。</span>
+          {disabledReason ? ` ${disabledReason}` : ''}
+        </div>
+      </div>
+    );
   }
 
   return (
