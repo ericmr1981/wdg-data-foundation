@@ -123,7 +123,7 @@ async function main() {
   registerTestConnectionRoute(app)
   registerTestChatRoute(app)
   registerAdminSkillRoutes(app)
-  registerAdminToolRoutes(app)
+  registerAdminToolRoutes(app, mcpBridge)
   registerMcpStatusRoutes(app, mcpBridge)
   registerTestRunRoute(app, { mcpBridge, runner })
 

@@ -51,7 +51,7 @@ interface RunStreamedLoopCtx {
 }
 
 export class AgentRunner {
-  private _globalToolCallCount = new Map<string, number>()
+  private _toolCallSeen = new Map<string, Set<string>>()
   constructor(private deps: AgentRunnerDeps) {}
 
   async handle(
@@ -61,15 +61,15 @@ export class AgentRunner {
     const cfg = getAgentConfig()
     console.log('[runner] handle start convId=' + (msg.conversationId ?? 'null'))
 
-    // Reset per-conversation tool call dedup counter
-    this._globalToolCallCount.clear()
+    // Reset per-conversation tool call dedup tracker
+    this._toolCallSeen.clear()
 
     // 1. 解析会话
     const conv = await this.deps.conversation.getOrCreate(msg)
     console.log('[runner] getOrCreate done convId=' + conv.conversationId)
 
     // 2. 加载历史
-    const history = await this.deps.conversation.getMessages(conv.conversationId, 10)
+    const history = await this.deps.conversation.getMessages(conv.conversationId, 30)
     console.log('[runner] getMessages done count=' + history.length)
 
     // 3. 持久化用户消息
@@ -78,6 +78,7 @@ export class AgentRunner {
       role: 'user',
       content: msg.content,
     }).catch((e: Error) => console.error('[runner] appendMessage(user) failed:', e.message))
+    this.deps.conversation.maybeCompress(conv.conversationId).catch(() => {})
 
     // 4. 工具集
     console.log('[runner] listTools start...')
@@ -325,21 +326,26 @@ export class AgentRunner {
           const toolName = (tu as any).name as string
           const toolInput = (tu as any).input || {}
 
-          // Limit repeated calls to the same tool (max 2 per conversation turn loop)
-          const globalCount = this._globalToolCallCount.get(toolName) ?? 0
-          if (globalCount >= 2) {
-            console.log(`[runner] tool "${toolName}" already called ${globalCount}x, skipping`)
+          // Dedup: reject identical (toolName + input) pairs within one turn
+          const inputKey = JSON.stringify(toolInput)
+          const seenInputs = this._toolCallSeen.get(toolName)
+          if (seenInputs?.has(inputKey)) {
+            console.log(`[runner] tool "${toolName}" with identical input skipped (already called this turn)`)
             toolResults.push({
               type: 'tool_result',
               tool_use_id: (tu as any).id as string,
-              content: `Tool "${toolName}" has already been called ${globalCount} times in this conversation. Do not call it again — use the previous result or try a different approach.`,
-              is_error: false,
+              content: `Tool "${toolName}" has already been called with the same arguments. Use the previous result.`,
+              is_error: true,
             })
             continue
           }
 
-          this._globalToolCallCount.set(toolName, globalCount + 1)
-          console.log(`[runner] calling tool: ${toolName} (call #${globalCount + 1})`)
+          if (!seenInputs) {
+            this._toolCallSeen.set(toolName, new Set([inputKey]))
+          } else {
+            seenInputs.add(inputKey)
+          }
+          console.log(`[runner] calling tool: ${toolName} ${JSON.stringify(toolInput).slice(0, 120)}`)
 
           let resultContent: string
           let isError = false
@@ -387,14 +393,12 @@ export class AgentRunner {
         continue
       }
 
-      // 无 tool_use → 最终 text 回复
+      // 无 tool_use → 最终 text 回复：push to loopMessages 统一顺序 flush
       const finalText = extractTextContent(finalMessage)
-      await this.deps.conversation.appendMessage({
-        conversationId: ctx.conv.conversationId,
+      loopMessages.push({
         role: 'assistant',
-        content: finalText,
-        toolCalls: extractToolCalls(finalMessage),
-      }).catch((e: Error) => console.error('[runner] appendMessage(assistant) failed:', e.message))
+        content: finalMessage.content || [{ type: 'text', text: finalText }],
+      })
       break
     }
 
@@ -428,6 +432,7 @@ export class AgentRunner {
         }
       }
     }
+    this.deps.conversation.maybeCompress(ctx.conv.conversationId).catch(() => {})
   }
 
   private async sendError(
