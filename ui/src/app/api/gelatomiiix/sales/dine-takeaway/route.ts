@@ -1,4 +1,4 @@
-// Gelatomiiix | 蜜可诗 销售趋势 API
+// Gelatomiiix | 蜜可诗 堂食/外卖分析 API
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
@@ -10,34 +10,33 @@ const BRAND = 'gelatomiiix';
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const storeCode = searchParams.get('store') ?? null;
+    const monthRaw = searchParams.get('month') ?? null;
+    const month = monthRaw && monthRaw.length === 7 ? monthRaw + '-01' : monthRaw;
     const excludeOther = searchParams.get('exclude_other') === 'true';
     const schema = getDmSchema(BRAND);
 
     try {
         if (excludeOther) {
-            const conds: string[] = ['NOT is_refund', 'payment_methods IS NOT NULL',
-                `date_trunc('month', biz_date) >= date_trunc('month', CURRENT_DATE) - INTERVAL '11 months'`];
+            const conds: string[] = ['NOT is_refund', 'payment_methods IS NOT NULL'];
             const p: unknown[] = [];
             if (storeCode) { p.push(storeCode); conds.push(`store_code = $${p.length}`); }
+            if (month) { p.push(month); conds.push(`date_trunc('month', biz_date)::date = $${p.length}::date`); }
             const { rows } = await pool.query(
                 `SELECT store_code, date_trunc('month', biz_date)::date AS month,
-                    SUM(gross_amt) AS gross_amt, SUM(revenue_amt) AS revenue_amt,
-                    SUM(discount_amt) AS discount_amt, SUM(net_amt) AS net_amt, COUNT(*) AS order_cnt,
+                    COALESCE(NULLIF(order_type,''),'未知') AS order_type,
+                    SUM(gross_amt) AS gross_amt, SUM(revenue_amt) AS revenue_amt, COUNT(*) AS order_cnt,
                     ROUND(SUM(revenue_amt)/NULLIF(SUM(gross_amt),0),6) AS cash_in_rate,
-                    ROUND(SUM(net_amt)/NULLIF(SUM(gross_amt),0),6) AS profit_rate,
-                    ROUND(SUM(gross_amt)/NULLIF(COUNT(*),0),2) AS avg_order_amt,
-                    ROUND(100.0*SUM(revenue_amt)/NULLIF(SUM(gross_amt),0),2) AS cash_in_rate_pct,
-                    ROUND(100.0*SUM(net_amt)/NULLIF(SUM(gross_amt),0),2) AS profit_rate_pct,
-                    ROUND(100.0*SUM(discount_amt)/NULLIF(SUM(gross_amt),0),2) AS discount_rate_pct
+                    ROUND(100.0*SUM(revenue_amt)/NULLIF(SUM(gross_amt),0),2) AS cash_in_rate_pct
                 FROM ${ODS}.income_detail WHERE ${conds.join(' AND ')}
-                GROUP BY store_code, month ORDER BY store_code, month`, p);
+                GROUP BY store_code, month, order_type ORDER BY store_code, month, order_type`, p);
             return NextResponse.json({ success: true, data: rows });
         }
         const conds: string[] = [];
         const params: unknown[] = [];
         if (storeCode) { params.push(storeCode); conds.push(`store_code = $${params.length}`); }
+        if (month)     { params.push(month);     conds.push(`month = $${params.length}`); }
         const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
-        const { rows } = await pool.query(`SELECT * FROM ${schema}.v_sales_trend ${where} ORDER BY store_code, month`, params);
+        const { rows } = await pool.query(`SELECT * FROM ${schema}.v_sales_dine_takeaway ${where} ORDER BY store_code, month, order_type`, params);
         return NextResponse.json({ success: true, data: rows });
     } catch (error) {
         if ((error as { code?: string })?.code === '42P01') return NextResponse.json({ success: true, data: null, note: 'view not ready' });

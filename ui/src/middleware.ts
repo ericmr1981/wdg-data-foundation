@@ -39,6 +39,8 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api/bonjur/sales/qimai-pos') ||
     pathname.startsWith('/api/bonjur/sales/upload-self-service') ||
     pathname.startsWith('/api/tamkoko/sales') ||
+    pathname.startsWith('/api/gelatomiiix/sales') ||
+    pathname.startsWith('/api/bonjur/sales') ||
     pathname.startsWith('/api/store-report') ||
     pathname.startsWith('/u/store-report') ||
     pathname.startsWith('/u/sales/tamkoko') ||

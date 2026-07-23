@@ -163,7 +163,7 @@ export async function getCategoryDistribution(whCode: string): Promise<CategoryB
   const items = await getItemsList(whCode);
   const map = new Map<string, number>();
   for (const it of items) {
-    const name = it.category_name || `category_${it.category_id ?? 'unknown'}`;
+    const name = it.category_name || 'unknown_category';
     // 类别价值 = Σ (current_stock × unit_cost)
     const value = Number(it.current_stock ?? 0) * Number(it.unit_cost ?? 0);
     map.set(name, (map.get(name) ?? 0) + value);

@@ -1,66 +1,52 @@
+// Gelatomiiix | 蜜可诗 销售月度 KPI 概览 API
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
-import { getSalesOverview } from '@/lib/repositories/sales-repository';
 import { getErrorMessage } from '@/lib/query-types';
+import { getDmSchema } from '@/lib/brand-server';
 
-export const dynamic = 'force-dynamic';
+const BRAND = 'gelatomiiix';
+const ODS = 'gelatomiiix_ods';
 
 export async function GET(request: NextRequest) {
-  try {
     const { searchParams } = new URL(request.url);
-    const storeCode = searchParams.get('store_code');
-    const month = searchParams.get('month');
-    const pureMode = searchParams.get('pure_mode') === 'true';
+    const storeCode = searchParams.get('store') ?? null;
+    const monthRaw = searchParams.get('month') ?? null;
+    const month = monthRaw && monthRaw.length === 7 ? monthRaw + '-01' : monthRaw;
+    const excludeOther = searchParams.get('exclude_other') === 'true';
 
-    if (!storeCode || !month) {
-      return NextResponse.json({ success: false, error: 'store_code and month required' }, { status: 400 });
+    const schema = getDmSchema(BRAND);
+
+    try {
+        if (excludeOther) {
+            const conds: string[] = ['NOT is_refund', 'payment_methods IS NOT NULL'];
+            const p: unknown[] = [];
+            if (storeCode) { p.push(storeCode); conds.push(`store_code = $${p.length}`); }
+            if (month)     { p.push(month);     conds.push(`date_trunc('month', biz_date)::date = $${p.length}::date`); }
+            const { rows } = await pool.query(`
+                SELECT store_code, date_trunc('month', biz_date)::date AS month,
+                    SUM(gross_amt) AS gross_amt, SUM(revenue_amt) AS revenue_amt,
+                    SUM(discount_amt) AS discount_amt, SUM(net_amt) AS net_amt, COUNT(*) AS order_cnt,
+                    ROUND(SUM(revenue_amt)/NULLIF(SUM(gross_amt),0),6) AS cash_in_rate,
+                    ROUND(SUM(net_amt)/NULLIF(SUM(gross_amt),0),6) AS profit_rate,
+                    ROUND(SUM(discount_amt)/NULLIF(SUM(gross_amt),0),6) AS discount_rate,
+                    ROUND(SUM(gross_amt)/NULLIF(COUNT(*),0),2) AS avg_order_amt,
+                    ROUND(100.0*SUM(revenue_amt)/NULLIF(SUM(gross_amt),0),2) AS cash_in_rate_pct
+                FROM ${ODS}.income_detail WHERE ${conds.join(' AND ')}
+                GROUP BY store_code, month ORDER BY store_code, month`, p);
+            return NextResponse.json({ success: true, data: rows });
+        }
+
+        const conds: string[] = [];
+        const params: unknown[] = [];
+        if (storeCode) { params.push(storeCode); conds.push(`store_code = $${params.length}`); }
+        if (month)     { params.push(month);     conds.push(`month = $${params.length}`); }
+        const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+        const { rows } = await pool.query(
+            `SELECT * FROM ${schema}.v_sales_overview ${where} ORDER BY store_code, month`, params);
+        return NextResponse.json({ success: true, data: rows });
+    } catch (error) {
+        if ((error as { code?: string })?.code === '42P01')
+            return NextResponse.json({ success: true, data: null, note: 'view not ready' });
+        return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
     }
-
-    const opts = pureMode ? { pureMode: true } : undefined;
-    const excludeCustom = pureMode ? `AND payment_methods IS NOT NULL AND NOT ('自定义结账方式' = ANY(payment_methods))` : '';
-
-    const kpiPromise = getSalesOverview('gelatomiiix', storeCode, month, opts);
-
-    const dailyPromise = pool.query(`
-      SELECT
-        biz_date,
-        SUM(COALESCE(gross_amt,0)) AS gross_sales_amt,
-        SUM(COALESCE(revenue_amt,0)) AS revenue_amt,
-        COUNT(DISTINCT order_no) AS order_cnt
-      FROM gelatomiiix_ods.income_detail
-      WHERE store_code = $1
-        AND DATE_TRUNC('month', biz_date)::DATE = $2::DATE
-        AND NOT is_refund
-        ${excludeCustom}
-      GROUP BY biz_date
-      ORDER BY biz_date
-    `, [storeCode, `${month}-01`]);
-
-    const prevPromise = pool.query(`
-      SELECT
-        COALESCE(SUM(COALESCE(gross_amt,0)),0) AS gross_sales_amt,
-        COUNT(DISTINCT order_no) AS order_cnt
-      FROM gelatomiiix_ods.income_detail
-      WHERE store_code = $1
-        AND DATE_TRUNC('month', biz_date)::DATE = ($2::DATE - INTERVAL '1 month')::DATE
-        AND NOT is_refund
-        ${excludeCustom}
-    `, [storeCode, `${month}-01`]);
-
-    const [kpi, dailyRes, prevRes] = await Promise.all([kpiPromise, dailyPromise, prevPromise]);
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        kpi,
-        daily: dailyRes.rows,
-        prev_month: prevRes.rows[0],
-      },
-    });
-  } catch (error: unknown) {
-    if ((error as { code?: string })?.code === '42P01') {
-      return NextResponse.json({ success: true, data: null, note: 'view not ready' });
-    }
-    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
-  }
 }

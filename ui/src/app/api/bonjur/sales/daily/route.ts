@@ -1,4 +1,4 @@
-// Bonjur | 旺鼎阁 销售月度 KPI 概览 API
+// Bonjur | 旺鼎阁 销售日级 KPI API
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
@@ -12,11 +12,11 @@ export async function GET(request: NextRequest) {
     const conditions: string[] = [];
     const params: unknown[] = [];
     if (storeCode) { params.push(storeCode); conditions.push(`store_code = $${params.length}`); }
-    if (month)     { params.push(month);     conditions.push(`month = $${params.length}`); }
+    if (month)     { params.push(month);     conditions.push(`date_trunc('month', biz_date)::date = $${params.length}::date`); }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const schema = getDmSchema('bonjur');
     try {
-        const { rows } = await pool.query(`SELECT * FROM ${schema}.v_sales_overview ${where} ORDER BY store_code, month`, params);
+        const { rows } = await pool.query(`SELECT * FROM ${schema}.v_sales_daily ${where} ORDER BY store_code, biz_date`, params);
         return NextResponse.json({ success: true, data: rows });
     } catch (error) {
         if ((error as { code?: string })?.code === '42P01') return NextResponse.json({ success: true, data: null, note: 'view not ready' });

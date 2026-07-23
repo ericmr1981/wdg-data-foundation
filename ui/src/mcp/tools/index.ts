@@ -42,9 +42,11 @@ export {
   queryGelatomiiixSalesTrendTool,
   queryGelatomiiixSalesChannelsTool,
   queryGelatomiiixSalesProductsTool,
-  queryGelatomiiixSalesDetailsTool,
-  queryGelatomiiixSalesDistributionTool,
   queryGelatomiiixSalesHourlyTool,
+  queryGelatomiiixSalesDineTakeawayTool,
+  queryGelatomiiixSalesDailyTool,
+  queryGelatomiiixSalesChannelDailyTool,
+  queryGelatomiiixSalesSpecTool,
 } from './query-gelatomiiix-sales';
 export { queryBonjurSalesProductsTool, queryBonjurSalesDetailsTool } from './query-bonjur-sales';
 export { getCoverageByFileTool } from './get-coverage-by-file';

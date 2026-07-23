@@ -1,0 +1,111 @@
+# WDG Data Foundation — 本地 dev 编排
+#
+# ⚠️ DEV-ONLY FILE — DO NOT PUSH TO origin/main
+#
+# 架构 (与生产 1:1 对齐):
+#   - systemd 容器跑业务进程 (UI / Agent / WS-Proxy / Scheduler)
+#   - PostgreSQL 跑在标准 docker 容器 (postgres:16-alpine)
+
+services:
+  postgres-main:
+    image: postgres:16-alpine
+    container_name: wdg-postgres-main
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: dataplatform
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata-main:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dataplatform"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - wdg-net
+
+  postgres-agent:
+    image: postgres:16-alpine
+    container_name: wdg-postgres-agent
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: ${POSTGRES_AGENT_PASSWORD:-local-dev-only}
+      POSTGRES_DB: agent_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - wdg_agent_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d agent_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - wdg-net
+
+  systemd-stack:
+    image: wdg-data-foundation-systemd-stack:latest
+    container_name: wdg-systemd
+    restart: unless-stopped
+    # Compose v5+ ignores `mem_limit`; container ends up with the platform
+    # default ceiling (~970 MB on Docker Desktop). Raise via deploy.resources
+    # (v3+ replacement) and keep mem_limit as fallback for older engines.
+    mem_limit: 2g
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    privileged: true
+    command: ["/sbin/init"]
+    ports:
+      - "3001:3001"   # wdg-portal
+      - "3002:3002"   # wdg-ui
+      - "4101:4101"   # wdg-agent HTTP
+      - "4102:4102"   # wdg-agent WebSocket
+      - "5100:5100"   # DailyCheck MCP
+      - "8080:8080"   # Metabase
+    volumes:
+      - /Users/ericmr/Documents/GitHub/wdg-data-foundation:/opt/wdg
+      - /Users/ericmr/Documents/GitHub/DailyCheck:/opt/dailycheck
+      # WGD Portal — bind mount source, named volume to isolate node_modules/.next
+      # (host node_modules must NOT leak into the container, per WGD_Portal/CLAUDE.md)
+      - /Users/ericmr/Documents/GitHub/WGD_Portal:/opt/wdg-portal
+      - wdg_portal_node_modules:/opt/wdg-portal/node_modules
+      - wdg_portal_next:/opt/wdg-portal/.next
+      - wdg_agent_pgdata:/var/lib/postgresql/data
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    environment:
+      DB_HOST: postgres-main
+      DB_PORT: "5432"
+      DB_NAME: dataplatform
+      DB_USER: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DAILYCHECK_URL: http://localhost:5100
+      DAILYCHECK_MCP_TOKEN: ${DAILYCHECK_MCP_TOKEN:-dev-mcp-token-for-testing}
+      DAILYCHECK_TIMEOUT_MS: "8000"
+    depends_on:
+      postgres-main:
+        condition: service_healthy
+      postgres-agent:
+        condition: service_healthy
+    networks:
+      - wdg-net
+
+volumes:
+  pgdata-main:
+    name: wdg_pgdata_main
+  wdg_agent_pgdata:
+    external: true
+  wdg_portal_node_modules:
+    name: wdg_portal_node_modules
+  wdg_portal_next:
+    name: wdg_portal_next
+
+networks:
+  wdg-net:
+    name: wdg-dev-net
+    driver: bridge

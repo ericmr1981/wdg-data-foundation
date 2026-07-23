@@ -1,0 +1,27 @@
+# deploy/systemd/wdg-portal.service
+[Unit]
+Description=WDG Portal (Next.js Pages Router, Supabase Cloud)
+Documentation=file:/opt/wdg-portal/CLAUDE.md
+After=network.target
+PartOf=wdg.target
+Wants=wdg.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/wdg-portal
+EnvironmentFile=/opt/wdg-portal/.env.local
+Environment=PORT=3001
+Environment=NODE_ENV=development
+ExecStart=/usr/bin/npm run dev
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/wdg-portal/node_modules /opt/wdg-portal/.next /opt/wdg-portal
+
+[Install]
+WantedBy=multi-user.target

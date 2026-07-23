@@ -1,4 +1,4 @@
-// Gelatomiiix | 蜜可诗 小时维分析 API
+// Gelatomiiix | 蜜可诗 商品销售排行 API
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { getErrorMessage } from '@/lib/query-types';
@@ -23,29 +23,23 @@ export async function GET(request: NextRequest) {
             if (month) { p.push(month); conds.push(`date_trunc('month', p.biz_date)::date = $${p.length}::date`); }
             const joinCond = conds.length ? `AND ${conds.join(' AND ')}` : '';
             const { rows } = await pool.query(`
-                SELECT p.order_hour,
-                    COUNT(DISTINCT p.order_no) AS order_cnt,
-                    SUM(p.qty) AS total_qty,
-                    SUM(p.sales_amt) AS total_sales,
-                    SUM(p.received_amt) AS total_received
+                SELECT p.store_code, date_trunc('month', p.biz_date)::date AS month,
+                    p.product_name, SUM(p.qty) AS total_qty, SUM(p.sales_amt) AS total_sales,
+                    SUM(p.received_amt) AS total_received, SUM(p.discount_amt) AS total_discount,
+                    ROUND(100.0*SUM(p.received_amt)/NULLIF(SUM(p.sales_amt),0),2) AS cash_in_rate_pct
                 FROM ${ODS}.product_sales_detail p
                 JOIN ${ODS}.income_detail i ON p.order_no = i.order_no AND NOT i.is_refund AND i.payment_methods IS NOT NULL
-                WHERE p.order_hour IS NOT NULL AND p.order_hour != '' AND p.order_hour != '-'
                 ${joinCond}
-                GROUP BY p.order_hour ORDER BY p.order_hour`, p);
+                GROUP BY p.store_code, month, p.product_name
+                ORDER BY total_received DESC LIMIT 10`, p);
             return NextResponse.json({ success: true, data: rows });
         }
-
-        const conds: string[] = [];
+        const conditions: string[] = [];
         const params: unknown[] = [];
-        if (storeCode) { params.push(storeCode); conds.push(`store_code = $${params.length}`); }
-        if (month)     { params.push(month);     conds.push(`month = $${params.length}::date`); }
-        const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
-        const { rows } = await pool.query(
-            `SELECT order_hour, SUM(order_cnt) AS order_cnt, SUM(total_qty) AS total_qty,
-                SUM(total_sales) AS total_sales, SUM(total_received) AS total_received
-             FROM ${schema}.v_sales_hourly ${where}
-             GROUP BY order_hour ORDER BY order_hour`, params);
+        if (storeCode) { params.push(storeCode); conditions.push(`store_code = $${params.length}`); }
+        if (month)     { params.push(month);     conditions.push(`month = $${params.length}`); }
+        const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+        const { rows } = await pool.query(`SELECT * FROM ${schema}.v_sales_product ${where} ORDER BY total_received DESC LIMIT 10`, params);
         return NextResponse.json({ success: true, data: rows });
     } catch (error) {
         if ((error as { code?: string })?.code === '42P01') return NextResponse.json({ success: true, data: null, note: 'view not ready' });

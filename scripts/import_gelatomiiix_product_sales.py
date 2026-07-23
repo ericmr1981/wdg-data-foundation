@@ -45,6 +45,19 @@ COLMAP = {
     '商品销售额': 'sales_amt',
     '商品实收': 'received_amt',
     '商品优惠': 'discount_amt',
+    '下单时间': 'ordered_at',
+    '小时': 'order_hour',
+    '订单来源': 'order_source',
+    '订单类型': 'order_type',
+    '餐段': 'meal_period',
+    '商品类别': 'product_type',
+    '商品分类': 'category',
+    '商品类型': 'product_kind',
+    '规格': 'spec',
+    '加料': 'add_on',
+    'sku_id': 'sku_id',
+    '商品id': 'product_id',
+    '商品库名称': 'product_library',
 }
 
 
@@ -57,6 +70,10 @@ CREATE TABLE IF NOT EXISTS gelatomiiix_ods.product_sales_detail (
   qty INT, sales_amt NUMERIC(14,2), received_amt NUMERIC(14,2),
   discount_amt NUMERIC(14,2), source_file_id BIGINT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  order_hour TEXT, spec TEXT, category TEXT, product_type TEXT,
+  product_kind TEXT, add_on TEXT, sku_id TEXT, product_id TEXT,
+  product_library TEXT, order_source TEXT, order_type TEXT,
+  meal_period TEXT, ordered_at TIMESTAMPTZ,
   CONSTRAINT uq_gelatomiiix_product_sales_detail UNIQUE (store_code, order_no, product_name)
 );
 """
@@ -64,7 +81,10 @@ CREATE TABLE IF NOT EXISTS gelatomiiix_ods.product_sales_detail (
 COLUMNS = [
     "store_code", "store_name", "biz_date", "order_no", "product_name",
     "unit_price", "qty", "sales_amt", "received_amt", "discount_amt",
-    "order_hour", "source_file_id",
+    "order_hour", "spec", "category", "product_type", "product_kind",
+    "add_on", "sku_id", "product_id", "product_library",
+    "order_source", "order_type", "meal_period", "ordered_at",
+    "source_file_id",
 ]
 
 CONFLICT_CLAUSE = """
@@ -145,17 +165,27 @@ def transform(df: pd.DataFrame) -> list[dict]:
         if not order_no:
             continue
 
-        records.append({
-            'biz_date': biz_date,
-            'order_no': order_no,
-            'product_name': str(r.get('商品名称', '')).strip(),
-            'unit_price': to_numeric(r.get('商品原价')),
-            'qty': to_int(r.get('销售数量')),
-            'sales_amt': to_numeric(r.get('商品销售额')),
-            'received_amt': to_numeric(r.get('商品实收')),
-            'discount_amt': to_numeric(r.get('商品优惠')),
-            'order_hour': str(r.get('小时', '')).strip() or None,
-        })
+        row = {'biz_date': biz_date, 'order_no': order_no}
+        for csv_col, db_col in COLMAP.items():
+            if csv_col == '日期' or csv_col == '订单号':
+                continue
+            val = r.get(csv_col)
+            if pd.isna(val) or val is None or str(val).strip() in ('', '--'):
+                row[db_col] = None
+            else:
+                s = str(val).strip()
+                if db_col in ('unit_price', 'sales_amt', 'received_amt', 'discount_amt'):
+                    row[db_col] = float(s.replace(',', '')) if s else None
+                elif db_col == 'qty':
+                    row[db_col] = int(float(s)) if s else None
+                elif db_col == 'ordered_at':
+                    try:
+                        row[db_col] = datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
+                    except:
+                        row[db_col] = None
+                else:
+                    row[db_col] = (s.strip('`').strip()) or None
+        records.append(row)
     return records
 
 
@@ -232,9 +262,13 @@ def main():
             deduped = [r for r in records if (r['order_no'], r['product_name']) not in seen and not seen.add((r['order_no'], r['product_name']))]
             values = [
                 (store_code, store_name, r['biz_date'], r['order_no'],
-                 r['product_name'], r['unit_price'], r['qty'],
-                 r['sales_amt'], r['received_amt'], r['discount_amt'],
-                 r.get('order_hour'), source_file_id)
+                 r.get('product_name'), r.get('unit_price'), r.get('qty'),
+                 r.get('sales_amt'), r.get('received_amt'), r.get('discount_amt'),
+                 r.get('order_hour'), r.get('spec'), r.get('category'),
+                 r.get('product_type'), r.get('product_kind'), r.get('add_on'),
+                 r.get('sku_id'), r.get('product_id'), r.get('product_library'),
+                 r.get('order_source'), r.get('order_type'), r.get('meal_period'),
+                 r.get('ordered_at'), source_file_id)
                 for r in deduped
             ]
             inserted = insert_batch(conn, TARGET_TABLE, COLUMNS, values, CONFLICT_CLAUSE)
