@@ -8,6 +8,7 @@ import multipart from '@fastify/multipart'
 
 import { getPool } from './db.js'
 import { getAgentConfig, initAgentConfig, isConfigReady } from './config/store.js'
+import { decrypt } from './crypto/secret-crypto.js'
 import { initRegistry } from './skills/registry.js'
 import { UnifiedMcpBridge, type BackendConfig } from './mcp/bridge.js'
 import { ConversationManager } from './conversation/manager.js'
@@ -98,9 +99,34 @@ async function main() {
     },
   ]
   // 外部 MCP 后端 — 从 DB agent.config.mcp_backends 读取
-  // admin 在 /api/admin/config 编辑，即时生效（重启后重新加载）
+  // admin 在 /api/admin/config 编辑,即时生效(重启后重新加载)
+  // Token 注入:从 cfg.mcpBackendTokens 按 name 解密注入到 headers.Authorization
+  // 不阻塞启动 — 解密失败的 backend 只 warn 跳过
+  const encKey = process.env.AGENT_CRED_ENCRYPTION_KEY
   if (cfg.mcpBackends.length > 0) {
-    mcpBackends.push(...cfg.mcpBackends)
+    for (const b of cfg.mcpBackends) {
+      const encToken = cfg.mcpBackendTokens[b.name]
+      if (encToken) {
+        if (!encKey) {
+          console.warn(
+            `[server] backend "${b.name}" has encrypted token but AGENT_CRED_ENCRYPTION_KEY env not set — skipping token injection`,
+          )
+        } else {
+          try {
+            const rawToken = decrypt(encToken, encKey)
+            b.headers = {
+              ...(b.headers ?? {}),
+              Authorization: `Bearer ${rawToken}`,
+            }
+          } catch (e) {
+            console.warn(
+              `[server] failed to decrypt token for backend "${b.name}": ${(e as Error).message} — skipping token injection`,
+            )
+          }
+        }
+      }
+      mcpBackends.push(b)
+    }
   }
 
   const conversation = new ConversationManager(getPool(), null)

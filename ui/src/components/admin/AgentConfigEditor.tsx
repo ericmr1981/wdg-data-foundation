@@ -10,7 +10,12 @@ interface Props {
     apiKeyMasked: string | null;
     model: string;
     jwksUrl: string | null;
-    mcpBackends?: Array<{ name: string; url: string; transport?: string; headers?: Record<string, string>; timeoutMs?: number }>;
+    /**
+     * 结构化 backend 列表(GET 返回,不含 Authorization)。
+     * 运行时 token 通过 mcpBackendTokensMasked[name] = '已配置' | null 判断是否已配。 */
+    mcpBackends?: Array<{ name: string; url: string; transport?: string; headers?: Record<string, string>; timeoutMs?: number; required?: boolean }>;
+    mcpBackendTokensMasked?: Record<string, string | null>;
+    mcpBackendTokensCount?: number;
   };
   defaultParams: AgentConfigParams;
   onSave: (data: {
@@ -20,7 +25,10 @@ interface Props {
     apiKey: string;
     model: string;
     jwksUrl: string | null;
-    mcpBackends?: Array<{ name: string; url: string; transport?: string; headers?: Record<string, string>; timeoutMs?: number }>;
+    /** 结构化 backend 列表(已剥 Authorization) */
+    mcpBackends?: Array<{ name: string; url: string; transport?: string; headers?: Record<string, string>; timeoutMs?: number; required?: boolean }>;
+    /** raw Bearer tokens(只传非空项) */
+    mcpBackendTokens?: Record<string, string>;
   }) => Promise<void>;
   onReset: () => Promise<void>;
 }
@@ -51,9 +59,27 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
   const [showKey, setShowKey] = useState(false);
   const [model, setModel] = useState(initial.model);
   const [jwksUrl, setJwksUrl] = useState(initial.jwksUrl ?? '');
-  const [mcpBackendsJson, setMcpBackendsJson] = useState(
-    JSON.stringify(initial.mcpBackends ?? [], null, 2),
+
+  // 结构化 backend 列表 — 每项独立表单
+  const [mcpBackends, setMcpBackends] = useState<
+    Array<{ name: string; url: string; transport: string; timeoutMs: number; required: boolean; headers: Record<string, string> }>
+  >(
+    (initial.mcpBackends ?? []).map(b => ({
+      name: b.name,
+      url: b.url,
+      transport: b.transport ?? 'streamableHttp',
+      timeoutMs: b.timeoutMs ?? 30000,
+      required: b.required ?? false,
+      headers: Object.fromEntries(
+        Object.entries(b.headers ?? {}).filter(([k]) => k.toLowerCase() !== 'authorization'),
+      ),
+    })),
   );
+  // raw token 编辑值 — 只在用户实际输入时存在,初始为空,Save 后清空
+  const [mcpBackendTokens, setMcpBackendTokens] = useState<Record<string, string>>({});
+  // mask 视图(GET 返回,只显示"已配置"或 null)
+  const [tokenMask] = useState<Record<string, string | null>>(initial.mcpBackendTokensMasked ?? {});
+
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
@@ -67,22 +93,107 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
     || apiKey !== ''
     || model !== initial.model
     || jwksUrl !== (initial.jwksUrl ?? '')
-    || mcpBackendsJson !== JSON.stringify(initial.mcpBackends ?? [], null, 2);
+    || JSON.stringify(mcpBackends) !== JSON.stringify(
+      (initial.mcpBackends ?? []).map(b => ({
+        name: b.name,
+        url: b.url,
+        transport: b.transport ?? 'streamableHttp',
+        timeoutMs: b.timeoutMs ?? 30000,
+        required: b.required ?? false,
+        headers: Object.fromEntries(
+          Object.entries(b.headers ?? {}).filter(([k]) => k.toLowerCase() !== 'authorization'),
+        ),
+      })),
+    )
+    || Object.values(mcpBackendTokens).some(v => v !== '');
 
   function updateParam<K extends keyof AgentConfigParams>(k: K, v: number | string | null) {
     setParams(p => ({ ...p, [k]: v }));
+  }
+
+  function addBackend() {
+    setMcpBackends(prev => [...prev, {
+      name: '',
+      url: 'http://localhost:5100/api/mcp/',
+      transport: 'streamableHttp',
+      timeoutMs: 30000,
+      required: false,
+      headers: { 'Accept': 'application/json, text/event-stream' },
+    }]);
+  }
+
+  function removeBackend(idx: number) {
+    const target = mcpBackends[idx]
+    setMcpBackends(prev => prev.filter((_, i) => i !== idx))
+    if (target?.name) {
+      setMcpBackendTokens(prev => {
+        const next = { ...prev }
+        delete next[target.name]
+        return next
+      })
+    }
+  }
+
+  function updateBackend(idx: number, patch: Partial<{
+    name: string; url: string; transport: string; timeoutMs: number; required: boolean; headers: Record<string, string>
+  }>) {
+    setMcpBackends(prev => prev.map((b, i) => i === idx ? { ...b, ...patch } : b))
+  }
+
+  function addHeader(idx: number) {
+    setMcpBackends(prev => prev.map((b, i) => i === idx ? { ...b, headers: { ...b.headers, '': '' } } : b))
+  }
+
+  function removeHeader(idx: number, key: string) {
+    setMcpBackends(prev => prev.map((b, i) => {
+      if (i !== idx) return b
+      const next = { ...b.headers }
+      delete next[key]
+      return { ...b, headers: next }
+    }))
+  }
+
+  function updateHeaderName(idx: number, oldKey: string, newKey: string) {
+    setMcpBackends(prev => prev.map((b, i) => {
+      if (i !== idx) return b
+      const next: Record<string, string> = {}
+      for (const [k, v] of Object.entries(b.headers)) {
+        next[k === oldKey ? newKey : k] = v
+      }
+      return { ...b, headers: next }
+    }))
+  }
+
+  function updateHeaderValue(idx: number, key: string, value: string) {
+    setMcpBackends(prev => prev.map((b, i) => i === idx ? { ...b, headers: { ...b.headers, [key]: value } } : b))
   }
 
   async function handleSave() {
     setSaving(true);
     setMessage(null);
     try {
-      // 解析 mcpBackends JSON
-      let parsedBackends: Array<{ name: string; url: string; transport?: string; headers?: Record<string, string>; timeoutMs?: number }> | undefined;
-      try {
-        const val = JSON.parse(mcpBackendsJson);
-        if (Array.isArray(val)) parsedBackends = val as any;
-      } catch { /* keep undefined — don't send backends if JSON invalid */ }
+      // 校验:name 非空且唯一
+      const names = mcpBackends.map(b => b.name.trim())
+      if (names.some(n => !n)) {
+        throw new Error('每个 backend 必须有非空 name')
+      }
+      if (new Set(names).size !== names.length) {
+        throw new Error('backend name 必须唯一')
+      }
+      // 校验:headers 里不允许 Authorization
+      for (const b of mcpBackends) {
+        for (const k of Object.keys(b.headers)) {
+          if (k.toLowerCase() === 'authorization') {
+            throw new Error(`backend "${b.name}" headers.${k} 不允许直接编辑,请用下方 Token 框`)
+          }
+        }
+      }
+
+      // 收集非空 token
+      const tokensToSubmit: Record<string, string> = {}
+      for (const [name, raw] of Object.entries(mcpBackendTokens)) {
+        if (raw.trim()) tokensToSubmit[name] = raw.trim()
+      }
 
       await onSave({
         agentMd,
@@ -91,12 +202,21 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
         apiKey,
         model: model.trim() || 'claude-opus-4-8',
         jwksUrl: jwksUrl.trim() || null,
-        mcpBackends: parsedBackends,
+        mcpBackends: mcpBackends.map(b => ({
+          name: b.name.trim(),
+          url: b.url.trim(),
+          transport: b.transport,
+          timeoutMs: b.timeoutMs,
+          required: b.required,
+          headers: b.headers,
+        })),
+        mcpBackendTokens: Object.keys(tokensToSubmit).length > 0 ? tokensToSubmit : undefined,
       });
-      setMessage('✅ 已保存。下一个请求即生效。');
-      setApiKey('');  // clear after save
+      setMessage('✅ 已保存。token 已加密入库,需重启 Agent 生效新连接。');
+      setApiKey('');
+      setMcpBackendTokens({});
     } catch (e) {
-      setMessage('❌ 保存失败：' + (e as Error).message);
+      setMessage('❌ 保存失败:' + (e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -367,26 +487,150 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
 
       {/* 外部 MCP 后端 */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-700">外部 MCP 后端</h3>
+        <div className="flex items-baseline justify-between">
+          <h3 className="text-sm font-semibold text-gray-700">外部 MCP 后端</h3>
+          <span className="text-xs text-gray-500">
+            {initial.mcpBackends?.length ?? 0} 个已配置 ·
+            {' '}{Object.values(tokenMask).filter(v => v === '已配置').length} 个 token 已加密入库
+          </span>
+        </div>
         <p className="mt-1 text-xs text-gray-500">
-          JSON 数组，每项可含 <code>name</code>, <code>url</code>, <code>transport</code> (<em>fetch</em>/<em>sse</em>),
-          <code>headers</code>, <code>timeoutMs</code>。写入后需重启 Agent 生效。
+          Token 在 <a className="text-blue-600 underline" href="http://dailycheck:8080/admin/agent-tokens" target="_blank" rel="noopener noreferrer">DailyCheck UI</a> 创建,
+          创建时 raw token 一次性显示。粘贴到下方对应 backend 的 Token 框,保存后 Agent 会用 <code>AGENT_CRED_ENCRYPTION_KEY</code> 加密入库。
+          写入后需重启 Agent 生效新连接。
         </p>
-        <textarea
-          value={mcpBackendsJson}
-          onChange={e => setMcpBackendsJson(e.target.value)}
-          rows={8}
-          className="mt-2 w-full rounded border border-gray-300 bg-white px-3 py-2 font-mono text-xs"
-          placeholder={`[
-  { "name": "dailycheck", "url": "http://dailycheck:5100/api/mcp",
-    "transport": "fetch", "headers": { "Authorization": "Bearer xyz" },
-    "timeoutMs": 30000
-  }
-]`}
-        />
-        <p className="mt-1 text-[10px] text-gray-400">
-          {initial.mcpBackends?.length ?? 0} 个后端已配置（从 DB 加载）
-        </p>
+
+        <div className="mt-3 space-y-4">
+          {mcpBackends.map((b, idx) => (
+            <div key={idx} className="rounded border border-gray-300 bg-white p-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="flex flex-col text-xs text-gray-600">
+                  <span className="mb-1 font-medium">Name *</span>
+                  <input
+                    type="text"
+                    value={b.name}
+                    onChange={e => updateBackend(idx, { name: e.target.value })}
+                    placeholder="DailyCheck"
+                    className="rounded border border-gray-300 px-2 py-1"
+                  />
+                </label>
+                <label className="flex flex-col text-xs text-gray-600">
+                  <span className="mb-1 font-medium">URL *</span>
+                  <input
+                    type="text"
+                    value={b.url}
+                    onChange={e => updateBackend(idx, { url: e.target.value })}
+                    placeholder="http://dailycheck:5100/api/mcp/"
+                    className="rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+                  />
+                </label>
+                <label className="flex flex-col text-xs text-gray-600">
+                  <span className="mb-1 font-medium">Transport</span>
+                  <select
+                    value={b.transport}
+                    onChange={e => updateBackend(idx, { transport: e.target.value })}
+                    className="rounded border border-gray-300 px-2 py-1"
+                  >
+                    <option value="fetch">fetch</option>
+                    <option value="streamableHttp">streamableHttp</option>
+                    <option value="sse">sse</option>
+                  </select>
+                </label>
+                <label className="flex flex-col text-xs text-gray-600">
+                  <span className="mb-1 font-medium">Timeout (ms)</span>
+                  <input
+                    type="number"
+                    value={b.timeoutMs}
+                    onChange={e => updateBackend(idx, { timeoutMs: Number(e.target.value) || 30000 })}
+                    className="rounded border border-gray-300 px-2 py-1"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-xs text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={b.required}
+                    onChange={e => updateBackend(idx, { required: e.target.checked })}
+                  />
+                  <span>Required (启动阻塞,失败即报错)</span>
+                </label>
+              </div>
+
+              {/* Token 字段 */}
+              <div className="mt-3">
+                <label className="flex flex-col text-xs text-gray-600">
+                  <span className="mb-1 font-medium">
+                    Token (Bearer,不含前缀)
+                    {tokenMask[b.name] === '已配置' && (
+                      <span className="ml-2 text-green-700">✓ 已配置(留空保留,新值覆盖)</span>
+                    )}
+                  </span>
+                  <input
+                    type="password"
+                    value={mcpBackendTokens[b.name] ?? ''}
+                    onChange={e => setMcpBackendTokens(prev => ({ ...prev, [b.name]: e.target.value }))}
+                    placeholder={tokenMask[b.name] === '已配置'
+                      ? '已配置 — 留空保留,粘贴新值覆盖'
+                      : '在 DailyCheck UI 创建后粘贴 raw token'}
+                    autoComplete="new-password"
+                    className="rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+                  />
+                </label>
+              </div>
+
+              {/* Custom Headers(不含 Authorization) */}
+              <div className="mt-3">
+                <div className="mb-1 flex items-baseline justify-between">
+                  <span className="text-xs font-medium text-gray-600">Custom Headers</span>
+                  <button
+                    type="button"
+                    onClick={() => addHeader(idx)}
+                    className="text-xs text-blue-600 hover:underline"
+                  >+ Add header</button>
+                </div>
+                {Object.entries(b.headers).map(([k, v]) => (
+                  <div key={k} className="mb-1 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={k}
+                      placeholder="Header-Name"
+                      onChange={e => updateHeaderName(idx, k, e.target.value)}
+                      className="w-1/3 rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+                    />
+                    <input
+                      type="text"
+                      value={v}
+                      placeholder="value"
+                      onChange={e => updateHeaderValue(idx, k, e.target.value)}
+                      className="flex-1 rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeHeader(idx, k)}
+                      className="text-xs text-red-600 hover:underline"
+                    >×</button>
+                  </div>
+                ))}
+                {Object.keys(b.headers).length === 0 && (
+                  <p className="text-[10px] text-gray-400">无 header</p>
+                )}
+              </div>
+
+              <div className="mt-3 text-right">
+                <button
+                  type="button"
+                  onClick={() => removeBackend(idx)}
+                  className="text-xs text-red-600 hover:underline"
+                >Delete backend</button>
+              </div>
+            </div>
+          ))}
+
+          <button
+            type="button"
+            onClick={addBackend}
+            className="rounded border border-dashed border-gray-400 bg-gray-50 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+          >+ Add backend</button>
+        </div>
       </div>
     </div>
   );

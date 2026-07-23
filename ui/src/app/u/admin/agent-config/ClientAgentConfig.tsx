@@ -10,6 +10,7 @@ interface McpBackend {
   transport?: string;
   headers?: Record<string, string>;
   timeoutMs?: number;
+  required?: boolean;
 }
 
 interface Props {
@@ -21,6 +22,8 @@ interface Props {
     model: string;
     jwksUrl: string | null;
     mcpBackends?: McpBackend[];
+    mcpBackendTokensMasked?: Record<string, string | null>;
+    mcpBackendTokensCount?: number;
   };
   defaultParams: AgentConfigParams;
 }
@@ -36,6 +39,7 @@ export function ClientAgentConfig({ initial, defaultParams }: Props) {
     model: string;
     jwksUrl: string | null;
     mcpBackends?: McpBackend[];
+    mcpBackendTokens?: Record<string, string>;
   }) {
     setSaving(true);
     try {
@@ -44,7 +48,10 @@ export function ClientAgentConfig({ initial, defaultParams }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}))
+        throw new Error(errBody.error ?? `HTTP ${res.status}`)
+      }
       window.location.reload();
     } catch (e) {
       alert('保存失败: ' + (e instanceof Error ? e.message : String(e)));

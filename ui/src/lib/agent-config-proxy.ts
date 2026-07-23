@@ -22,6 +22,12 @@ export interface AgentConfigView {
   model: string;
   jwksUrl: string | null;
   mcpBackends?: Array<{ name: string; url: string; transport?: string; headers?: Record<string, string>; timeoutMs?: number }>;
+  /**
+   * Masked token 状态:{ backend_name: '已配置' | null }
+   * 用于 UI placeholder:已配置时显示 '已配置',未配置时显示 '在 DailyCheck UI 创建后粘贴'。
+   */
+  mcpBackendTokensMasked?: Record<string, string | null>;
+  mcpBackendTokensCount?: number;
   agent: {
     reachable: boolean;
     source: string | null;
@@ -93,6 +99,8 @@ export async function callAgentJson(method: 'GET'): Promise<AgentConfigView> {
     model: (body.model as string | undefined) ?? 'claude-opus-4-8',
     jwksUrl: (body.jwksUrl as string | null | undefined) ?? null,
     mcpBackends: (body.mcpBackends as AgentConfigView['mcpBackends'] | undefined) ?? [],
+    mcpBackendTokensMasked: (body.mcpBackendTokensMasked as Record<string, string | null> | undefined) ?? {},
+    mcpBackendTokensCount: (body.mcpBackendTokensCount as number | undefined) ?? 0,
     agent: {
       reachable,
       source: (body.source as string | null | undefined) ?? null,

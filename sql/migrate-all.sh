@@ -34,6 +34,16 @@ else
 fi
 echo ""
 
+# ─── 1b. agent.config 加 mcp_backend_tokens (加密的 token 列) ────
+echo "[1b/4] agent.config: 加 mcp_backend_tokens JSONB 列 (加密 Bearer tokens)"
+if [ -n "${AGENT_DSN:-}" ]; then
+  psql "$AGENT_DSN" -f "$DIR/01c_agent_config_mcp_backend_tokens.sql"
+  echo "  ✅ agent 配置库 mcp_backend_tokens 迁移完成"
+else
+  echo "  ⚠️  AGENT_DSN 未设置，跳过"
+fi
+echo ""
+
 # ─── 2. Supabase: public.users 兼容 ────────────────
 echo "[2/4] Supabase: public.users 加 enabled + role 约束放宽"
 echo "  可直接在 Supabase Dashboard → SQL Editor 运行:"

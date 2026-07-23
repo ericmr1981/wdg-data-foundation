@@ -84,8 +84,14 @@ export interface AgentConfig {
    * - 'missing' : DB 没 row 或读不出, 启动应该 fail (R 设计下不允许)
    */
   source: 'db' | 'missing'
-  /** 外部 MCP 后端列表（从 agent.config.mcp_backends JSONB 读取）。 */
+  /** 外部 MCP 后端列表(从 agent.config.mcp_backends JSONB 读取)。
+   *  注意:不再包含 headers.Authorization — 授权信息在 mcpBackendTokens 里,
+   *  server.ts 启动时按 name 配对解密注入。 */
   mcpBackends: BackendConfig[]
+  /** 外部 MCP backend 的加密 Bearer tokens(从 agent.config.mcp_backend_tokens JSONB 读取)。
+   *  结构: { backend_name: encrypted_ciphertext }。
+   *  加密算法: AES-256-GCM,密钥 = env AGENT_CRED_ENCRYPTION_KEY,见 crypto/secret-crypto.ts。 */
+  mcpBackendTokens: Record<string, string>
 }
 
 // ─── defaults ───────────────────────
@@ -100,6 +106,7 @@ function defaultConfig(): AgentConfig {
     jwksUrl: null,
     source: 'missing',
     mcpBackends: [],
+    mcpBackendTokens: {},
   }
 }
 
@@ -113,6 +120,7 @@ interface DbConfigRow {
   agent_md: string | null
   jwks_url: string | null
   mcp_backends: BackendConfig[] | null
+  mcp_backend_tokens: Record<string, string> | null
 }
 
 /**
@@ -122,7 +130,7 @@ interface DbConfigRow {
 async function loadFromDb(): Promise<AgentConfig | null> {
   try {
     const { rows } = await getPool().query<DbConfigRow>(`
-      SELECT base_url, encrypted_key, model, params, agent_md, jwks_url, mcp_backends
+      SELECT base_url, encrypted_key, model, params, agent_md, jwks_url, mcp_backends, mcp_backend_tokens
       FROM agent.config
       WHERE id = 1
     `)
@@ -157,6 +165,7 @@ async function loadFromDb(): Promise<AgentConfig | null> {
       jwksUrl: row.jwks_url ?? null,
       source: 'db',
       mcpBackends: normalizeBackends(row.mcp_backends),
+      mcpBackendTokens: row.mcp_backend_tokens ?? {},
     }
   } catch (e) {
     console.error('[config] loadFromDb error:', (e as Error).message)
@@ -248,11 +257,26 @@ export function setMcpBackends(backends: BackendConfig[]): void {
   slot.current = { ...slot.current, mcpBackends: backends }
 }
 
+/**
+ * 部分更新 mcpBackendTokens:把加密 token 合并进现有 map;
+ * undefined 值 = 删除该 backend 的 token(key 不存在)。 */
+export function setMcpBackendTokens(tokens: Record<string, string | undefined>): void {
+  const next = { ...slot.current.mcpBackendTokens }
+  for (const [k, v] of Object.entries(tokens)) {
+    if (v === undefined) {
+      delete next[k]
+    } else {
+      next[k] = v
+    }
+  }
+  slot.current = { ...slot.current, mcpBackendTokens: next }
+}
+
 export function resetAgentConfig(): void {
   slot.current = defaultConfig()
 }
 
-/** 规范化后端配置：去重、补齐默认值、校验必填字段 */
+/** 规范化后端配置:去重、补齐默认值、校验必填字段、剥离 Authorization 头 */
 function normalizeBackends(raw: BackendConfig[] | null | undefined): BackendConfig[] {
   if (!Array.isArray(raw)) return []
   const seen = new Set<string>()
@@ -261,8 +285,18 @@ function normalizeBackends(raw: BackendConfig[] | null | undefined): BackendConf
     if (!b?.name || !b?.url) continue
     if (seen.has(b.name)) continue
     seen.add(b.name)
+    // 关键:无论 DB JSONB 里是否带 headers.Authorization,运行时一律剥离。
+    // Authorization 必须从 mcpBackendTokens 解密注入,不允许从 DB JSONB 透传明文。
+    const sanitizedHeaders = b.headers
+      ? Object.fromEntries(
+          Object.entries(b.headers).filter(
+            ([k]) => k.toLowerCase() !== 'authorization',
+          ),
+        )
+      : undefined
     out.push({
       ...b,
+      headers: sanitizedHeaders,
       transport: b.transport ?? 'fetch',
       timeoutMs: b.timeoutMs ?? 30_000,
       required: b.required ?? false, // 缺省为 secondary:不阻塞启动

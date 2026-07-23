@@ -18,6 +18,16 @@ import { AGENT_MD_FILE_PATH } from '../../config/agent-md-loader.js'
 import { getPool } from '../../db.js'
 import type { BackendConfig } from '../../mcp/bridge.js'
 
+/**
+ * 取一段 raw token 的末 4 字符用于 mask 显示。
+ * - 空 / null → null(从未配置)
+ * - 非空 → '***' + last4
+ */
+function maskLast4(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  return `***${raw.slice(-4)}`
+}
+
 export function registerAdminConfigRoutes(app: FastifyInstance) {
   app.addHook('preHandler', async (req, reply) => {
     if (!req.url.startsWith('/api/admin/')) return
@@ -28,6 +38,15 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
   // ─── GET ──────────────────────────────
   app.get('/api/admin/config', async () => {
     const cfg = getAgentConfig()
+    // UI 视角下,每个 backend 名对应 mask 后的 token 状态(末 4 位);
+    // 显示哪些 backend 已配 token,用于 placeholder 提示。
+    const mcpBackendTokensMasked: Record<string, string | null> = {}
+    for (const b of cfg.mcpBackends) {
+      const encToken = cfg.mcpBackendTokens[b.name]
+      // 末 4 字符需要从明文算 — 加 token-only 用法,只对已有加密 token 返回 mask
+      // 这里我们没办法不解密就拿末 4,简单起见只返回 "已配置 / 未配置" 标记,具体末 4 由 UI 在提交时记录
+      mcpBackendTokensMasked[b.name] = encToken ? '已配置' : null
+    }
     return {
       success: true,
       agentMdContent: cfg.agentMd,
@@ -38,6 +57,10 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
       hasApiKey: cfg.apiKey !== null,
       jwksUrl: cfg.jwksUrl,
       mcpBackends: cfg.mcpBackends,
+      // Masked token 状态:{ backend_name: '已配置' | null }
+      mcpBackendTokensMasked,
+      // 总数给 UI 显示 "N 个后端已配置(从 DB 加载)"
+      mcpBackendTokensCount: Object.keys(cfg.mcpBackendTokens).length,
       dirty: false,
       source: getConfigSource(),
     }
@@ -51,11 +74,35 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
       credentials?: { baseURL?: string | null; apiKey?: string | null; model?: string }
       jwksUrl?: string | null
       mcpBackends?: BackendConfig[]
+      /**
+       * 新增:外部 MCP backend 的 raw Bearer tokens(明文只在传输层存在)。
+       * key = backend.name,value = raw token 字符串(不含 'Bearer ' 前缀)。
+       * 不会写明文到 DB;后端会 AES-256-GCM 加密后存入 mcp_backend_tokens 列。
+       * undefined value = 保留 DB 现存 token,删除请传 '__DELETE__' 哨兵。 */
+      mcpBackendTokens?: Record<string, string>
     }
   }>('/api/admin/config', async (req, reply) => {
-    const { agentMd, params, credentials, jwksUrl, mcpBackends } = req.body
+    const { agentMd, params, credentials, jwksUrl, mcpBackends, mcpBackendTokens } = req.body
 
     const oldCfg = getAgentConfig()
+
+    // 0. 校验:mcpBackends[i].headers 里不允许出现 Authorization
+    // Authorization 必须通过 mcpBackendTokens[name] 走加密通道,防止明文 JSON 透传到 DB
+    if (Array.isArray(mcpBackends)) {
+      for (const b of mcpBackends) {
+        const hdrs = b.headers ?? {}
+        for (const k of Object.keys(hdrs)) {
+          if (k.toLowerCase() === 'authorization') {
+            return reply.code(400).send({
+              success: false,
+              error: `mcpBackends[${b.name}].headers.${k} 不允许直接编辑。` +
+                `请通过 'mcpBackendTokens["${b.name}"]' 字段以加密形式提交,` +
+                `或在 DailyCheck UI (http://dailycheck:8080/admin/agent-tokens) 重新生成 token。`,
+            })
+          }
+        }
+      }
+    }
 
     // 1. 计算新值（部分提交语义）
     let newApiKey: string | null | undefined = undefined
@@ -93,7 +140,17 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
       setJwksUrl(jwksUrl)
     }
     if (mcpBackends !== undefined) {
-      setMcpBackends(mcpBackends)
+      // 防御:即使用户绕过 GET/POST 校验直接调用了 setMcpBackends,
+      // 这里仍然剥离 Authorization,运行时只从 mcpBackendTokens 注入
+      const sanitized = mcpBackends.map(b => {
+        if (!b.headers) return b
+        const cleaned: Record<string, string> = {}
+        for (const [k, v] of Object.entries(b.headers)) {
+          if (k.toLowerCase() !== 'authorization') cleaned[k] = v
+        }
+        return { ...b, headers: cleaned }
+      })
+      setMcpBackends(sanitized)
     }
 
     const newCfg = getAgentConfig()
@@ -115,12 +172,40 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
         const dbBaseUrl = newBaseURL !== undefined ? newBaseURL : oldCfg.baseURL
         const dbModel = newModel ?? newCfg.model
         const dbJwksUrl = jwksUrl !== undefined ? jwksUrl : oldCfg.jwksUrl
-        const dbMcpBackends = mcpBackends !== undefined
-          ? JSON.stringify(mcpBackends) : JSON.stringify(oldCfg.mcpBackends)
+
+        // 计算 dbMcpBackends:复用 mcp_backends 列,但剥掉 Authorization(防止历史污染写入生效)
+        const rawDbBackends = mcpBackends !== undefined ? mcpBackends : oldCfg.mcpBackends
+        const sanitizedDbBackends = rawDbBackends.map(b => {
+          if (!b.headers) return b
+          const cleaned: Record<string, string> = {}
+          for (const [k, v] of Object.entries(b.headers)) {
+            if (k.toLowerCase() !== 'authorization') cleaned[k] = v
+          }
+          return { ...b, headers: cleaned }
+        })
+        const dbMcpBackends = JSON.stringify(sanitizedDbBackends)
+
+        // 加密 mcpBackendTokens:
+        // - raw 不为空字符串 → encrypt 后覆盖
+        // - 哨兵 '__DELETE__' → 删除该 backend 的 token
+        // - 不在 body → 保留 DB 原值
+        const dbMcpBackendTokensMap: Record<string, string> = { ...oldCfg.mcpBackendTokens }
+        if (mcpBackendTokens && typeof mcpBackendTokens === 'object') {
+          for (const [name, raw] of Object.entries(mcpBackendTokens)) {
+            if (raw === '__DELETE__') {
+              delete dbMcpBackendTokensMap[name]
+              continue
+            }
+            if (typeof raw === 'string' && raw.length > 0) {
+              dbMcpBackendTokensMap[name] = encrypt(raw, encKey)
+            }
+          }
+        }
+        const dbMcpBackendTokens = JSON.stringify(dbMcpBackendTokensMap)
 
         const upsertSql = `
-          INSERT INTO agent.config (id, base_url, encrypted_key, model, params, agent_md, jwks_url, mcp_backends, updated_at, updated_by)
-          VALUES (1, $1, $2, $3, $4, $5, $6, $7, NOW(), $8)
+          INSERT INTO agent.config (id, base_url, encrypted_key, model, params, agent_md, jwks_url, mcp_backends, mcp_backend_tokens, updated_at, updated_by)
+          VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9)
           ON CONFLICT (id) DO UPDATE SET
             base_url    = COALESCE(EXCLUDED.base_url, agent.config.base_url),
             encrypted_key = COALESCE(EXCLUDED.encrypted_key, agent.config.encrypted_key),
@@ -129,6 +214,7 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
             agent_md    = EXCLUDED.agent_md,
             jwks_url    = EXCLUDED.jwks_url,
             mcp_backends = EXCLUDED.mcp_backends,
+            mcp_backend_tokens = EXCLUDED.mcp_backend_tokens,
             updated_at  = NOW(),
             updated_by  = EXCLUDED.updated_by
         `
@@ -140,9 +226,14 @@ export function registerAdminConfigRoutes(app: FastifyInstance) {
           newCfg.agentMd,
           dbJwksUrl,
           dbMcpBackends,
+          dbMcpBackendTokens,
           updated_by,
         ])
-        console.log('[admin/config] DB saved: baseUrl=' + dbBaseUrl + ' model=' + dbModel + ' hasKey=' + (dbEncryptedKey !== null))
+        console.log(
+          `[admin/config] DB saved: baseUrl=${dbBaseUrl} model=${dbModel} ` +
+          `hasKey=${dbEncryptedKey !== null} backends=${rawDbBackends.length} ` +
+          `tokens=${Object.keys(dbMcpBackendTokensMap).length}`,
+        )
       } catch (e) {
         console.error('[admin/config] DB write failed:', (e as Error).message)
         return { success: false, error: 'DB write failed (in-memory change kept)' }

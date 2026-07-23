@@ -34,6 +34,12 @@ export async function POST(req: NextRequest) {
     model?: string;
     jwksUrl?: string | null;
     mcpBackends?: Array<{ name: string; url: string; transport?: string; headers?: Record<string,string>; timeoutMs?: number }>;
+    /**
+     * 新增:外部 MCP backend 的 raw Bearer tokens(明文)。
+     * 只在内存中存在,Agent 端会用 AGENT_CRED_ENCRYPTION_KEY 加密后入库。
+     * '__DELETE__' 哨兵 = 删除该 backend 的加密 token。
+     * 不在 body 中 = 保留 DB 现存 token。 */
+    mcpBackendTokens?: Record<string, string>;
   };
 
   // 适配 UI form 字段 → Agent 期望的 credentials 嵌套
@@ -70,7 +76,20 @@ export async function POST(req: NextRequest) {
     }
   }
   if (Array.isArray(body.mcpBackends)) {
+    // 防御:UI 提交时再剥一次 Authorization,确保绝不进 Agent
+    for (const b of body.mcpBackends) {
+      if (b.headers) {
+        const cleaned: Record<string, string> = {}
+        for (const [k, v] of Object.entries(b.headers)) {
+          if (k.toLowerCase() !== 'authorization') cleaned[k] = v
+        }
+        b.headers = cleaned
+      }
+    }
     agentBody.mcpBackends = body.mcpBackends
+  }
+  if (body.mcpBackendTokens && Object.keys(body.mcpBackendTokens).length > 0) {
+    agentBody.mcpBackendTokens = body.mcpBackendTokens
   }
 
   const result = await callAgent('/api/admin/config', {
