@@ -170,8 +170,8 @@ bank_txn → fn_classify() → bank_txn_classified_snapshot (BASE TABLE)
 | 门店月报 | 2 | query_store_report_snapshot / _trend |
 | 门店创建 | 1 | `create_store` · 直接落库 · **首个 create 类破例**,需 service token |
 | 财务 | 7 | query_financial_statement (3-in-1) · query_financial_overview · _kpi_trend · query_counterparty · query_income_metrics · _payment_metrics · _qimai_revenue |
-| 收入 | 4 | upload_gelatomiiix_income_detail · upload_bonjur_income_detail · query_gelatomiiix_income · get_qimai_entry_rate |
-| 销售 | 11 | gelatomiiix 7 件 + bonjur 4 件 |
+| 收入 | 4 | upload_gelatomiiix_income_detail · upload_bonjur_income_detail · upload_tamkoko_income_detail · query_gelatomiiix_income · get_qimai_entry_rate |
+| 销售 | 12 | gelatomiiix 7 件 + bonjur 4 件 + upload_gelatomiiix_product_sales |
 | Tamkoko 库存 | 1 | upload_tamkoko_inventory |
 | 元数据 | 4 | get_brand_stores · list_categories · list_rule_groups · list_rule_files |
 | 审计 | 1 | get_rules_history |

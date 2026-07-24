@@ -10,6 +10,7 @@ import NotificationBell from '@/components/NotificationBell';
 function BrandSelector() {
   const { brand, setBrand } = useBrand();
   const [opts, setOpts] = useState<Array<{ code: string; name: string }>>(Array.from(BRAND_OPTIONS));
+  const pathname = usePathname();
 
   useEffect(() => {
     fetchBrands()
@@ -19,6 +20,22 @@ function BrandSelector() {
       })
       .catch(() => {});
   }, []);
+
+  // Sync brand selector to URL pathname: when user navigates to a brand-specific
+  // page (e.g. /u/sales/gelatomiiix), update the top brand dropdown to match.
+  useEffect(() => {
+    // Extract brand code from URL segments like /u/sales/gelatomiiix
+    const segments = pathname.split('/').filter(Boolean);
+    const knownBrands = new Set(opts.map(o => o.code));
+    // Check every path segment in reverse (deepest route first) for a brand match
+    for (let i = segments.length - 1; i >= 0; i--) {
+      const seg = segments[i];
+      if (knownBrands.has(seg) && seg !== brand) {
+        setBrand(seg);
+        return;
+      }
+    }
+  }, [pathname, opts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <select

@@ -1,19 +1,22 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
 import { useBrand } from '@/lib/brand-context';
+import { useSearchParams } from 'next/navigation';
 
-export default function UploadPage() {
+function UploadPageContent() {
   const { brand: globalBrand } = useBrand();
+  const searchParams = useSearchParams();
   const [file, setFile] = useState<File | null>(null);
   const [brand, setBrand] = useState(globalBrand);
   const [store, setStore] = useState('yf_gh');
-  const [source, setSource] = useState('bank');
+  const [source, setSource] = useState(searchParams.get('source') || 'bank');
   const [triggerImport, setTriggerImport] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [coverage, setCoverage] = useState<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync with global brand
   useEffect(() => {
@@ -25,6 +28,32 @@ export default function UploadPage() {
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const yyyyMM = `${year}-${month}`;
+
+  // === 泰柯月盘（独立 section，不复用 brand/store/source 状态） ===
+  const [inventoryPeriod, setInventoryPeriod] = useState(`${year}-${month}`);
+  const [inventoryUploading, setInventoryUploading] = useState(false);
+  const [inventoryResult, setInventoryResult] = useState<any>(null);
+  const inventoryFileRef = useRef<HTMLInputElement>(null);
+
+  async function uploadInventory() {
+    const f = inventoryFileRef.current?.files?.[0];
+    if (!f) { alert('请选择 Excel 文件'); return; }
+    setInventoryUploading(true);
+    setInventoryResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', f);
+      fd.append('period', inventoryPeriod);
+      fd.append('storeCode', 'hz_fuyang');
+      const res = await fetch('/api/tamkoko/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      setInventoryResult(data);
+    } catch (e: any) {
+      setInventoryResult({ success: false, error: e?.message });
+    } finally {
+      setInventoryUploading(false);
+    }
+  }
 
   const [brands, setBrands] = useState<Array<{ code: string; name: string }>>([]);
   const [stores, setStores] = useState<Array<{ code: string; name: string }>>([]);
@@ -58,7 +87,8 @@ export default function UploadPage() {
 
   const sources = [
     { code: 'bank', name: '银行流水' },
-    { code: 'income', name: '收入明细' }
+    { code: 'income', name: '收入明细' },
+    { code: 'product_sales', name: '商品销售明细' },
   ];
 
   // Fetch coverage for the uploaded file
@@ -184,25 +214,19 @@ export default function UploadPage() {
           {/* 文件上传 */}
           <div>
             <label className="block text-sm font-medium text-gray-700">选择文件</label>
-            <div className="relative mt-1">
-              {/* Invisible file input overlaid on the visible button.
-                  This is more reliable than <input hidden> + ref.click() because
-                  calling .click() on display:none elements does not work in all browsers. */}
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                required
-              />
-              <div
-                className="block w-full border border-dashed border-gray-300 rounded-md px-4 py-3 text-sm text-gray-600 bg-gray-50 transition-colors select-none"
-              >
-                {file ? file.name : '点击选择文件...'}
-              </div>
-            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="mt-1 block w-full border rounded-md px-3 py-2"
+              required
+            />
             <p className="mt-1 text-sm text-gray-500">
               支持 .xlsx, .xls, .csv 格式。文件将上传到 inputs/{brand}/{store}/{source}/{yyyyMM}/（使用系统当前时间）
+              {source === 'product_sales' && ' — 商品销售明细CSV将导入到 {brand}_ods.product_sales_detail'}
+              {source === 'income' && ' — 收入明细CSV将导入到 {brand}_ods.income_detail'}
+              {source === 'bank' && ' — 银行流水XLSX将导入到 {brand}_ods.bank_txn'}
             </p>
           </div>
 
@@ -248,12 +272,6 @@ export default function UploadPage() {
             <div>文件名: {result.fileName}</div>
             {result.sourceFileId && (
               <div>文件ID: {result.sourceFileId}</div>
-            )}
-            {result.importStatus && (
-              <div>导入状态: {result.importStatus}{result.rowCount != null ? `（row_count=${result.rowCount}）` : ''}</div>
-            )}
-            {result.errorMessage && (
-              <div className="text-red-600">导入错误（DB 记录）: {result.errorMessage}</div>
             )}
             {result.importResult && (
               <div className="mt-2">
@@ -329,6 +347,56 @@ export default function UploadPage() {
           <li>6. 勾选"触发导入"后，上传成功会显示该文件的覆盖率统计</li>
         </ul>
       </div>
+
+      {/* === 泰柯月盘（独立 section） === */}
+      <section className="mt-8 border-t pt-6">
+        <h2 className="text-lg font-semibold mb-2">泰柯月度盘点</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          上传富阳门店月度盘点 Excel，自动计算物料字典与库存金额。store-report 5 月起会显示真实 COGS 毛利率。
+        </p>
+        <div className="flex items-end gap-3 flex-wrap">
+          <label className="block">
+            <span className="text-xs text-gray-600">期间 (YYYY-MM)</span>
+            <input
+              type="text"
+              pattern="\d{4}-\d{2}"
+              className="block border rounded px-2 py-1 mt-1"
+              value={inventoryPeriod}
+              onChange={e => setInventoryPeriod(e.target.value)}
+              placeholder="2026-05"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs text-gray-600">盘点 Excel</span>
+            <input
+              ref={inventoryFileRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="block mt-1"
+            />
+          </label>
+          <button
+            onClick={uploadInventory}
+            disabled={inventoryUploading}
+            className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+          >
+            {inventoryUploading ? '上传中...' : '上传月盘'}
+          </button>
+          {inventoryResult && (
+            <pre className="text-xs text-gray-700 whitespace-pre-wrap">
+              {JSON.stringify(inventoryResult, null, 2)}
+            </pre>
+          )}
+        </div>
+      </section>
     </div>
+  );
+}
+
+export default function UploadPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-gray-500">加载中...</div>}>
+      <UploadPageContent />
+    </Suspense>
   );
 }

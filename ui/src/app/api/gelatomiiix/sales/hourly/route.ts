@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
                     SUM(p.sales_amt) AS total_sales,
                     SUM(p.received_amt) AS total_received
                 FROM ${ODS}.product_sales_detail p
-                JOIN ${ODS}.income_detail i ON p.order_no = i.order_no AND NOT i.is_refund AND i.payment_methods IS NOT NULL
+                JOIN ${ODS}.income_detail i ON p.order_no = i.order_no_clean AND NOT i.is_refund AND i.payment_methods IS NOT NULL
                 WHERE p.order_hour IS NOT NULL AND p.order_hour != '' AND p.order_hour != '-'
                 ${joinCond}
                 GROUP BY p.order_hour ORDER BY p.order_hour`, p);

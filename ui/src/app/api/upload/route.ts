@@ -210,7 +210,7 @@ export async function POST(request: Request) {
       const ins = await pool.query(
         `INSERT INTO raw.ingest_file
            (brand_code, store_code, source_type, month, file_name, file_path, file_hash, file_size, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+         VALUES ($1, $2, $3, ($4 || '-01')::date, $5, $6, $7, $8, 'pending')
          ON CONFLICT (file_hash) DO UPDATE SET updated_at = NOW()
          RETURNING id, status, row_count, error_message`,
         [brand, store, source, yyyyMM, fileName, filePath, fileHash, fileBuffer.length]
@@ -261,6 +261,18 @@ export async function POST(request: Request) {
           return NextResponse.json({
             success: false,
             error: `Unsupported brand for income upload: ${brand}. Supported: ${Object.keys(INCOME_SCRIPT_BY_BRAND).join(', ')}`,
+          }, { status: 400 });
+        }
+      } else if (source === 'product_sales') {
+        const PRODUCT_SALES_SCRIPT_BY_BRAND: Record<string, string> = {
+          bonjur: 'import_bonjur_product_sales.py',
+          gelatomiiix: 'import_gelatomiiix_product_sales.py',
+        };
+        scriptName = PRODUCT_SALES_SCRIPT_BY_BRAND[brand];
+        if (!scriptName) {
+          return NextResponse.json({
+            success: false,
+            error: `Unsupported brand for product_sales upload: ${brand}. Supported: ${Object.keys(PRODUCT_SALES_SCRIPT_BY_BRAND).join(', ')}`,
           }, { status: 400 });
         }
       } else {

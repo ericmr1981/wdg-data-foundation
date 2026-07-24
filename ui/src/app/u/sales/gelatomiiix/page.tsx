@@ -217,6 +217,11 @@ export default function GelatomiiixSalesPage() {
                         <input type="checkbox" checked={pureMode} onChange={e => setPureMode(e.target.checked)} className="rounded" />
                         纯净模式
                     </label>
+                    <a href="/admin/upload?source=product_sales"
+                       className="text-xs px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded border border-blue-200 transition-colors"
+                       title="上传商品销售明细 CSV 数据">
+                        上传商品销售
+                    </a>
                 </div>
             </div>
 

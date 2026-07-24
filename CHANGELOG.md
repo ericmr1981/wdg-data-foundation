@@ -1,5 +1,16 @@
 # Progress Log
 
+## 2026-07-24
+- Added (feature): 产品销售明细手工上传 + MCP 导入工具
+  - `ui/src/app/api/gelatomiiix/sales/upload-product/route.ts` — 新增 API 端点 `POST /api/gelatomiiix/sales/upload-product`
+  - `ui/src/mcp/tools/upload-gelatomiiix-product-sales.ts` — 新增 MCP 工具 `upload_gelatomiiix_product_sales`
+  - `ui/src/mcp/server.ts` — 注册新 MCP 工具
+  - `ui/src/app/api/upload/route.ts` — 通用上传新增 `product_sales` 数据源分派
+  - `ui/src/app/upload/page.tsx` — 上传页面新增"商品销售明细"数据源 + Suspense 包裹
+  - `ui/src/app/u/sales/gelatomiiix/page.tsx` — 销售页新增"上传商品销售"快捷入口
+  - `docs/mcp-tools.md` / `CLAUDE.md` — 文档统计更新
+- verification: `npx tsc --noEmit` ✅
+
 <<<<<<< HEAD
 ## 2026-04-07
 - Fixed (repo): 将“配送明细”并入原有 `/upload` 数据源体系，而不是继续走独立 `xintiandi` 上传入口

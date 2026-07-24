@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
                     SUM(p.received_amt) AS total_received, SUM(p.discount_amt) AS total_discount,
                     ROUND(100.0*SUM(p.received_amt)/NULLIF(SUM(p.sales_amt),0),2) AS cash_in_rate_pct
                 FROM ${ODS}.product_sales_detail p
-                JOIN ${ODS}.income_detail i ON p.order_no = i.order_no AND NOT i.is_refund AND i.payment_methods IS NOT NULL
+                JOIN ${ODS}.income_detail i ON p.order_no = i.order_no_clean AND NOT i.is_refund AND i.payment_methods IS NOT NULL
                 ${joinCond}
                 GROUP BY p.store_code, month, p.product_name
                 ORDER BY total_received DESC LIMIT 10`, p);

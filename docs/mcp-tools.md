@@ -7,7 +7,7 @@
 - **Endpoint**: `POST /api/mcp` (JSON-RPC 2.0)
 - **Method**: `tools/list` (discover) · `tools/call` (invoke)
 - **Header**: `x-mcp-session: internal` (auto-injected by tool wrappers)
-- **Count**: 48 tools across 10 modules
+- **Count**: 49 tools across 10 modules
 
 ## Agent write policy (important)
 
@@ -99,6 +99,7 @@
 | Tool | Purpose |
 |---|---|
 | `upload_bonjur_product_sales` | Upload product sales CSV → bonjur_ods.product_sales_detail |
+| `upload_gelatomiiix_product_sales` | Upload product sales CSV → gelatomiiix_ods.product_sales_detail |
 | `upload_bonjur_sales_self_service` | Upload self-service daily sales CSV |
 | `query_bonjur_qimai_sales` | Qimai POS sales detail (wechat/alipay POS) |
 | `query_bonjur_sales_summary` | 3-in-1: overview/trend/channels for a store |
