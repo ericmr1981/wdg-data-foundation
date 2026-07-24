@@ -211,7 +211,7 @@ export async function POST(request: Request) {
         `INSERT INTO raw.ingest_file
            (brand_code, store_code, source_type, month, file_name, file_path, file_hash, file_size, status)
          VALUES ($1, $2, $3, ($4 || '-01')::date, $5, $6, $7, $8, 'pending')
-         ON CONFLICT (file_hash) DO UPDATE SET updated_at = NOW()
+         ON CONFLICT (brand_code, file_hash) DO UPDATE SET updated_at = NOW()
          RETURNING id, status, row_count, error_message`,
         [brand, store, source, yyyyMM, fileName, filePath, fileHash, fileBuffer.length]
       );
