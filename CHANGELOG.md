@@ -10,8 +10,12 @@
   - `ui/src/app/u/sales/gelatomiiix/page.tsx` — 销售页新增"上传商品销售"快捷入口
   - `docs/mcp-tools.md` / `CLAUDE.md` — 文档统计更新
 - verification: `npx tsc --noEmit` ✅
+- Fixed (repo): 342d1f1 漏 ALTER TABLE migration — 蜜可诗 product_sales_detail 缺 12 列导致 import UndefinedColumn
+  - `sql/40_gelatomiiix_product_sales_detail_add_columns.sql` — 新增 migration
+  - `sql/30_gelatomiiix_product_sales_detail_ods.sql` — 同步 DDL 到 26 列
+  - 修复 CHANGELOG.md 中的 merge conflict markers
+- verification: SQL 语法验证 ✅
 
-<<<<<<< HEAD
 ## 2026-04-07
 - Fixed (repo): 将“配送明细”并入原有 `/upload` 数据源体系，而不是继续走独立 `xintiandi` 上传入口
   - `ui/src/app/upload/page.tsx`: 数据源下拉新增 `delivery / 配送明细`
@@ -36,12 +40,6 @@
 - Fixed (repo): metabase_seed_bonjur_ops_dashboard.py — added same Month values_source_config
 - commit: 4402a46 (ops: solidify WDG VPS compose + ops scripts)
 - verification: bash scripts/run_change_guard.sh → 16/16 pytest PASS ✅
-=======
-## 2026-03-27 14:20
-- goal: Upload 回执补全（返回 source_file_id / 导入状态）+ 新增品牌/门店体验收口
-- bet: /api/upload 计算文件 sha256 并回读 raw.ingest_file（best-effort）；Brand 下拉在当前 brand 不可用时自动切换到第一个可用品牌
->>>>>>> origin/main
-
 ## 2026-04-01 12:46
 - Fixed: 部署环境 Metabase 所有 Dashboard 卡在 “Waiting for results”
   - Root cause: `site-url` 端口错误 (8081 vs 8082) + Month 参数无 values 来源
@@ -62,10 +60,7 @@
 - verification:
   - command: python3 -m py_compile scripts/metabase_seed_dashboard.py && python3 scripts/metabase_seed_dashboard.py --help
   - result: pass (--help 正常显示，语法检查通过)
-<<<<<<< HEAD
   - L2: VPS 生成了 gelatomiiix dashboard (id=8) → http://<VPS_HOST>:8082/dashboard/8
-=======
->>>>>>> origin/main
 - decision: keep
 - guard: py_compile ✅ + 部署环境 验证 ✅
 - next: 在 部署环境 浏览器验证 dashboard 数据正确性；支持 bonjur 品牌
@@ -99,12 +94,9 @@
   - gelatomiiix Card 74: 17 rows ✅
   - bonjur Card 92: 17 rows ✅
 - dashboards:
-<<<<<<< HEAD
   - yufeng: http://<VPS_HOST>:8082/dashboard/9
   - gelatomiiix: http://<VPS_HOST>:8082/dashboard/8
   - bonjur: http://<VPS_HOST>:8082/dashboard/10
-=======
->>>>>>> origin/main
 
 ## 2026-03-31 19:50
 - goal: 修复 Metabase dashboard 查询慢（数据计算量太大）
@@ -142,14 +134,11 @@
   - 所有 Card 查询 time < 200ms
 - decision: keep
 - dashboards:
-<<<<<<< HEAD
   - 蜜可诗: http://<VPS_HOST>:8082/dashboard/8
   - 榆枫与山: http://<VPS_HOST>:8082/dashboard/9
   - 本就: http://<VPS_HOST>:8082/dashboard/10
   - Bonjur营业: http://<VPS_HOST>:8082/dashboard/4
   - Bonjur财务: http://<VPS_HOST>:8082/dashboard/5
-=======
->>>>>>> origin/main
 
 ## 2026-03-31 20:20
 - goal: 继续排查”页面仍然转圈”而非仅 API 查询是否成功
