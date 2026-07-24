@@ -2,9 +2,9 @@
 // DailyCheck MCP 封装。协议细节见
 // /Users/ericmr/Documents/GitHub/DailyCheck/docs/integrations/dailycheck-mcp/README.md
 
-import './dailycheck-types';
 import type {
   Warehouse,
+  InventoryItem,
   ConsumptionRow,
   CategoryBucket,
   WarehouseConsumptionResponse,
@@ -104,7 +104,7 @@ export async function listWarehouses(): Promise<Warehouse[]> {
   return callTool<Warehouse[]>('warehouse_list');
 }
 
-export async function getItemsList(whCode: string): Promise<Array<{ category_name: string; current_stock: number; unit_cost: number }>> {
+export async function getItemsList(whCode: string): Promise<InventoryItem[]> {
   return callTool('items_list', { warehouse_code: whCode });
 }
 

@@ -15,6 +15,9 @@
   - `sql/30_gelatomiiix_product_sales_detail_ods.sql` — 同步 DDL 到 26 列
   - 修复 CHANGELOG.md 中的 merge conflict markers
 - verification: SQL 语法验证 ✅
+- Fixed (build): dailycheck.ts getItemsList 返回类型缺 category_id，阻塞 VPS 部署
+  - `ui/src/lib/dailycheck.ts` — 扩展 getItemsList 返回类型添加 category_id
+- verification: `cd ui && npx tsc --noEmit` ✅
 
 ## 2026-04-07
 - Fixed (repo): 将“配送明细”并入原有 `/upload` 数据源体系，而不是继续走独立 `xintiandi` 上传入口

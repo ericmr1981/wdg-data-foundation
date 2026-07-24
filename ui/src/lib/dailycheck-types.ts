@@ -6,6 +6,15 @@ export interface Warehouse {
   name: string;
 }
 
+// items_list 返回的单条库存记录
+// category_id 部分品牌会返回，部分不返回，故标记 optional
+export interface InventoryItem {
+  category_id?: number;
+  category_name: string;
+  current_stock: number;
+  unit_cost: number;
+}
+
 export interface ConsumptionRow {
   rank: number;
   item_id: number;

@@ -8,6 +8,7 @@ import {
   DailyCheckUnavailableError,
   DailyCheckToolError,
 } from '@/lib/dailycheck';
+import type { InventoryItem } from '@/lib/dailycheck-types';
 import type { DailyCheckBoardPayload } from '@/lib/dailycheck-types';
 
 export const dynamic = 'force-dynamic';
@@ -42,7 +43,7 @@ export async function GET(req: Request) {
     );
     const catMap = new Map<string, number>();
     for (const it of items) {
-      const name = (it as { category_name?: string }).category_name || `category_${(it as { category_id?: number }).category_id ?? 'unknown'}`;
+      const name = (it as InventoryItem).category_name || `category_${(it as InventoryItem).category_id ?? 'unknown'}`;
       const value = Number(it.current_stock ?? 0) * Number(it.unit_cost ?? 0);
       catMap.set(name, (catMap.get(name) ?? 0) + value);
     }
