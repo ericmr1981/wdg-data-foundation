@@ -630,6 +630,18 @@ export function AgentConfigEditor({ initial, defaultParams, onSave, onReset }: P
             onClick={addBackend}
             className="rounded border border-dashed border-gray-400 bg-gray-50 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
           >+ Add backend</button>
+
+          {/* MCP 配置模块的保存按钮 */}
+          <div className="mt-4 flex items-center gap-3 border-t pt-4">
+            <button
+              onClick={handleSave}
+              disabled={!dirty || saving}
+              className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? '保存中…' : '保存 MCP 配置'}
+            </button>
+            {message && <span className="text-sm text-gray-700">{message}</span>}
+          </div>
         </div>
       </div>
     </div>
