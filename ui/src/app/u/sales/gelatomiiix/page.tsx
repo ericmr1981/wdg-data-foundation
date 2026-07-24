@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
     BarChart, Bar, LineChart, Line, ComposedChart, PieChart, Pie, Cell,
+    ScatterChart, Scatter,
     XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { STORES } from '../tamkoko/stores';
@@ -70,7 +72,12 @@ interface StoreRow { store_code: string; store_name: string; }
 export default function GelatomiiixSalesPage() {
     const [stores, setStores] = useState<StoreRow[]>([]);
     const [storeCode, setStoreCode] = useState('sh_xtd');
-    const [month, setMonth] = useState('2026-07-01');
+    const [month, setMonth] = useState(() => {
+        // default to previous month (current month may not have data yet)
+        const d = new Date();
+        d.setMonth(d.getMonth() - 1);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+    });
     const [selectedDrillMonth, setSelectedDrillMonth] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -86,6 +93,8 @@ export default function GelatomiiixSalesPage() {
     const [hourly, setHourly] = useState<HourlyRow[] | null>(null);
     const [channelTrend, setChannelTrend] = useState<ChannelRow[] | null>(null);
     const [pureMode, setPureMode] = useState(false);
+    const [categoryData, setCategoryData] = useState<any[] | null>(null);
+    const [cupData, setCupData] = useState<any[] | null>(null);
     const [channelDailyMetric, setChannelDailyMetric] = useState<'gross_amt' | 'revenue_amt' | 'order_cnt'>('gross_amt');
 
     const reloadMonthly = async () => {
@@ -94,7 +103,7 @@ export default function GelatomiiixSalesPage() {
             const base = '/api/gelatomiiix/sales';
             const storeQs = `store=${storeCode}&`;
             const extra = pureMode ? '&exclude_other=true' : '';
-            const [o, ch, dt, pd, tr, cd, pa, sp, hr, ct] = await Promise.all([
+            const [o, ch, dt, pd, tr, cd, pa, sp, hr, ct, cc] = await Promise.all([
                 apiGet<OverviewRow[]>(`${base}/overview?${storeQs}month=${month}${extra}`),
                 apiGet<ChannelRow[]>(`${base}/channel?${storeQs}month=${month}${extra}`),
                 apiGet<DineRow[]>(`${base}/dine-takeaway?${storeQs}month=${month}${extra}`),
@@ -105,6 +114,7 @@ export default function GelatomiiixSalesPage() {
                 apiGet<ProductAnalysisRow[]>(`${base}/product-analysis?${storeQs}month=${month}&group_by=spec${extra}`),
                 apiGet<HourlyRow[]>(`${base}/hourly?${storeQs}month=${month}${extra}`),
                 apiGet<ChannelRow[]>(`${base}/channel?${storeQs}${extra}`),
+                apiGet<any>(`${base}/category-cup?${storeQs}month=${month}`),
             ]);
             setOverview(o?.[0] ?? null);
             setChannel(ch ?? null);
@@ -116,6 +126,7 @@ export default function GelatomiiixSalesPage() {
             setSpecAnalysis(sp ?? null);
             setHourly(hr ?? null);
             setChannelTrend(ct ?? null);
+            if (cc) { setCategoryData(cc.categories ?? null); setCupData(cc.cups ?? null); }
         } catch (e) {
             setError(e instanceof Error ? e.message : 'fetch failed');
         }
@@ -217,6 +228,11 @@ export default function GelatomiiixSalesPage() {
                         <input type="checkbox" checked={pureMode} onChange={e => setPureMode(e.target.checked)} className="rounded" />
                         纯净模式
                     </label>
+                    <Link href={`/u/sales/gelatomiiix/discount?store=${storeCode}`}
+                       className="text-xs px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-600 rounded border border-purple-200 transition-colors"
+                       title="查看折扣率分析">
+                        折扣分析
+                    </Link>
                     <a href="/admin/upload?source=product_sales"
                        className="text-xs px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded border border-blue-200 transition-colors"
                        title="上传商品销售明细 CSV 数据">
@@ -531,22 +547,93 @@ export default function GelatomiiixSalesPage() {
                 ) : <Empty />}
             </Section>
 
-            {/* 6. 小时分析 */}
-            <Section title="6. 时段销售分析">
+            {/* 6. 品类健康度 */}
+            <Section title="6. 品类健康度">
+                {categoryData && categoryData.length > 0 ? (
+                    <div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead><tr className="text-left text-gray-500 border-b">
+                                    <th className="p-1.5">品类</th>
+                                    <th className="p-1.5 text-right">SKU数</th>
+                                    <th className="p-1.5 text-right">销量占比</th>
+                                    <th className="p-1.5 text-right">销售额</th>
+                                    <th className="p-1.5 text-right">折扣率</th>
+                                    <th className="p-1.5 text-right">实收率</th>
+                                    <th className="p-1.5 text-right">均价</th>
+                                </tr></thead>
+                                <tbody>
+                                    {categoryData.map((c: any, i: number) => (
+                                        <tr key={c.category} className="border-t hover:bg-gray-50">
+                                            <td className="p-1.5 font-medium">{c.category}</td>
+                                            <td className="p-1.5 text-right">{c.sku_cnt}</td>
+                                            <td className="p-1.5 text-right">{fmtPct(c.qty_share_pct)}</td>
+                                            <td className="p-1.5 text-right">¥{fmtNum(c.total_sales)}</td>
+                                            <td className="p-1.5 text-right text-red-500">{fmtPct(c.disc_rate_pct)}</td>
+                                            <td className="p-1.5 text-right">{fmtPct(c.cash_in_rate_pct)}</td>
+                                            <td className="p-1.5 text-right">¥{c.avg_price}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ) : <Empty />}
+            </Section>
+
+            {/* 7. 杯型 × 折扣 */}
+            <Section title="7. 杯型折扣分析">
+                {cupData && cupData.length > 0 ? (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead><tr className="text-left text-gray-500 border-b">
+                                <th className="p-1.5">杯型</th>
+                                <th className="p-1.5 text-right">总销量</th>
+                                <th className="p-1.5 text-right">有折扣行数</th>
+                                <th className="p-1.5 text-right">折扣率</th>
+                                <th className="p-1.5 text-right">均价</th>
+                                <th className="p-1.5 text-right">销售额</th>
+                            </tr></thead>
+                            <tbody>
+                                {cupData.map((c: any) => (
+                                    <tr key={c.cup_type} className="border-t hover:bg-gray-50">
+                                        <td className="p-1.5 font-medium">{c.cup_type}</td>
+                                        <td className="p-1.5 text-right">{fmtNum(c.total_qty)}</td>
+                                        <td className="p-1.5 text-right">{fmtNum(c.disc_lines)}</td>
+                                        <td className="p-1.5 text-right text-red-500">{fmtPct(c.disc_rate_pct)}</td>
+                                        <td className="p-1.5 text-right">¥{c.avg_price}</td>
+                                        <td className="p-1.5 text-right">¥{fmtNum(c.total_sales)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : <Empty />}
+            </Section>
+
+            {/* 8. 小时分析 */}
+            <Section title="8. 时段销售分析">
                 {hourly && hourly.length > 0 ? (
                     <div>
-                        <div className="text-xs text-gray-500 mb-2">各时段订单数/销售额分布</div>
+                        <div className="text-xs text-gray-500 mb-2">各时段订单数/销售额 + 折扣率</div>
                         <ResponsiveContainer width="100%" height={260}>
-                            <BarChart data={hourly.map(h => ({ hour: h.order_hour, orders: Number(h.order_cnt), sales: Number(h.total_sales) }))}>
+                            <ComposedChart data={hourly.map(h => ({
+                                hour: h.order_hour,
+                                orders: Number(h.order_cnt),
+                                sales: Number(h.total_sales),
+                                discRate: Number((h as any).disc_rate_pct ?? 0),
+                            }))}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="hour" interval={0} tick={{ fontSize: 10 }} />
                                 <YAxis yAxisId="left" tickFormatter={(v: number) => fmtNum(v, 0)} />
-                                <YAxis yAxisId="right" orientation="right" tickFormatter={(v: number) => fmtNum(v, 0)} />
-                                <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
+                                <YAxis yAxisId="right" orientation="right" tickFormatter={(v: number) => `${v}%`} domain={[0, 'auto']} />
+                                <Tooltip formatter={(v: unknown, name: unknown) =>
+                                    String(name ?? '') === '折扣率' ? fmtPct(v) : fmtNum(v, 2)} />
                                 <Legend />
                                 <Bar yAxisId="left" dataKey="orders" name="订单数" fill={CHART_COLORS[3]} radius={[3, 3, 0, 0]} />
-                                <Bar yAxisId="right" dataKey="sales" name="销售额" fill={CHART_COLORS[0]} radius={[3, 3, 0, 0]} />
-                            </BarChart>
+                                <Bar yAxisId="left" dataKey="sales" name="销售额" fill={CHART_COLORS[0]} radius={[3, 3, 0, 0]} />
+                                <Line yAxisId="right" dataKey="discRate" name="折扣率" stroke={CHART_COLORS[2]} strokeWidth={2} dot={{ r: 3 }} />
+                            </ComposedChart>
                         </ResponsiveContainer>
                     </div>
                 ) : <Empty />}
