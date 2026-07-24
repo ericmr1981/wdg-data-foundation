@@ -176,12 +176,14 @@ export default async function HomePage() {
         const tn = sanitizeSchema(table);
         // Per-store rows, date range, and gap detection
         const res = await pool.query(`
-          SELECT store_code, COALESCE(store_name, store_code) as store_name,
+          SELECT q.store_code,
+            COALESCE(MIN(s.store_name), q.store_code) AS store_name,
             count(*)::int as rows,
-            MIN(biz_date)::text as min_date,
-            MAX(biz_date)::text as latest_at
-          FROM ${sanitizeSchema(schema)}.${tn}
-          GROUP BY store_code, store_name
+            MIN(q.biz_date)::text as min_date,
+            MAX(q.biz_date)::text as latest_at
+          FROM ${sanitizeSchema(schema)}.${tn} q
+          LEFT JOIN ops.stores s ON s.store_code = q.store_code AND s.enabled = true
+          GROUP BY q.store_code
           ORDER BY store_name
         `);
         for (const row of res.rows as { store_code: string; store_name: string; rows: number; min_date: string; latest_at: string }[]) {
@@ -222,7 +224,7 @@ export default async function HomePage() {
       const invRes = await pool.query(`
         SELECT
           i.store_code,
-          COALESCE(s.store_name, i.store_code) AS store_name,
+          COALESCE(MIN(s.store_name), i.store_code) AS store_name,
           COUNT(*)::int AS period_count,
           ${isTamkoko ? 'NULL::int' : 'COUNT(DISTINCT i.sku)'} AS sku_count,
           SUM(${isTamkoko ? 'i.total_amount' : 'i.amount'}) AS total_inventory_amt,
@@ -230,7 +232,7 @@ export default async function HomePage() {
           MAX(i.period) AS max_period
         FROM ${sanitizeSchema(odsSchema)}.${invTable} i
         LEFT JOIN ops.stores s ON s.store_code = i.store_code AND s.brand_code = $1
-        GROUP BY i.store_code, s.store_name
+        GROUP BY i.store_code
         ORDER BY i.store_code
       `, [brand.brand_code]);
       for (const row of invRes.rows as any[]) {
