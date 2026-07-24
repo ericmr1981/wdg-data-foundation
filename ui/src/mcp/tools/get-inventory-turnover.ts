@@ -5,7 +5,7 @@ const GetInventoryTurnoverInput = z.object({
   brand: z.enum(['tamkoko']).optional().default('tamkoko')
     .describe('Brand code. Only tamkoko has inventory views; other brands return no rows.'),
   store_code: z.string().optional()
-    .describe('Filter to a single store_code (e.g. hz_fuyang). Optional.'),
+    .describe('Filter to a single store_code (e.g. hz_fuyang). Optional. Must be a tamkoko store code, not wh_XXX format.'),
   period: z.string().regex(/^\d{4}-\d{2}$/, 'period must be YYYY-MM').optional()
     .describe('Filter to a single period (YYYY-MM). Optional.'),
 });
@@ -18,13 +18,18 @@ Formula: turnover_times = COGS / ((opening + closing) / 2); turnover_days = 30 /
 
 **Parameters**:
 - brand (optional, default 'tamkoko')
-- store_code (optional): filter to a single store
+- store_code (optional): filter to a single store. Must be a tamkoko store code (e.g. hz_fuyang), NOT wh_XXX format.
 - period (optional): filter to YYYY-MM
 
 **Response**: array of { store_code, period, cogs_amt, opening_amt, closing_amt, turnover_times, turnover_days }. Use this for "本月周转几次?哪几个月数据缺?" type questions.`,
   inputSchema: GetInventoryTurnoverInput,
   async execute(params: z.infer<typeof GetInventoryTurnoverInput>) {
     const { brand = 'tamkoko', store_code, period } = params;
+
+    // Defensive validation: reject non-tamkoko store_code format (wh_XXX)
+    if (store_code && /^wh_\d{3}$/i.test(store_code)) {
+      throw new Error(`get_inventory_turnover: store_code "${store_code}" is not a tamkoko store (wh_XXX format detected). Only tamkoko stores (e.g. hz_fuyang) are supported. Use warehouse_list to find the correct tamkoko store codes.`);
+    }
     const qs = new URLSearchParams({ brand });
     if (store_code) qs.set('store_code', store_code);
     if (period) qs.set('period', period);

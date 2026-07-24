@@ -114,7 +114,7 @@ ctx.period 是用户**当前查看的页面**的期间, 跟"用户想查的期�
 | `get_douyin_recon` | tamkoko | — |
 | `get_gelato_wechat_recon` | gelatomiiix | — |
 | `get_gelato_alipay_recon` | gelatomiiix | — |
-| `get_inventory_turnover` | tamkoko | 其他品牌无 `v_cogs_monthly` / `v_inventory_turnover` 视图 |
-| `get_inventory_summary` | tamkoko | 其他品牌无 `inventory_monthly_summary` 表 |
+| `get_inventory_turnover` | tamkoko | 其他品牌无 `v_cogs_monthly` / `v_inventory_turnover` 视图。⚠️ 非 tamkoko 仓库（wh_XXX 格式）请勿调用，会返回 400 错误。|
+| `get_inventory_summary` | tamkoko | 其他品牌无 `inventory_monthly_summary` 表。⚠️ 非 tamkoko 仓库请勿调用。|
 
 如果用户问"\<品牌\>的\<渠道\>"，先确认该品牌是否支持该工具。

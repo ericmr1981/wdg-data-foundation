@@ -18,6 +18,12 @@
 - Fixed (build): dailycheck.ts getItemsList 返回类型缺 category_id，阻塞 VPS 部署
   - `ui/src/lib/dailycheck.ts` — 扩展 getItemsList 返回类型添加 category_id
 - verification: `cd ui && npx tsc --noEmit` ✅
+- Fixed (agent): get_inventory_turnover / get_inventory_summary 非 tamkoko 仓库返回 500 — 添加 store_code 格式校验
+  - `ui/src/mcp/tools/get-inventory-turnover.ts` — 新增 wh_XXX 格式拒绝校验，返明确 400 级错误
+  - `ui/src/mcp/tools/get-inventory-summary.ts` — 同步添加 wh_XXX 格式拒绝校验
+  - `agent/skills/wdg-data-platform.md` — 更新文档标注非 tamkoko 仓库勿调用
+- Note: Bug A/B/C（dedup/history 窗口/DB 顺序）已在 commit 741e1ae 修复
+- verification: `cd ui && npx tsc --noEmit` ✅
 
 ## 2026-04-07
 - Fixed (repo): 将“配送明细”并入原有 `/upload` 数据源体系，而不是继续走独立 `xintiandi` 上传入口
