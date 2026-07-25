@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import pool from '@/lib/db';
 import { ensureAdmin, newRunId, newVersion } from '../_lib';
+import { pipelinePids } from '../_pid-tracker';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
     args.push('--train-end', '2026-05-31');
   }
 
-  // DB 连接从 docker-compose / .env.local 继��，不硬编码。
+  // DB 连接从 docker-compose / .env.local 继承，不硬编码。
   const env = { ...process.env, DB_PASSWORD: process.env.DB_PASSWORD || 'postgres' };
   // Python：宿主机用 managed venv，Docker 内用系统 python3。
   const python = process.env.PYTHON_BIN || '/usr/bin/python3';
@@ -66,14 +67,31 @@ export async function POST(req: NextRequest) {
       [`${scriptsDir}/${script}`, ...args],
       { env, detached: true, stdio: 'ignore' },
     );
+    // 记录 PID 供 cancel 时 kill 进程（Issue #36 Change 3）
+    if (child.pid !== undefined) {
+      pipelinePids.set(runId, child.pid);
+      // 持久化到 DB 以便进程重启 / cron 清理时仍可追踪
+      pool.query(
+        `UPDATE ops.pipeline_run SET pid=$1 WHERE run_id=$2`,
+        [child.pid, runId],
+      ).catch(err => console.error(`[discount-model] failed to persist pid for ${runId}: ${err}`));
+      // 子进程退出时自动清理 Map，防止内存泄漏
+      child.on('exit', () => {
+        pipelinePids.delete(runId);
+      });
+    }
     child.unref();
   } catch (e) {
-    await pool.query(
-      `UPDATE ops.pipeline_run
-       SET status='failed', finished_at=NOW()
-       WHERE run_id=$1`,
-      [runId],
-    );
+    try {
+      await pool.query(
+        `UPDATE ops.pipeline_run
+         SET status='failed', finished_at=NOW()
+         WHERE run_id=$1`,
+        [runId],
+      );
+    } catch (cleanupErr) {
+      console.error(`[discount-model] cleanup failed for ${runId}: ${String(cleanupErr)}`);
+    }
     return NextResponse.json({ error: `spawn failed: ${String(e)}` }, { status: 500 });
   }
 

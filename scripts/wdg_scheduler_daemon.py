@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import psycopg2
@@ -29,6 +30,84 @@ log = logging.getLogger('wdg-scheduler')
 # without DB_PASSWORD (tests import this module without DB env).
 
 RELOAD_PORT = int(os.getenv('WDG_SCHEDULER_PORT', '4711'))
+
+_STALE_TIMEOUT_HOURS = int(os.getenv('WDG_STALE_PIPELINE_TIMEOUT_HOURS', '1'))
+"""pipeline_run 行 status='running' 超过此小时数视为 stale，自动标记 failed。"""
+
+
+def _cleanup_stale_pipeline_runs() -> None:
+    """
+    每小时清理：将 ops.pipeline_run 中 status='running' 且
+    started_at < NOW() - N hours 的行标记为 failed，
+    并尝试 kill 对应的 OS 进程。
+    避免 dev 手动清理 stale running 行。
+    （对应 Issue #36 Change 1）
+    """
+    db_config = {
+        'host': os.getenv('DB_HOST', 'localhost'),
+        'port': int(os.getenv('DB_PORT', '5432')),
+        'dbname': os.getenv('DB_NAME', 'dataplatform'),
+        'user': os.getenv('DB_USER', 'postgres'),
+        'password': os.getenv('DB_PASSWORD', 'trust-auth-no-password-needed'),
+    }
+    try:
+        with psycopg2.connect(**db_config) as conn:
+            with conn.cursor() as cur:
+                # 1) 先查出 stale 行的 PID
+                cur.execute("""
+                    SELECT run_id, pid
+                    FROM ops.pipeline_run
+                    WHERE status='running'
+                      AND finished_at IS NULL
+                      AND started_at < NOW() - %s
+                """, (timedelta(hours=_STALE_TIMEOUT_HOURS),))
+                stale_rows = list(cur.fetchall())
+
+                # 2) 尝试 kill 进程（SIGTERM → 5s → SIGKILL）
+                for run_id, pid in stale_rows:
+                    if pid is None:
+                        continue
+                    for sig in (signal.SIGTERM, signal.SIGKILL):
+                        try:
+                            os.kill(pid, sig)
+                            if sig == signal.SIGTERM:
+                                # SIGTERM 后等 5 秒再 SIGKILL
+                                time.sleep(5)
+                        except ProcessLookupError:
+                            # 进程已结束，无需继续
+                            break
+                        except PermissionError:
+                            log.warning('no permission to kill pid %s for run %s', pid, run_id)
+                            break
+                        except OSError as kill_err:
+                            log.warning('kill pid %s for run %s failed: %s', pid, run_id, kill_err)
+                            break
+
+                # 3) 统一标记 DB 状态为 failed
+                cur.execute("""
+                    UPDATE ops.pipeline_run
+                       SET status='failed',
+                           finished_at=NOW(),
+                           warnings = COALESCE(warnings, '[]'::jsonb) ||
+                                      jsonb_build_array(%s)
+                     WHERE status='running'
+                       AND finished_at IS NULL
+                       AND started_at < NOW() - %s
+                """, (
+                    f'auto-cleanup: stale running > {_STALE_TIMEOUT_HOURS}h',
+                    timedelta(hours=_STALE_TIMEOUT_HOURS),
+                ))
+                cleaned = cur.rowcount
+                conn.commit()
+
+        if cleaned:
+            killed = sum(1 for _, pid in stale_rows if pid is not None)
+            log.info('cleaned %d stale pipeline_run rows (killed %d processes, running > %sh)',
+                     cleaned, killed, _STALE_TIMEOUT_HOURS)
+        else:
+            log.info('pipeline_run stale check: 0 stale rows found')
+    except Exception as e:
+        log.error('_cleanup_stale_pipeline_runs failed: %s', e)
 
 
 def _query_schedule() -> list[tuple]:
@@ -108,7 +187,18 @@ def build_scheduler() -> BlockingScheduler:
             id=f'sweep-{job["task_name"]}',
             replace_existing=True,
         )
-    log.info('scheduler loaded %d jobs', len(sched.get_jobs()))
+    # 内置 job：每小时清理 stale pipeline_run（Issue #36 Change 1）
+    sched.add_job(
+        _cleanup_stale_pipeline_runs,
+        'cron',
+        hour='*',
+        minute='0',  # 每小时整点
+        id='pipeline-stale-cleanup',
+        replace_existing=True,
+    )
+
+    log.info('scheduler loaded %d jobs (+1 built-in pipeline stale cleanup)',
+             len(sched.get_jobs()) - 1)
     return sched
 
 

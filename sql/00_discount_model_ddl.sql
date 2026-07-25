@@ -31,7 +31,8 @@ ALTER TABLE ops.pipeline_run
   ADD COLUMN IF NOT EXISTS cancel_requested boolean DEFAULT false,
   ADD COLUMN IF NOT EXISTS is_active        boolean DEFAULT false,
   ADD COLUMN IF NOT EXISTS fallback_to      text,
-  ADD COLUMN IF NOT EXISTS warnings         jsonb   DEFAULT '[]'::jsonb;
+  ADD COLUMN IF NOT EXISTS warnings         jsonb   DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS pid              integer;             -- 子进程 PID，用于 API cancel kill
 
 -- 注：ops.pipeline_run.run_id 是 text（不是 uuid），FK 在 snapshot 表中也是 text
 
@@ -44,6 +45,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_pipeline_run_module_active
 
 CREATE INDEX IF NOT EXISTS idx_pipeline_run_version
   ON ops.pipeline_run(version);
+
+-- 加速 stale pipeline 清理查询(status + started_at)
+CREATE INDEX IF NOT EXISTS idx_pipeline_run_stale_cleanup
+  ON ops.pipeline_run(status, started_at)
+  WHERE finished_at IS NULL;
 
 -- -------------------------------------------------
 -- 2. 折扣模型产物快照
