@@ -37,7 +37,50 @@ npm run test:e2e         # Playwright E2E
 npx playwright test --ui # Playwright UI mode
 
 # Docker (full stack)
-docker compose up -d                   # Postgres + UI
+docker compose up -d                   # Postgres + systemd-stack (all services)
+
+## Docker Dev Environment（本文档是 dev 环境唯一声明源）
+
+**不要随意启动宿主机 Next.js 或改端口——所有服务在 Docker 容器内运行。**
+
+### 容器与服务
+| 容器 | 内容 |
+|------|------|
+| `wdg-postgres-main` | PostgreSQL 16 (`dataplatform`, port 5432) |
+| `wdg-postgres-agent` | PostgreSQL 16 (`agent_dev`, port 5433) |
+| `wdg-systemd` | systemd-stack（运行所有业务进程） |
+
+### 端口映射（宿主机 → 容器）
+| 端口 | 服务 | 代码库（bind mount） |
+|------|------|---------------------|
+| 3001 | wdg-ui | `/opt/wdg` = `wdg-data-foundation/ui/` |
+| 3003 | wdg-portal | `/opt/wdg-portal` = `../WGD_Portal/` |
+| 4101 | wdg-agent HTTP | `/opt/wdg/agent/` |
+| 4102 | wdg-agent WS | 同上 |
+
+### 容器内 systemd 服务管理
+```bash
+# 容器重建后需要重新部署 systemd 单元（/etc/systemd/system/ 是临时的）
+docker exec wdg-systemd bash -c "
+  cp /opt/wdg/deploy/systemd/*.service /etc/systemd/system/
+  systemctl daemon-reload
+  systemctl enable wdg-ui wdg-portal
+  systemctl start wdg-ui wdg-portal
+"
+```
+
+### 容器内 Python 依赖（容器重建后会丢失，需重装）
+```bash
+docker exec wdg-systemd pip3 install --break-system-packages psycopg2-binary pandas statsmodels
+```
+
+### DB 连接（容器内）
+所有进程在 `wdg-net` bridge 网络内：`DB_HOST=postgres-main`（由 docker-compose environment 注入）
+
+### 注意
+- **不要在宿主机上 `npm run dev`** — 所有服务通过 Docker 运行
+- **不要改端口** — wdg-ui=3001, wdg-portal=3003 是固定约定
+- `deploy/systemd/` 下三个文件 (`wdg-ui.service` 端口 3001, `wdg-portal.service` 端口 3003, `docker-compose.yml` 端口映射) 已标记 `assume-unchanged`，本地修改不上主分支
 
 # Bootstrap
 bash init.sh              # Python venv + compile check
