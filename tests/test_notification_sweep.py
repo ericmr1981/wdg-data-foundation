@@ -23,11 +23,11 @@ from scripts.notification_sweep import (
 def conn():
     """Connect to test DB; assumes DB_* env vars set, schema ops.notification exists."""
     dsn = {
-        'host': os.environ['DB_HOST'],
-        'port': int(os.environ['DB_PORT']),
-        'dbname': os.environ['DB_NAME'],
-        'user': os.environ['DB_USER'],
-        'password': os.environ['DB_PASSWORD'],
+        'host': os.getenv('DB_HOST', 'localhost'),
+        'port': int(os.getenv('DB_PORT', '5432')),
+        'dbname': os.getenv('DB_NAME', 'dataplatform'),
+        'user': os.getenv('DB_USER', 'postgres'),
+        'password': os.getenv('DB_PASSWORD', 'trust-auth-no-password-needed'),
     }
     c = psycopg2.connect(**dsn)
     c.autocommit = False

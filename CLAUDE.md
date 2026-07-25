@@ -120,7 +120,7 @@ raw  →  {brand}_ods  →  {brand}_cfg  →  {brand}_dm  →  40_* views
 ## Key Conventions
 
 ### Python
-- Module-level DB config: `os.environ["DB_PASSWORD"]` (not `os.getenv` — fails fast if unset)
+- Module-level DB config: `os.getenv("DB_PASSWORD", "trust-auth-no-password-needed")` (fail-safe; trust-auth 环境任意非空密码即可)
 - Pipeline steps: `with pipeline_step(run_id, "step_name", conn) as ctx:` from `ops_logger`
 - Classifier scripts include `if __name__ == '__main__'` CLI + test cases
 - DB: `psycopg2`, schema per brand, password from env

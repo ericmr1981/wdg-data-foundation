@@ -3,9 +3,9 @@ import os
 import psycopg2
 
 conn = psycopg2.connect(
-    host=os.environ['DB_HOST'], port=os.environ['DB_PORT'],
-    dbname=os.environ['DB_NAME'], user=os.environ['DB_USER'],
-    password=os.environ['DB_PASSWORD']
+    host=os.getenv('DB_HOST', 'localhost'), port=os.getenv('DB_PORT', '5432'),
+    dbname=os.getenv('DB_NAME', 'dataplatform'), user=os.getenv('DB_USER', 'postgres'),
+    password=os.getenv('DB_PASSWORD', 'trust-auth-no-password-needed')
 )
 conn.autocommit = False
 cur = conn.cursor()

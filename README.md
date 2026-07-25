@@ -89,7 +89,7 @@ Key files:
 ## Key Conventions
 
 ### Python
-- Module-level DB config: `os.environ["DB_PASSWORD"]` (fail-fast, not `os.getenv`)
+- Module-level DB config: `os.getenv("DB_PASSWORD", "trust-auth-no-password-needed")` (fail-safe; trust-auth 环境任意非空密码即可)
 - Pipeline steps: `with pipeline_step(run_id, "step_name", conn)` from `ops_logger`
 - DB: `psycopg2`, schema per brand
 
