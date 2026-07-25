@@ -117,7 +117,6 @@ const MODEL_DISCOUNT_RATES = [0, 5, 10, 15, 20, 25, 30, 35, 40];
 function buildModelIndex(snap: ModelSnapshot) {
     return MODEL_DISCOUNT_RATES.map(rate => ({
         rate,
-        olsIndex: Math.exp(snap.olsCoef * rate) * 100,
         poissonIndex: Math.exp(snap.poissonCoef * rate) * 100,
         nbIndex: Math.exp(snap.nbCoef * rate) * 100,
     }));
@@ -288,7 +287,18 @@ export default function DiscountPage() {
                         evalDays: p.n_eval || daily.length,
                         alpha: p.alpha || 0,
                         formula: p.formula,
-                        overall: p.metrics || FALLBACK_BASELINE.overall,
+                        overall: p.metrics ? {
+                            actual: p.metrics.actual_orders ?? FALLBACK_BASELINE.overall.actual,
+                            predicted: p.metrics.predicted_orders ?? FALLBACK_BASELINE.overall.predicted,
+                            residual: p.metrics.residual_orders ?? FALLBACK_BASELINE.overall.residual,
+                            incrementalRate: p.metrics.lift_vs_baseline_pct != null
+                                ? p.metrics.lift_vs_baseline_pct / 100    // API 返回的是百分比（如 51.84），转小数
+                                : FALLBACK_BASELINE.overall.incrementalRate,  // fallback 已是小数
+                            mae: p.metrics.MAE ?? FALLBACK_BASELINE.overall.mae,
+                            rmse: p.metrics.RMSE ?? FALLBACK_BASELINE.overall.rmse,
+                            wape: p.metrics.WAPE ?? FALLBACK_BASELINE.overall.wape,
+                            bias: p.metrics.Bias ?? FALLBACK_BASELINE.overall.bias,
+                        } : FALLBACK_BASELINE.overall,
                         june: FALLBACK_BASELINE.june,
                         july: FALLBACK_BASELINE.july,
                         daily: p.daily,
@@ -614,7 +624,7 @@ export default function DiscountPage() {
                 {/* Effect trend chart */}
                 <div>
                     <div className="text-xs text-gray-500 mb-2">
-                        调整后订单指数 vs 平均折扣率（基准 0% = 100，其他控制变量保持不变，OLS / Poisson / 负二项 三种模型沿各自系数线性外推）
+                        调整后订单乘数 vs 平均折扣率（基准 0% = 100，其他控制变量保持不变；Poisson / 负二项均为对数链接模型，系数经指数化后沿折扣率外推。OLS 为线性模型，不适用此乘数公式，故不展示）
                     </div>
                     <ResponsiveContainer width="100%" height={260}>
                         <LineChart data={modelIndexData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
@@ -638,15 +648,6 @@ export default function DiscountPage() {
                                 }}
                             />
                             <Legend iconType="line" wrapperStyle={{ fontSize: 11 }} />
-                            <Line
-                                type="monotone"
-                                dataKey="olsIndex"
-                                name="OLS 指数"
-                                stroke={CHART_COLORS[0]}
-                                strokeWidth={2}
-                                dot={{ r: 3 }}
-                                activeDot={{ r: 5 }}
-                            />
                             <Line
                                 type="monotone"
                                 dataKey="poissonIndex"
@@ -700,18 +701,18 @@ export default function DiscountPage() {
                 <div className="grid grid-cols-4 gap-3 mb-4">
                     <div className="rounded-lg p-3 bg-blue-50">
                         <div className="text-xs text-gray-500">评估天数 / 总实际</div>
-                        <div className="text-xl font-bold mt-1">{baselineSnap?.evalDays ?? 0} 天 · {fmtNum(baselineSnap?.overall ?? FALLBACK_BASELINE.overall.actual)} 单</div>
-                        <div className="text-xs mt-1 text-gray-500">基线预测 {fmtNum(baselineSnap?.overall ?? FALLBACK_BASELINE.overall.predicted, 1)}</div>
+                        <div className="text-xl font-bold mt-1">{baselineSnap?.evalDays ?? 0} 天 · {fmtNum((baselineSnap?.overall ?? FALLBACK_BASELINE.overall).actual)} 单</div>
+                        <div className="text-xs mt-1 text-gray-500">基线预测 {fmtNum((baselineSnap?.overall ?? FALLBACK_BASELINE.overall).predicted, 1)}</div>
                     </div>
                     <div className="rounded-lg p-3 bg-emerald-50">
                         <div className="text-xs text-gray-500">相对基线增量</div>
-                        <div className="text-xl font-bold mt-1">+{fmtNum(baselineSnap?.overall ?? FALLBACK_BASELINE.overall.residual, 1)} 单</div>
-                        <div className="text-xs mt-1 text-gray-500">增量率 +{fmtPct(baselineSnap?.overall ?? FALLBACK_BASELINE.overall.incrementalRate * 100)}</div>
+                        <div className="text-xl font-bold mt-1">+{fmtNum((baselineSnap?.overall ?? FALLBACK_BASELINE.overall).residual, 1)} 单</div>
+                        <div className="text-xs mt-1 text-gray-500">增量率 +{fmtPct((baselineSnap?.overall ?? FALLBACK_BASELINE.overall).incrementalRate * 100)}</div>
                     </div>
                     <div className="rounded-lg p-3 bg-yellow-50">
                         <div className="text-xs text-gray-500">MAE / RMSE</div>
-                        <div className="text-xl font-bold mt-1">{fmtNum(baselineSnap?.overall ?? FALLBACK_BASELINE.overall.mae, 2)} / {fmtNum(baselineSnap?.overall ?? FALLBACK_BASELINE.overall.rmse, 2)}</div>
-                        <div className="text-xs mt-1 text-gray-500">单/日 · bias +{fmtNum(baselineSnap?.overall ?? FALLBACK_BASELINE.overall.bias, 2)}</div>
+                        <div className="text-xl font-bold mt-1">{fmtNum((baselineSnap?.overall ?? FALLBACK_BASELINE.overall).mae, 2)} / {fmtNum((baselineSnap?.overall ?? FALLBACK_BASELINE.overall).rmse, 2)}</div>
+                        <div className="text-xs mt-1 text-gray-500">单/日 · bias +{fmtNum((baselineSnap?.overall ?? FALLBACK_BASELINE.overall).bias, 2)}</div>
                     </div>
                     <div className="rounded-lg p-3 bg-violet-50">
                         <div className="text-xs text-gray-500">WAPE（绝对误差 / 总实际）</div>
@@ -820,7 +821,7 @@ export default function DiscountPage() {
                 {/* Critical caveats */}
                 <div className="mt-4 grid grid-cols-2 gap-4 text-xs">
                     <div className="bg-amber-50 border border-amber-200 rounded p-3 text-amber-800">
-                        <strong>残差 ≠ 折扣效果：</strong>实际超出无折扣基线的部分称为「超额订单」，但<strong>不能全部归因于折扣</strong>。模型未纳入活动、平台流量、新品、库存、价格弹性、营销日历等变量；评估窗口 WAPE {fmtPct(baselineSnap?.overall ?? FALLBACK_BASELINE.overall.wape * 100)}，MAE {fmtNum(baselineSnap?.overall ?? FALLBACK_BASELINE.overall.mae, 2)} 单/日，说明基线本身<strong>系统性低估</strong>（bias +{fmtNum(baselineSnap?.overall ?? FALLBACK_BASELINE.overall.bias, 2)} 单/日）。
+                        <strong>残差 ≠ 折扣效果：</strong>实际超出无折扣基线的部分称为「超额订单」，但<strong>不能全部归因于折扣</strong>。模型未纳入活动、平台流量、新品、库存、价格弹性、营销日历等变量；评估窗口 WAPE {fmtPct((baselineSnap?.overall ?? FALLBACK_BASELINE.overall).wape * 100)}，MAE {fmtNum((baselineSnap?.overall ?? FALLBACK_BASELINE.overall).mae, 2)} 单/日，说明基线本身<strong>系统性低估</strong>（bias +{fmtNum((baselineSnap?.overall ?? FALLBACK_BASELINE.overall).bias, 2)} 单/日）。
                     </div>
                     <div className="bg-blue-50 border border-blue-200 rounded p-3 text-blue-800">
                         <strong>口径与限制：</strong>① 天气使用<strong>事后实际观测</strong>，仅适合事后评估，真正预测请改用当时天气预报；② 评估仅 46 天（6/1–7/16），单门店 sh_xtd；③ 模型公式 <code className="text-[10px]">{baselineSnap?.formula || "(公式详见建模脚本)"}</code>；④ 负二项过度离散参数 α = {fmtNum(baselineSnap?.alpha ?? 0, 4)}，说明模型允许订单方差高于均值；置信区间和完整结果见建模脚本输出。

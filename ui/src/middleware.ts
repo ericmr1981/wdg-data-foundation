@@ -44,10 +44,12 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api/store-report') ||
     pathname.startsWith('/u/store-report') ||
     pathname.startsWith('/u/sales/tamkoko') ||
+    pathname.startsWith('/u/sales/gelatomiiix') ||
     pathname.startsWith('/api/admin/analyze-unclassified') ||
     pathname.startsWith('/api/admin/restart-agent') ||
     pathname.startsWith('/api/admin/mcp-status') ||
-    pathname.startsWith('/api/chat')
+    pathname.startsWith('/api/chat') ||
+    pathname.startsWith('/api/discount-model')
   ) {
     return NextResponse.next();
   }
