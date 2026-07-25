@@ -62,8 +62,8 @@ services:
     privileged: true
     command: ["/sbin/init"]
     ports:
-      - "3001:3001"   # wdg-ui
-      - "3003:3003"   # wdg-portal
+      - "3001:3001"   # wdg-portal
+      - "3002:3002"   # wdg-ui
       - "4101:4101"   # wdg-agent HTTP
       - "4102:4102"   # wdg-agent WebSocket
       - "5100:5100"   # DailyCheck MCP

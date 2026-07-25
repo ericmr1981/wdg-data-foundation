@@ -56,13 +56,10 @@ export async function POST(req: NextRequest) {
     args.push('--train-end', '2026-05-31');
   }
 
-  // DB 连接从 docker-compose / .env.local 继��，不硬编码。
   const env = { ...process.env, DB_PASSWORD: process.env.DB_PASSWORD || 'postgres' };
-  // Python：宿主机用 managed venv，Docker 内用系统 python3。
-  const python = process.env.PYTHON_BIN || '/usr/bin/python3';
   try {
     const child = spawn(
-      python,
+      '/Users/ericmr/.workbuddy/binaries/python/envs/default/bin/python',
       [`${scriptsDir}/${script}`, ...args],
       { env, detached: true, stdio: 'ignore' },
     );
