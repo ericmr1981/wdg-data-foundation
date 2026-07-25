@@ -45,10 +45,6 @@ interface ChannelRow {
     store_code: string; month: string; channel: string;
     gross_amt: string; revenue_amt: string; order_cnt: string; cash_in_rate_pct: string;
 }
-interface DineRow {
-    store_code: string; month: string; order_type: string;
-    gross_amt: string; revenue_amt: string; order_cnt: string;
-}
 interface ProductRow {
     store_code: string; month: string; product_name: string;
     total_qty: string; total_received: string; total_sales: string;
@@ -84,7 +80,6 @@ export default function GelatomiiixSalesPage() {
     const [overview, setOverview] = useState<OverviewRow | null>(null);
     const [daily, setDaily] = useState<DailyRow[] | null>(null);
     const [channel, setChannel] = useState<ChannelRow[] | null>(null);
-    const [dine, setDine] = useState<DineRow[] | null>(null);
     const [products, setProducts] = useState<ProductRow[] | null>(null);
     const [trend, setTrend] = useState<OverviewRow[] | null>(null);
     const [channelDaily, setChannelDaily] = useState<ChannelDailyRow[] | null>(null);
@@ -103,10 +98,9 @@ export default function GelatomiiixSalesPage() {
             const base = '/api/gelatomiiix/sales';
             const storeQs = `store=${storeCode}&`;
             const extra = pureMode ? '&exclude_other=true' : '';
-            const [o, ch, dt, pd, tr, cd, pa, sp, hr, ct, cc] = await Promise.all([
+            const [o, ch, pd, tr, cd, pa, sp, hr, ct, cc] = await Promise.all([
                 apiGet<OverviewRow[]>(`${base}/overview?${storeQs}month=${month}${extra}`),
                 apiGet<ChannelRow[]>(`${base}/channel?${storeQs}month=${month}${extra}`),
-                apiGet<DineRow[]>(`${base}/dine-takeaway?${storeQs}month=${month}${extra}`),
                 apiGet<ProductRow[]>(`${base}/product?${storeQs}month=${month}${extra}`),
                 apiGet<OverviewRow[]>(`${base}/trend?${storeQs}${extra}`),
                 apiGet<ChannelDailyRow[]>(`${base}/channel-daily?${storeQs}month=${month}${extra}`),
@@ -118,7 +112,6 @@ export default function GelatomiiixSalesPage() {
             ]);
             setOverview(o?.[0] ?? null);
             setChannel(ch ?? null);
-            setDine(dt ?? null);
             setProducts(pd ?? null);
             setTrend(tr ?? null);
             setChannelDaily(cd ?? null);
@@ -387,44 +380,8 @@ export default function GelatomiiixSalesPage() {
                 ) : <Empty />}
             </Section>
 
-            {/* 2. 堂食 vs 打包 */}
-            <Section title="2. 堂食 vs 打包">
-                {dine && dine.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="min-w-0">
-                            <ResponsiveContainer width="100%" height={240}>
-                                <PieChart>
-                                    <Pie data={dine.map(d => ({ order_type: d.order_type, gross_amt: Number(d.gross_amt) }))}
-                                        dataKey="gross_amt" nameKey="order_type" cx="50%" cy="50%" innerRadius={50} outerRadius={80}
-                                        label={({ payload }: { payload?: { order_type?: string; gross_amt?: number } }) =>
-                                            `${payload?.order_type ?? ''} ¥${fmtNum(payload?.gross_amt, 0)}`}
-                                        labelLine={true}>
-                                        {dine.map((d, i) => <Cell key={d.order_type} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                                    </Pie>
-                                    <Tooltip formatter={(v: unknown) => fmtNum(v, 2)} />
-                                    <Legend />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </div>
-                        <table className="w-full text-sm">
-                            <thead><tr className="text-left text-gray-500"><th>类型</th><th>订单数</th><th>营业额</th><th>营业收入</th></tr></thead>
-                            <tbody>
-                                {dine.map(d => (
-                                    <tr key={d.order_type} className="border-t">
-                                        <td className="py-1">{d.order_type}</td>
-                                        <td>{fmtNum(d.order_cnt)}</td>
-                                        <td>¥{fmtNum(d.gross_amt, 2)}</td>
-                                        <td>¥{fmtNum(d.revenue_amt, 2)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                ) : <Empty />}
-            </Section>
-
-            {/* 3. 商品排行 */}
-            <Section title="3. 商品排行 Top 10">
+            {/* 2. 商品排行 */}
+            <Section title="2. 商品排行 Top 10">
                 {productsBySales.length > 0 ? (
                     <div className="grid grid-cols-2 gap-6">
                         <div>
@@ -455,8 +412,8 @@ export default function GelatomiiixSalesPage() {
                 ) : <Empty />}
             </Section>
 
-            {/* 4. 支付方式日趋势 */}
-            <Section title="4. 支付方式日趋势" action={
+            {/* 3. 支付方式日趋势 */}
+            <Section title="3. 支付方式日趋势" action={
                 <select className="text-xs border rounded px-1 py-0.5" value={channelDailyMetric}
                     onChange={e => setChannelDailyMetric(e.target.value as 'gross_amt' | 'revenue_amt' | 'order_cnt')}>
                     <option value="gross_amt">营业额</option>
@@ -498,8 +455,8 @@ export default function GelatomiiixSalesPage() {
                 })() : <Empty />}
             </Section>
 
-            {/* 5. 规格分析 */}
-            <Section title="5. 规格分析">
+            {/* 4. 规格分析 */}
+            <Section title="4. 规格分析">
                 {specAnalysis && specAnalysis.length > 0 ? (
                     <div className="space-y-1">
                         {/* 规格饼图 */}
@@ -547,8 +504,8 @@ export default function GelatomiiixSalesPage() {
                 ) : <Empty />}
             </Section>
 
-            {/* 6. 品类健康度 */}
-            <Section title="6. 品类健康度">
+            {/* 5. 品类健康度 */}
+            <Section title="5. 品类健康度">
                 {categoryData && categoryData.length > 0 ? (
                     <div>
                         <div className="overflow-x-auto">
@@ -581,8 +538,8 @@ export default function GelatomiiixSalesPage() {
                 ) : <Empty />}
             </Section>
 
-            {/* 7. 杯型 × 折扣 */}
-            <Section title="7. 杯型折扣分析">
+            {/* 6. 杯型 × 折扣 */}
+            <Section title="6. 杯型折扣分析">
                 {cupData && cupData.length > 0 ? (
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
@@ -611,8 +568,8 @@ export default function GelatomiiixSalesPage() {
                 ) : <Empty />}
             </Section>
 
-            {/* 8. 小时分析 */}
-            <Section title="8. 时段销售分析">
+            {/* 7. 小时分析 */}
+            <Section title="7. 时段销售分析">
                 {hourly && hourly.length > 0 ? (
                     <div>
                         <div className="text-xs text-gray-500 mb-2">各时段订单数/销售额 + 折扣率</div>
