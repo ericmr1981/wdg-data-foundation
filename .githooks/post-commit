@@ -1,0 +1,27 @@
+#!/bin/sh
+# post-commit hook — 记录需要同步文档的提交
+# 不阻塞 commit，仅追加到队列文件。下次 WorkBuddy session 自动处理。
+
+QUEUE=".workbuddy/docs-queue.jsonl"
+
+# 跳过 rebase/merge/cherry-pick
+GIT_DIR="${GIT_DIR:-$(git rev-parse --git-dir 2>/dev/null)}"
+[ -d "$GIT_DIR/rebase-merge" ] && exit 0
+[ -d "$GIT_DIR/rebase-apply" ] && exit 0
+[ -f "$GIT_DIR/MERGE_HEAD" ] && exit 0
+[ -f "$GIT_DIR/CHERRY_PICK_HEAD" ] && exit 0
+
+COMMIT_HASH=$(git rev-parse HEAD)
+COMMIT_MSG=$(git log -1 --format=%s "$COMMIT_HASH")
+FILES_CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
+
+# 只关心可能影响文档的提交类型
+echo "$COMMIT_MSG" | grep -qiE '^fix|^feat|^refactor|^docs|^chore' || exit 0
+
+mkdir -p "$(dirname "$QUEUE")"
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $COMMIT_HASH $COMMIT_MSG | files: $FILES_CHANGED" >> "$QUEUE"
+
+# 链式调用原有的 graphify hook（如果存在）
+[ -x .git/hooks/post-commit ] && .git/hooks/post-commit
+
+exit 0
