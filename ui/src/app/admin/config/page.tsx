@@ -47,6 +47,11 @@ export default function AdminConfigPage() {
           desc="查看所有活跃通知,按类型筛选,标已读/关闭。"
           href="/notifications"
         />
+        <Card
+          title="折扣模型"
+          desc="折扣模型流水线（数据更新/重训/发布）的执行、观察与回滚。"
+          href="/admin/config/discount-model"
+        />
       </div>
     </div>
   );
