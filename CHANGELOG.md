@@ -1,5 +1,18 @@
 # Progress Log
 
+## 2026-07-25
+- Fixed (discount_model): 修复 discount model 全流程在 Docker 内无法运行（3 bugs）
+  - `04_run_pipeline.py`: 新增 --run-id/--version argparse 参数，与 API 路由 spawn 对齐（fixes: API 触发后 argparse exit 2 静默失败）
+  - `01_prepare_data.py`: fetch_orders 从 docker exec psql 改为 psycopg2 copy_expert（容器内无 docker 命令）
+  - `03_publish_results.py` + `_common.py`: activate 时先降旧再升新，规避 idx_pipeline_run_module_active 部分唯一索引冲突
+- Fixed (discount_ui): baseline KPI 卡片显示 "-"（?? 运算符优先级 bug）
+  - `page.tsx`: `baselineSnap?.overall ?? FALLBACK.xxx` → `(baselineSnap?.overall ?? FALLBACK.overall).xxx`
+  - 去掉订单乘数图中的 OLS 曲线（OLS 是线性链接模型，exp(coef*rate) 在数学上不适用，Y 轴被 OLS 拖到不可读）
+- Added (discount_ui): middleware 放行 `/api/discount-model` 与 `/u/sales/gelatomiiix`
+- deployment: container 内 pip install psycopg2-binary pandas statsmodels（临时方案，应进 Dockerfile/venv）
+- commits: 18dc94a, d086d5a, aa978be (revert 本地配置)
+- verification: 全流程在 Docker (wdg-systemd) 内跑通，prepare→train→publish→active，active count=1 ✅
+
 ## 2026-07-24
 - Added (feature): 产品销售明细手工上传 + MCP 导入工具
   - `ui/src/app/api/gelatomiiix/sales/upload-product/route.ts` — 新增 API 端点 `POST /api/gelatomiiix/sales/upload-product`

@@ -30,7 +30,7 @@ python scripts/run_pipeline_oneclick.py --brand all --dry-run   # Pipeline dry r
 
 # UI (Next.js)
 cd ui
-npm run dev              # Dev server on port 4100
+npm run dev              # Dev server (package.json: port 4100; Docker wdg-ui: port 3001)
 npm run build            # Production build
 npm run lint             # ESLint
 npm run test:e2e         # Playwright E2E
@@ -49,6 +49,12 @@ bash scripts/init_local_env.sh  # Full local env init (see docs/LOCAL_STARTUP.md
 ```
 ├── scripts/            # Python ETL pipeline
 │   ├── run_pipeline_oneclick.py   # Orchestrator: import → classify → refresh → verify
+│   ├── discount_model/            # Discount model pipeline (prepare → train → publish)
+│   │   ├── _common.py             # DB, run_id, snapshot utilities
+│   │   ├── 01_prepare_data.py     # Fetch orders + weather + calendar → dataset CSV
+│   │   ├── 02_train_models.py     # OLS / Poisson / NB regression + baseline
+│   │   ├── 03_publish_results.py  # Validate snapshots → activate version
+│   │   └── 04_run_pipeline.py     # One-click full pipeline orchestrator
 │   ├── ops_logger.py              # Pipeline step logging context manager
 │   ├── classify.py                # Classification engine (rule-based)
 │   ├── import_*.py                # Per-brand/source import scripts
@@ -71,6 +77,7 @@ bash scripts/init_local_env.sh  # Full local env init (see docs/LOCAL_STARTUP.md
 │   │   ├── bonjur/      # income (bank-entry-stats / upload-qimai), sales (overview/trend/channels/products/details/qimai-pos/upload-*)
 │   │   ├── tamkoko/     # upload (inventory .xlsx → DB)
 │   │   ├── xintiandi/   # ⚠️ delivery template (dashboard / batch / upload) — depends on xintiandi schema, currently NOT deployed
+│   │   ├── discount-model/ # coefficients, baseline, status (public read);  admin/discount-model/ (start/cancel/runs CRUD)
 │   │   ├── pipeline/    # kpi, rerun-match-by-file
 │   │   ├── upload/      # Bank file upload → import trigger
 │   │   ├── match/       # txn detail, unclassified, candidates, preview, override
@@ -78,7 +85,7 @@ bash scripts/init_local_env.sh  # Full local env init (see docs/LOCAL_STARTUP.md
 │   │   ├── rule-groups/ # Group reorder
 │   │   ├── approval/    # proposals (POST/GET) + [id] + batch-action
 │   │   ├── coverage/    # by-file / unclassified-by-file
-│   │   └── admin/       # brands, stores, users, rules-copy, category-dictionary, brand-category-dictionary
+│   │   ├── admin/       # brands, stores, users, rules-copy, category-dictionary, brand-category-dictionary, config (discount-model admin)
 │   │   └── ...          # auth, brands, categories, db/introspect, stores, mcp, income (cross-brand bank-entry-stats)
 │   ├── src/app/u/      # Unified pages: income, payment, sales, financial
 │   └── src/lib/        # Shared: db.ts (pg pool), query-types.ts, brand-server.ts, auth-server.ts
@@ -159,7 +166,7 @@ bank_txn → fn_classify() → bank_txn_classified_snapshot (BASE TABLE)
 
 ## MCP Tools (Agent 接口)
 
-46 个 MCP 工具经 `POST /api/mcp` 暴露，封装 `/api/...` 端点供 Agent 调用。详见 [docs/mcp-tools.md](docs/mcp-tools.md)。
+52 个 MCP 工具经 `POST /api/mcp` 暴露，封装 `/api/...` 端点供 Agent 调用。详见 [docs/mcp-tools.md](docs/mcp-tools.md)。
 
 **Agent 写权限原则**：Agent **只能** `submit_proposal`（写审批队列）/ `rerun_match_by_file`（刷新 snapshot）/ `upload_*`（写 raw ODS）。所有规则 CRUD、审批决策、cfg 变更由**人工在 UI 完成**（提案→审→settle）。MCP 工具按"Agent 提议 → 人工审 → 落定"两阶段模式暴露。
 
@@ -173,6 +180,7 @@ bank_txn → fn_classify() → bank_txn_classified_snapshot (BASE TABLE)
 | 收入 | 4 | upload_gelatomiiix_income_detail · upload_bonjur_income_detail · upload_tamkoko_income_detail · query_gelatomiiix_income · get_qimai_entry_rate |
 | 销售 | 12 | gelatomiiix 7 件 + bonjur 4 件 + upload_gelatomiiix_product_sales |
 | Tamkoko 库存 | 1 | upload_tamkoko_inventory |
+| 折扣模型 | 6 | get_discount_model_status · _coefficients · _baseline · _run_detail · list_discount_model_runs · cancel_discount_model_run |
 | 元数据 | 4 | get_brand_stores · list_categories · list_rule_groups · list_rule_files |
 | 审计 | 1 | get_rules_history |
 
