@@ -75,6 +75,12 @@ import { queryTamkokoSalesWeekdayTool } from './tools/query-tamkoko-sales-weekda
 import { queryTamkokoSalesMultiStoreTool } from './tools/query-tamkoko-sales-multi-store';
 import { queryTamkokoSalesTrendTool } from './tools/query-tamkoko-sales-trend';
 import { queryTamkokoSalesDailyTool } from './tools/query-tamkoko-sales-daily';
+import { cancelDiscountModelRunTool } from './tools/cancel-discount-model-run';
+import { getDiscountModelBaselineTool } from './tools/get-discount-model-baseline';
+import { getDiscountModelCoefficientsTool } from './tools/get-discount-model-coefficients';
+import { getDiscountModelRunDetailTool } from './tools/get-discount-model-run-detail';
+import { getDiscountModelStatusTool } from './tools/get-discount-model-status';
+import { listDiscountModelRunsTool } from './tools/list-discount-model-runs';
 
 type ToolModule = {
   name: string;
@@ -153,6 +159,12 @@ const TOOLS: Record<string, ToolModule> = {
   query_tamkoko_sales_multi_store:    queryTamkokoSalesMultiStoreTool,
   query_tamkoko_sales_trend:         queryTamkokoSalesTrendTool,
   query_tamkoko_sales_daily:         queryTamkokoSalesDailyTool,
+  cancel_discount_model_run:         cancelDiscountModelRunTool,
+  get_discount_model_baseline:       getDiscountModelBaselineTool,
+  get_discount_model_coefficients:   getDiscountModelCoefficientsTool,
+  get_discount_model_run_detail:     getDiscountModelRunDetailTool,
+  get_discount_model_status:         getDiscountModelStatusTool,
+  list_discount_model_runs:          listDiscountModelRunsTool,
 };
 
 /** Try short-name match, then long-name match */
