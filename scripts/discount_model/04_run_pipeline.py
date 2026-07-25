@@ -42,44 +42,55 @@ def main():
     version = cm.new_version()
     print(f"[pipeline] run_id={run_id} version={version}")
 
-    cm.create_pipeline_run(
-        run_id=run_id, version=version, pipeline="full",
-        store_code=args.store_code,
-        data_range_start=args.start, data_range_end=args.end,
-    )
+    try:
+        cm.create_pipeline_run(
+            run_id=run_id, version=version, pipeline="full",
+            store_code=args.store_code,
+            data_range_start=args.start, data_range_end=args.end,
+        )
 
-    base = ["--run-id", run_id, "--version", version,
-            "--start", args.start, "--end", args.end,
-            "--store-code", args.store_code]
+        base = ["--run-id", run_id, "--version", version,
+                "--start", args.start, "--end", args.end,
+                "--store-code", args.store_code]
 
-    rc = run_step("01_prepare_data.py", base)
-    if rc != 0:
-        cm.finish_pipeline_run(run_id, status="failed",
-                              warnings=["01_prepare_data 失败"])
-        sys.exit(rc)
+        rc = run_step("01_prepare_data.py", base)
+        if rc != 0:
+            cm.finish_pipeline_run(run_id, status="failed",
+                                  warnings=["01_prepare_data 失败"])
+            sys.exit(rc)
 
-    train_args = base + ["--train-end", args.train_end]
-    rc = run_step("02_train_models.py", train_args)
-    if rc != 0:
-        cm.finish_pipeline_run(run_id, status="failed",
-                              warnings=["02_train_models 失败"])
-        sys.exit(rc)
+        train_args = base + ["--train-end", args.train_end]
+        rc = run_step("02_train_models.py", train_args)
+        if rc != 0:
+            cm.finish_pipeline_run(run_id, status="failed",
+                                  warnings=["02_train_models 失败"])
+            sys.exit(rc)
 
-    if args.skip_publish:
-        cm.finish_pipeline_run(run_id, status="success",
-                              warnings=["--skip-publish：未切换 is_active"])
-        print(f"[pipeline] run {run_id} done (skip publish)")
-        return
+        if args.skip_publish:
+            cm.finish_pipeline_run(run_id, status="success",
+                                  warnings=["--skip-publish：未切换 is_active"])
+            print(f"[pipeline] run {run_id} done (skip publish)")
+            return
 
-    rc = run_step("03_publish_results.py",
-                  ["--run-id", run_id, "--version", version,
-                   "--store-code", args.store_code])
-    if rc != 0:
-        cm.finish_pipeline_run(run_id, status="failed", is_active=False,
-                              warnings=["03_publish_results 失败，已回退到上一版"])
-        sys.exit(rc)
+        rc = run_step("03_publish_results.py",
+                      ["--run-id", run_id, "--version", version,
+                       "--store-code", args.store_code])
+        if rc != 0:
+            cm.finish_pipeline_run(run_id, status="failed", is_active=False,
+                                  warnings=["03_publish_results 失败，已回退到上一版"])
+            sys.exit(rc)
 
-    print(f"[pipeline] run {run_id} version {version} fully active")
+        print(f"[pipeline] run {run_id} version {version} fully active")
+
+    except Exception as e:
+        print(f"[pipeline] FATAL: {type(e).__name__}: {e}", file=sys.stderr)
+        try:
+            cm.finish_pipeline_run(run_id, status="failed",
+                                  warnings=[f"{type(e).__name__}: {e}"])
+        except Exception as cleanup_err:
+            print(f"[pipeline] finish_pipeline_run 失败: {cleanup_err}", file=sys.stderr)
+            cm._hard_update_pipeline_run_failed(run_id, f"{type(e).__name__}: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

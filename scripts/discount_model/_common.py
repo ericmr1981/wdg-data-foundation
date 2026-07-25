@@ -36,7 +36,8 @@ def db_config() -> dict:
         "port": os.getenv("DB_PORT", "5432"),
         "database": os.getenv("DB_NAME", "dataplatform"),
         "user": os.getenv("DB_USER", "postgres"),
-        "password": os.environ["DB_PASSWORD"],
+        # 信任认证环境(admin_jlin13)下password任意非空值即可,os.getenv防止KeyError
+        "password": os.getenv("DB_PASSWORD", "trust-auth-no-password-needed"),
     }
 
 
@@ -129,6 +130,24 @@ def finish_pipeline_run(run_id: str, status: str, *, is_active: bool | None = No
                 WHERE run_id=%s
             """, (run_id, run_id))
         conn.commit()
+
+
+def _hard_update_pipeline_run_failed(run_id: str, error_message: str) -> None:
+    """兜底：finish_pipeline_run 也失败时直接 SQL UPDATE，不依赖 connect() 以外的任何逻辑。"""
+    sql = """
+        UPDATE ops.pipeline_run
+        SET status='failed',
+            finished_at=NOW(),
+            warnings = COALESCE(warnings, '[]'::jsonb) ||
+                      jsonb_build_array(%s)
+        WHERE run_id=%s
+    """
+    try:
+        with connect() as conn, conn.cursor() as cur:
+            cur.execute(sql, (error_message, run_id))
+            conn.commit()
+    except Exception as hard_err:
+        print(f"[FATAL] _hard_update_pipeline_run_failed 也失败了: {hard_err}", file=sys.stderr)
 
 
 def set_cancel_requested(run_id: str) -> bool:
