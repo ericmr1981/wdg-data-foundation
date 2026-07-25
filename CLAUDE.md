@@ -21,25 +21,29 @@ Three brands live in `ops.brands`. Schema prefix follows the `brand_{code}_*` co
 ## Development Commands
 
 ```bash
-# Python (ETL pipeline)
-cd /path/to/wdg-data-foundation-dev
-source .venv/bin/activate
-pytest tests/ -v                       # Run all Python tests
-pytest tests/test_classify.py -v       # Single test file
-python scripts/run_pipeline_oneclick.py --brand all --dry-run   # Pipeline dry run
+# Python (ETL pipeline) — 通过 Docker 容器运行
+docker exec wdg-systemd python3 /opt/wdg/scripts/run_pipeline_oneclick.py --brand all --dry-run
 
-# UI (Next.js)
-cd ui
-npm run dev              # Dev server (package.json: port 4100; Docker wdg-ui: port 3001)
-npm run build            # Production build
-npm run lint             # ESLint
-npm run test:e2e         # Playwright E2E
-npx playwright test --ui # Playwright UI mode
+# Python (discount model 完整流程)
+docker exec -e DB_HOST=postgres-main -e DB_PASSWORD=postgres wdg-systemd \
+  python3 /opt/wdg/scripts/discount_model/04_run_pipeline.py \
+  --run-id $(uuidgen | tr -d -) --version $(date +%Y-%m-%dT%H-%M-%S) \
+  --start 2025-08-01 --end 2026-07-31 --store-code sh_xtd --train-end 2026-05-31
 
-# Docker (full stack)
-docker compose up -d                   # Postgres + systemd-stack (all services)
+# Python (测试)
+docker exec wdg-systemd python3 -m pytest /opt/wdg/tests/ -v
 
-## Docker Dev Environment（本文档是 dev 环境唯一声明源）
+# UI (Next.js) — 不要宿主机 npm run dev，浏览器直接访问 http://localhost:3001
+# 编译检查
+cd ui && npx tsc --noEmit
+
+# Docker (启动完整开发环境)
+docker compose up -d
+```
+
+> 容器重建后需重新部署 systemd 单元、安装 Python 依赖，详见下方 ## Docker Dev Environment。
+
+## Docker Dev Environment
 
 **不要随意启动宿主机 Next.js 或改端口——所有服务在 Docker 容器内运行。**
 
