@@ -30,7 +30,7 @@ def _run_sql_file(path: Path):
         port=int(os.environ.get("DB_PORT", "5432")),
         database=os.environ["DB_NAME"],
         user=os.environ["DB_USER"],
-        password=os.environ["DB_PASSWORD"],
+        password=os.getenv("DB_PASSWORD", "trust-auth-no-password-needed"),
     )
     try:
         with conn.cursor() as cur:

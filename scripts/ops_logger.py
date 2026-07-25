@@ -47,7 +47,7 @@ DEFAULT_DB_CONFIG = {
     "port": os.getenv("DB_PORT", "5432"),
     "database": os.getenv("DB_NAME", "dataplatform"),
     "user": os.getenv("DB_USER", "postgres"),
-    "password": os.environ["DB_PASSWORD"],
+    "password": os.getenv("DB_PASSWORD", "trust-auth-no-password-needed"),
 }
 
 
