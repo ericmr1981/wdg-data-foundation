@@ -28,7 +28,13 @@ def validate_snapshots(version: str, store_code: str) -> tuple[bool, list[str]]:
 
 
 def activate_version(run_id: str, version: str, store_code: str) -> None:
-    """同事务：升新、降旧。"""
+    """同事务：先降旧、再升新。"""
+    sql_downgrade = """
+        UPDATE ops.pipeline_run
+        SET is_active=false,
+            fallback_to=(SELECT version FROM ops.pipeline_run WHERE run_id=%s)
+        WHERE module='discount_model' AND is_active=true AND run_id<>%s
+    """
     sql_new = """
         UPDATE ops.pipeline_run
         SET is_active=true,
@@ -36,15 +42,9 @@ def activate_version(run_id: str, version: str, store_code: str) -> None:
             status='success'
         WHERE run_id=%s
     """
-    sql_downgrade = """
-        UPDATE ops.pipeline_run
-        SET is_active=false,
-            fallback_to=(SELECT version FROM ops.pipeline_run WHERE run_id=%s)
-        WHERE module='discount_model' AND is_active=true AND run_id<>%s
-    """
     with cm.connect() as conn, conn.cursor() as cur:
-        cur.execute(sql_new, (run_id,))
         cur.execute(sql_downgrade, (run_id, run_id))
+        cur.execute(sql_new, (run_id,))
         conn.commit()
 
 

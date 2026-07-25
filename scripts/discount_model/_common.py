@@ -107,17 +107,18 @@ def finish_pipeline_run(run_id: str, status: str, *, is_active: bool | None = No
         WHERE run_id=%s
     """
     with connect() as conn, conn.cursor() as cur:
-        cur.execute(sql_update, (status, is_active, json.dumps(warnings), run_id))
-
         if is_active is True:
-            # 降级其他 active
+            # 先降级其他 active，再升级本 run（避免违反唯一部分索引 idx_pipeline_run_module_active）
             cur.execute("""
                 UPDATE ops.pipeline_run
                 SET is_active=false,
                     fallback_to=(SELECT version FROM ops.pipeline_run WHERE run_id=%s)
                 WHERE module='discount_model' AND is_active=true AND run_id<>%s
             """, (run_id, run_id))
-        elif is_active is False:
+
+        cur.execute(sql_update, (status, is_active, json.dumps(warnings), run_id))
+
+        if is_active is False:
             # 回退到上一 active 版本
             cur.execute("""
                 UPDATE ops.pipeline_run

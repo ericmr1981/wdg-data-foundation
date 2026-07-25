@@ -30,6 +30,10 @@ def run_step(script: str, args: list[str]) -> int:
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--run-id", default=None,
+                        help="复用上层（API）已创建的 run_id；缺省时自动生成")
+    parser.add_argument("--version", default=None,
+                        help="复用上层（API）已创建的 version；缺省时自动生成")
     parser.add_argument("--start", default="2025-08-01")
     parser.add_argument("--end", default="2026-07-31")
     parser.add_argument("--train-end", default="2026-05-31")
@@ -38,8 +42,10 @@ def main():
                         help="只跑 prepare+train，不切换 is_active")
     args = parser.parse_args()
 
-    run_id = cm.new_run_id()
-    version = cm.new_version()
+    # 优先使用 API 传入的 run_id/version（保证与 ops.pipeline_run 行一致，
+    # 避免出现 API 跟踪不到的孤儿 run）；CLI 直接运行时自动生成。
+    run_id = args.run_id or cm.new_run_id()
+    version = args.version or cm.new_version()
     print(f"[pipeline] run_id={run_id} version={version}")
 
     try:

@@ -53,10 +53,8 @@ def fetch_orders(start: date, end: date, store_code: str) -> Path:
             GROUP BY biz_date ORDER BY biz_date
         ) TO STDOUT WITH CSV HEADER
     """
-    cmd = ["docker", "exec", "wdg-postgres-main", "psql",
-           "-U", "postgres", "-d", "dataplatform", "-c", sql]
-    with open(out, "w") as f:
-        subprocess.run(cmd, stdout=f, check=True)
+    with cm.connect() as conn, conn.cursor() as cur, open(out, "w") as f:
+        cur.copy_expert(sql, f)
     return out
 
 
