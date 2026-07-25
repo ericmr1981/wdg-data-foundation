@@ -27,7 +27,9 @@ export async function GET(request: NextRequest) {
                     COUNT(DISTINCT p.order_no) AS order_cnt,
                     SUM(p.qty) AS total_qty,
                     SUM(p.sales_amt) AS total_sales,
-                    SUM(p.received_amt) AS total_received
+                    SUM(p.received_amt) AS total_received,
+                    SUM(p.discount_amt) AS total_disc,
+                    ROUND(100.0 * SUM(p.discount_amt) / NULLIF(SUM(p.sales_amt), 0), 2) AS disc_rate_pct
                 FROM ${ODS}.product_sales_detail p
                 JOIN ${ODS}.income_detail i ON p.order_no = i.order_no_clean AND NOT i.is_refund AND i.payment_methods IS NOT NULL
                 WHERE p.order_hour IS NOT NULL AND p.order_hour != '' AND p.order_hour != '-'
