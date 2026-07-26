@@ -116,7 +116,7 @@ export class AgentRunner {
       userContent.push(...(msg.content as any[]))
     }
 
-    const messages: Anthropic.MessageParam[] = [
+    const messages: Anthropic.MessageParam[] = pruneOrphanToolResults([
       ...history.map(m => {
         const blocks = reconstructContentBlocks({
           content: m.content,
@@ -127,7 +127,7 @@ export class AgentRunner {
         return { role: m.role as any, content: blocks as any }
       }),
       { role: 'user', content: userContent },
-    ]
+    ])
 
     // 7. thinking config
     const thinkingCfg = thinkingConfigFor(cfg.params.thinkingLevel)
@@ -405,32 +405,48 @@ export class AgentRunner {
     console.log('[runner] tool loop done')
 
     // 历史回放持久化:把中间轮(被 push 进 loopMessages 但未单独持久化的)补写。
-    // 必须把 assistant 的 tool_use 和 user 的 tool_result 都写,否则下一轮 LLM 看到
-    // 没有 tool_result 的 tool_use 会 400 "tool call result does not follow tool call"。
-    for (let i = ctx.historyLength; i < loopMessages.length; i++) {
+    // 关键不变量(issue #38):assistant(tool_use) 必须和紧随其后的 user(tool_results)
+    // 配对、原子写入。原先两者拆成独立 INSERT 且各自静默吞错,会在 max_tokens 后
+    // 大消息插入失败时留下孤儿 tool_result,导致下一轮 LLM 重放 400。改用
+    // appendToolRound 事务,保证两者要么都写、要么都不写。
+    let i = ctx.historyLength
+    while (i < loopMessages.length) {
       const m = loopMessages[i]
       if (m.role === 'assistant') {
         const blocks = Array.isArray(m.content) ? m.content : [{ type: 'text', text: String(m.content) }]
         const text = blocks.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
         const toolCalls = blocks.filter((b: any) => b.type === 'tool_use').map((b: any) => ({ id: b.id, name: b.name, input: b.input }))
-        await this.deps.conversation.appendMessage({
-          conversationId: ctx.conv.conversationId,
-          role: 'assistant',
-          content: text || '(tool calls)',
-          toolCalls: toolCalls.length > 0 ? toolCalls : null,
-        }).catch((e: Error) => console.error('[runner] appendMessage(assistant history) failed:', e.message))
-      } else if (m.role === 'user' && Array.isArray(m.content)) {
-        // user message 包含 tool_result blocks → 把 tool_results 写进 DB
-        const toolResults = m.content.filter((b: any) => b.type === 'tool_result')
-        if (toolResults.length > 0) {
+        if (toolCalls.length > 0) {
+          // 配对紧随其后的 user(tool_results) 消息,事务原子写入
+          let toolResults: any[] = []
+          if (i + 1 < loopMessages.length) {
+            const next = loopMessages[i + 1]
+            if (next.role === 'user' && Array.isArray(next.content)) {
+              toolResults = next.content.filter((b: any) => b.type === 'tool_result')
+              i++ // 消费掉,避免下方重复写
+            }
+          }
+          await this.deps.conversation.appendToolRound({
+            conversationId: ctx.conv.conversationId,
+            assistantContent: text || '(tool calls)',
+            toolCalls,
+            toolResults,
+          }).catch((e: Error) => console.error('[runner] appendToolRound failed:', e.message))
+        } else {
           await this.deps.conversation.appendMessage({
             conversationId: ctx.conv.conversationId,
-            role: 'user',
-            content: '',
-            toolResults,
-          }).catch((e: Error) => console.error('[runner] appendMessage(tool_result history) failed:', e.message))
+            role: 'assistant',
+            content: text || '(empty)',
+          }).catch((e: Error) => console.error('[runner] appendMessage(assistant text) failed:', e.message))
+        }
+      } else if (m.role === 'user' && Array.isArray(m.content)) {
+        const toolResults = m.content.filter((b: any) => b.type === 'tool_result')
+        if (toolResults.length > 0) {
+          // 没有前置 assistant(tool_use) 的孤立 tool_result —— 跳过,避免制造孤儿(issue #38)
+          console.warn('[runner] skipping standalone user(tool_results) without preceding assistant(tool_use) — would create orphan')
         }
       }
+      i++
     }
     this.deps.conversation.maybeCompress(ctx.conv.conversationId).catch(() => {})
   }
@@ -507,6 +523,37 @@ function sanitizeJsonSchema(schema: any): any {
     out.type = 'object'
   }
 
+  return out
+}
+
+/**
+ * 防御性修复(issue #38):重建历史时,丢弃任何没有前置 assistant(tool_use) 的
+ * tool_result 块。孤儿 tool_result 会让 LLM 在重放时返回 400
+ * "tool result's tool id not found"。即便 DB 里残留孤儿行,这里也保证重放不出错。
+ */
+export function pruneOrphanToolResults(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  const seenToolUseIds = new Set<string>()
+  const out: Anthropic.MessageParam[] = []
+  for (const m of messages) {
+    if (m.role === 'assistant' && Array.isArray(m.content)) {
+      for (const b of m.content as any[]) {
+        if (b?.type === 'tool_use' && b.id) seenToolUseIds.add(b.id)
+      }
+      out.push(m)
+    } else if (m.role === 'user' && Array.isArray(m.content)) {
+      const pruned = (m.content as any[]).filter((b) => {
+        if (b?.type === 'tool_result') return seenToolUseIds.has(b.tool_use_id)
+        return true
+      })
+      if (pruned.length === 0) {
+        out.push({ role: 'user', content: [{ type: 'text', text: '[(tool results repaired)]' }] })
+      } else {
+        out.push({ role: 'user', content: pruned })
+      }
+    } else {
+      out.push(m)
+    }
+  }
   return out
 }
 

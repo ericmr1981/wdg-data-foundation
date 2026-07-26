@@ -132,6 +132,52 @@ export class ConversationManager {
     )
   }
 
+  /**
+   * 原子写入一轮 tool call:assistant(tool_use) + user(tool_results)。
+   * 用事务保证两者要么都写、要么都不写,避免产生孤儿 tool_result。
+   * 孤儿 tool_result(没有前置 assistant(tool_use) 的 user 消息)会在历史重放时
+   * 触发 LLM 400 "tool result's tool id not found"(见 issue #38)。
+   */
+  async appendToolRound(args: {
+    conversationId: string
+    assistantContent: string
+    toolCalls: any
+    thinking?: string | null
+    toolResults: any[]
+  }): Promise<void> {
+    const client = await this.db.connect()
+    try {
+      await client.query('BEGIN')
+      await client.query(
+        `INSERT INTO agent.messages (conversation_id, role, content, tool_calls, tool_results, thinking)
+         VALUES ($1, 'assistant', $2, $3, NULL, $4)`,
+        [
+          args.conversationId,
+          args.assistantContent || '(tool calls)',
+          args.toolCalls ? JSON.stringify(args.toolCalls) : null,
+          args.thinking ?? null,
+        ],
+      )
+      if (args.toolResults.length > 0) {
+        await client.query(
+          `INSERT INTO agent.messages (conversation_id, role, content, tool_calls, tool_results, thinking)
+           VALUES ($1, 'user', '', NULL, $2, NULL)`,
+          [args.conversationId, JSON.stringify(args.toolResults)],
+        )
+      }
+      await client.query(
+        `UPDATE agent.conversations SET last_active_at = NOW() WHERE conversation_id = $1`,
+        [args.conversationId],
+      )
+      await client.query('COMMIT')
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {})
+      throw e
+    } finally {
+      client.release()
+    }
+  }
+
   async listByUser(userId: string, limit: number = 50): Promise<ConversationSummary[]> {
     const { rows } = await this.db.query(`
       SELECT conversation_id, brand, title, status, created_at, last_active_at
