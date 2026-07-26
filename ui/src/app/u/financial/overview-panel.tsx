@@ -1,30 +1,7 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-import { getErrorMessage } from '@/lib/query-types';
-
-interface OverviewData {
-  revenue: number;
-  grossMarginRate: number;
-  netProfitRate: number;
-  operatingCashflow: number;
-  cashBalance: number;
-  cashRunway: number | null;
-  storeCount: number;
-  revenuePerStore: number;
-  vsPrevPeriod: {
-    revenue: number;
-    grossMarginRate: number;
-    netProfitRate: number;
-    operatingCashflow: number;
-  };
-}
+import type { FinancialOverviewResult } from '@/lib/queries/financial';
 
 interface OverviewPanelProps {
-  brand: string;
-  period: string;
-  span: string;
-  store: string;
+  data: FinancialOverviewResult | null;
 }
 
 function formatCurrency(n: number): string {
@@ -61,45 +38,8 @@ function MetricCard({
   );
 }
 
-export default function OverviewPanel({ brand, period, span, store }: OverviewPanelProps) {
-  const [data, setData] = useState<OverviewData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(
-          `/api/financial/overview?brand=${brand}&period=${period}&span=${span}&store=${store}`
-        );
-        const json = await res.json();
-        if (json.success && json.data) {
-          setData(json.data);
-        } else {
-          setError(json.error || 'No data');
-        }
-      } catch (err: unknown) {
-        setError(getErrorMessage(err));
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, [brand, period, span, store]);
-
-  if (loading) {
-    return (
-      <div className="grid grid-cols-3 gap-3 animate-pulse">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="border border-gray-200 rounded-lg p-3 h-20 bg-gray-50" />
-        ))}
-      </div>
-    );
-  }
-
-  if (error || !data) return null;
+export default function OverviewPanel({ data }: OverviewPanelProps) {
+  if (!data) return null;
 
   const cfColor = data.operatingCashflow >= 0 ? 'text-green-600' : 'text-red-600';
   const cfLabel = data.operatingCashflow >= 0 ? '✅ 正向' : '⚠️ 负向';
@@ -128,7 +68,7 @@ export default function OverviewPanel({ brand, period, span, store }: OverviewPa
       />
       <MetricCard
         label="毛利率"
-        value={formatPercent(data.grossMarginRate)}
+        value={formatPercent(data.grossMarginRate ?? 0)}
         trend={<TrendArrow value={data.vsPrevPeriod.grossMarginRate} />}
       />
       <MetricCard

@@ -1,71 +1,10 @@
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db';
-import { normalizeBrand, getDmSchemaSafe } from '@/lib/brand-server';
 import { getSessionUser, assertRole } from '@/lib/auth-server';
-import { parsePeriod } from '../period-utils';
 import { getErrorMessage } from '@/lib/query-types';
-
-interface LineItem {
-  section: string;
-  label: string;
-  amount: number;
-  indent: number;
-  is_subtotal: boolean;
-  is_highlight: boolean;
-}
-
-interface BalanceRow {
-  month: string;
-  store_code: string;
-  cash_balance: string;
-  loan_balance: string;
-  capital_balance: string;
-  retained_earnings: string;
-  inventory_amt: number;
-}
-
-function buildBalanceLines(raw: BalanceRow[]): LineItem[] {
-  if (raw.length === 0) return [];
-
-  const r = raw[raw.length - 1];
-  const cash = Number(r.cash_balance);
-  const loans = Number(r.loan_balance);
-  const capital = Number(r.capital_balance);
-  const retained = Number(r.retained_earnings);
-  const inventory = r.inventory_amt || 0;
-  const totalAssets = cash + inventory;
-  const totalLiabilities = loans;
-  const totalEquity = capital + retained;
-  const lines: LineItem[] = [];
-
-  lines.push({ section: 'asset_header', label: '资产', amount: 0, indent: 0, is_subtotal: false, is_highlight: false });
-  lines.push({ section: 'asset_detail', label: '  货币资金', amount: cash, indent: 1, is_subtotal: false, is_highlight: false });
-  if (inventory > 0) {
-    lines.push({ section: 'asset_detail', label: '  存货', amount: inventory, indent: 1, is_subtotal: false, is_highlight: false });
-  }
-  lines.push({ section: 'asset_total', label: '资产总计', amount: totalAssets, indent: 0, is_subtotal: true, is_highlight: true });
-
-  lines.push({ section: 'liability_header', label: '负债', amount: 0, indent: 0, is_subtotal: false, is_highlight: false });
-  lines.push({ section: 'liability_detail', label: '  借款', amount: loans, indent: 1, is_subtotal: false, is_highlight: false });
-  lines.push({ section: 'liability_total', label: '负债总计', amount: totalLiabilities, indent: 0, is_subtotal: true, is_highlight: true });
-
-  lines.push({ section: 'equity_header', label: '所有者权益', amount: 0, indent: 0, is_subtotal: false, is_highlight: false });
-  lines.push({ section: 'equity_detail', label: '  实收资本', amount: capital, indent: 1, is_subtotal: false, is_highlight: false });
-  lines.push({ section: 'equity_detail', label: '  未分配利润', amount: retained, indent: 1, is_subtotal: false, is_highlight: false });
-  lines.push({ section: 'equity_total', label: '所有者权益总计', amount: totalEquity, indent: 0, is_subtotal: true, is_highlight: true });
-
-  const liabEquityTotal = totalLiabilities + totalEquity;
-  const balanceDiff = totalAssets - liabEquityTotal;
-  lines.push({ section: 'total', label: '负债和所有者权益总计', amount: liabEquityTotal, indent: 0, is_subtotal: false, is_highlight: true });
-
-  if (Math.abs(balanceDiff) > 0.01) {
-    lines.push({ section: 'difference', label: '差额（待分类流水）', amount: balanceDiff, indent: 0, is_subtotal: false, is_highlight: false });
-  }
-
-  return lines;
-}
+import { getBalanceSheetData } from '@/lib/queries/financial';
 
 // GET /api/financial/balance-sheet?brand=gelatomiiix&period=2026-01&span=month&store=all
+// MCP 的 query_financial_statement 工具通过 mcpFetch 调用此端点，不可删除。
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
   const { searchParams } = new URL(request.url);
@@ -77,111 +16,24 @@ export async function GET(request: Request) {
 
     const brandParam = searchParams.get('brand') || 'gelatomiiix';
 
-    const brand = normalizeBrand(brandParam);
-    if (!brand) {
-      return NextResponse.json({ success: false, error: 'Invalid brand' }, { status: 400 });
+    const result = await getBalanceSheetData(brandParam, period, span, store);
+
+    if (result.note) {
+      return NextResponse.json({
+        success: true,
+        data: { brand: '', period, span, store: '', lines: [] },
+        note: result.note,
+      });
     }
-
-    if (!['month', 'quarter', 'year'].includes(span)) {
-      return NextResponse.json({ success: false, error: 'Invalid span' }, { status: 400 });
-    }
-
-    const boundaries = parsePeriod(period, span);
-    if (!boundaries) {
-      return NextResponse.json({ success: false, error: 'Invalid period format' }, { status: 400 });
-    }
-    const [startDate, endDate] = boundaries;
-
-    let dmSchema: string;
-    try {
-      dmSchema = await getDmSchemaSafe(brand);
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'status' in err && (err as Record<string, unknown>).status === 400) {
-        return NextResponse.json({ success: false, error: getErrorMessage(err) }, { status: 400 });
-      }
-      throw err;
-    }
-    const viewName = `${dmSchema}.v_balance_sheet`;
-    const profitView = `${dmSchema}.v_profit_statement`;
-
-    // Balance sheet is a snapshot at end of period — use the last day
-    // endDate is exclusive, so we need the day before
-    const lastDay = new Date(endDate);
-    lastDay.setDate(lastDay.getDate() - 1);
-    const targetDate = lastDay.toISOString().split('T')[0];
-    // Find the first of month that this date falls in
-    const targetMonth = targetDate.substring(0, 7) + '-01';
-
-    const params: (string | number)[] = [targetMonth];
-    const profitParams: (string | number)[] = [targetDate];
-
-    let storeClause = '';
-    let profitStoreClause = '';
-    if (store !== 'all') {
-      storeClause = 'AND store_code = $2';
-      profitStoreClause = 'AND store_code = $2';
-      params.push(store);
-      profitParams.push(store);
-    }
-
-    const balanceQuery = `
-      SELECT month, store_code, cash_balance, loan_balance, capital_balance, retained_earnings
-      FROM ${viewName}
-      WHERE month = $1::date ${storeClause}
-      ORDER BY store_code, month
-    `;
-
-    const profitQuery = `
-      SELECT store_code, sum(amount) as retained_earnings
-      FROM ${profitView}
-      WHERE month <= $1::date ${profitStoreClause}
-      GROUP BY store_code
-    `;
-
-    // Inventory closing amount at the period end (month-end snapshot).
-    // For tamkoko this comes from v_inventory_turnover.closing_amt (which
-    // already prefers inventory_monthly_summary over SKU detail). NULL → no inventory.
-    const inventoryParams: (string | number)[] = [targetMonth];
-    let inventoryStoreClause = '';
-    if (store !== 'all') {
-      inventoryStoreClause = 'AND store_code = $2';
-      inventoryParams.push(store);
-    }
-    const inventoryQuery = `
-      SELECT store_code, closing_amt
-      FROM ${dmSchema}.v_inventory_turnover
-      WHERE period = to_char($1::date, 'YYYY-MM') ${inventoryStoreClause}
-    `;
-
-    const [balanceRes, profitRes, inventoryRes] = await Promise.all([
-      pool.query(balanceQuery, params),
-      pool.query(profitQuery, profitParams),
-      pool.query(inventoryQuery, inventoryParams).catch(() => ({ rows: [] as { store_code: string; closing_amt: string | null }[] })),
-    ]);
-
-    const profitMap = new Map(profitRes.rows.map(r => [r.store_code, Number(r.retained_earnings)]));
-    const inventoryMap = new Map(
-      inventoryRes.rows.map(r => [r.store_code, r.closing_amt != null ? Number(r.closing_amt) : 0])
-    );
-    const merged = balanceRes.rows.map(r => ({
-      ...r,
-      retained_earnings: profitMap.get(r.store_code) || 0,
-      inventory_amt: inventoryMap.get(r.store_code) || 0,
-    }));
-
-    const lines = buildBalanceLines(merged);
 
     return NextResponse.json({
       success: true,
-      data: { brand, period, span, store, lines }
+      data: { brand: brandParam, period, span, store, lines: result.lines },
     });
 
   } catch (error: unknown) {
-    const errRecord = error as Record<string, unknown>;
-    if (errRecord?.code === '42P01') {
-      return NextResponse.json({ success: true, data: { brand: '', period, span, store: '', lines: [] }, note: 'view not ready' });
-    }
     console.error('Error in balance-sheet route:', error);
+    const errRecord = error as Record<string, unknown>;
     const status = (errRecord?.status as number) || 500;
     return NextResponse.json({ success: false, error: getErrorMessage(error) || 'Failed to load balance sheet' }, { status });
   }
