@@ -4,7 +4,7 @@ import { normalizeBrand, getDmSchemaSafe, getOdsBankTxnTable } from '@/lib/brand
 import { getSessionUser, assertRole } from '@/lib/auth-server';
 import { parsePeriod } from '../period-utils';
 import { getErrorMessage } from '@/lib/query-types';
-import { getCounterpartyData } from '@/lib/repositories/financial-repository';
+import { getCounterpartyList } from '@/lib/queries/payment';
 
 // GET /api/financial/counterparty?brand=gelatomiiix
 // GET /api/financial/counterparty?brand=gelatomiiix&counterparty=xxx&period=2026-01&span=month&store=all
@@ -31,8 +31,11 @@ export async function GET(request: Request) {
 
     // If no counterparty specified, return the list
     if (!counterparty) {
-      const data = await getCounterpartyData(dmSchema, bankTxnTable, period, span, store, direction, lvl2Code || undefined);
-      return NextResponse.json({ success: true, data: { counterparties: data } });
+      const result = await getCounterpartyList(brand, period, span, store);
+      return NextResponse.json({
+        success: true,
+        data: { counterparties: result.data || [] },
+      });
     }
 
     // "全部" = no date filter
