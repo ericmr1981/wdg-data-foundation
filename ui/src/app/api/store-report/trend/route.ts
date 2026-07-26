@@ -1,19 +1,9 @@
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db';
-import { normalizeBrand, getDmSchemaSafe } from '@/lib/brand-server';
+import { normalizeBrand } from '@/lib/brand-server';
 import { getSessionUser } from '@/lib/auth-server';
 import { getErrorMessage } from '@/lib/query-types';
+import { getTrendData } from '@/lib/queries/store-report';
 import type { ApiResult, TrendResponse } from '@/lib/store-report-types';
-
-// Trend 用更宽的指标集 (含 cost_amt / hr_amt / rent_amt / loan_balance，KpiMetricKey 不含这些)
-type TrendSeriesKey =
-  | 'revenue_amt' | 'cost_amt' | 'expense_amt' | 'hr_amt' | 'rent_amt'
-  | 'gross_profit_amt' | 'gross_profit_rate_pct'
-  | 'net_profit_amt' | 'net_profit_rate_pct'
-  | 'operating_cf_amt' | 'cash_balance' | 'loan_balance' | 'cashflow_runway_months'
-  | 'hr_ratio_pct' | 'rent_ratio_pct';
-
-const PG_ERR_NO_VIEW = '42P01';
 
 export async function GET(request: Request) {
   try {
@@ -34,8 +24,6 @@ export async function GET(request: Request) {
       );
     }
 
-    const months = Math.min(Math.max(parseInt(monthsParam, 10) || 12, 1), 24);
-
     const brand = normalizeBrand(brandRaw);
     if (!brand) {
       return NextResponse.json<ApiResult<TrendResponse>>(
@@ -43,59 +31,16 @@ export async function GET(request: Request) {
         { status: 400 }
       );
     }
-    const schema = await getDmSchemaSafe(brand);
 
-    let rows: any[];
-    try {
-      const r = await pool.query(
-        `SELECT month,
-                revenue_amt, cost_amt, expense_amt, hr_amt, rent_amt,
-                gross_profit_amt, gross_profit_rate_pct,
-                net_profit_amt, net_profit_rate_pct,
-                operating_cf_amt, cash_balance, loan_balance, cashflow_runway_months,
-                hr_ratio_pct, rent_ratio_pct
-         FROM ${schema}.v_store_monthly_kpi
-         WHERE store_code = $1
-         ORDER BY month DESC
-         LIMIT $2`,
-        [store, months]
+    const months = Math.min(Math.max(parseInt(monthsParam, 10) || 12, 1), 24);
+    const result = await getTrendData(brand, store, months);
+    if (!result.data) {
+      return NextResponse.json<ApiResult<TrendResponse>>(
+        { success: true, data: null, note: result.note ?? 'view not ready' }
       );
-      rows = r.rows.reverse();
-    } catch (e: any) {
-      if (e?.code === PG_ERR_NO_VIEW) {
-        return NextResponse.json<ApiResult<TrendResponse>>(
-          { success: true, data: null, note: 'view not ready' }
-        );
-      }
-      throw e;
     }
 
-    const seriesKeys: TrendSeriesKey[] = [
-      'revenue_amt', 'cost_amt', 'expense_amt', 'hr_amt', 'rent_amt',
-      'gross_profit_amt', 'gross_profit_rate_pct',
-      'net_profit_amt', 'net_profit_rate_pct',
-      'operating_cf_amt', 'cash_balance', 'loan_balance', 'cashflow_runway_months',
-      'hr_ratio_pct', 'rent_ratio_pct',
-    ];
-    const series = {} as Record<TrendSeriesKey, (number | null)[]>;
-    for (const k of seriesKeys) series[k] = [];
-    const monthList: string[] = [];
-
-    for (const r of rows) {
-      const m = r.month instanceof Date
-        ? `${r.month.getFullYear()}-${String(r.month.getMonth() + 1).padStart(2, '0')}`
-        : String(r.month);
-      monthList.push(m);
-      for (const k of seriesKeys) {
-        const v = r[k as string];
-        series[k].push(v == null ? null : Number(v));
-      }
-    }
-
-    return NextResponse.json<ApiResult<TrendResponse>>({
-      success: true,
-      data: { months: monthList, series },
-    });
+    return NextResponse.json<ApiResult<TrendResponse>>({ success: true, data: result.data });
   } catch (err: unknown) {
     return NextResponse.json<ApiResult<TrendResponse>>(
       { success: false, data: null, error: getErrorMessage(err) },

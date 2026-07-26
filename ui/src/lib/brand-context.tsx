@@ -10,23 +10,58 @@ interface BrandContextType {
 }
 
 const BrandContext = createContext<BrandContextType | undefined>(undefined);
+
+// Cookie is the authoritative brand source (readable from RSC via getBrandServer).
+// localStorage is kept as a client-side fallback / backwards-compat layer.
+export const BRAND_COOKIE_NAME = 'wdg.brand';
 const STORAGE_KEY = 'wdg.brand';
 const DEFAULT_BRAND = 'tamkoko';
+const COOKIE_MAX_AGE = 31536000; // 1 year
+
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const prefix = `${name}=`;
+  const parts = document.cookie.split(';');
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith(prefix)) {
+      return decodeURIComponent(trimmed.slice(prefix.length));
+    }
+  }
+  return null;
+}
+
+function writeCookie(name: string, value: string): void {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${COOKIE_MAX_AGE}; SameSite=Lax`;
+}
 
 export function BrandProvider({ children }: { children: ReactNode }) {
   const [brand, setBrandState] = useState<Brand>(DEFAULT_BRAND);
 
-  // Hydrate from localStorage on mount (client-only)
+  // Hydrate from cookie (authoritative) on mount, falling back to localStorage.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored) setBrandState(stored);
+    const fromCookie = readCookie(BRAND_COOKIE_NAME);
+    if (fromCookie) {
+      setBrandState(fromCookie);
+      // Keep localStorage in sync (legacy readers, if any)
+      try { window.localStorage.setItem(STORAGE_KEY, fromCookie); } catch {}
+      return;
+    }
+    const fromStorage = window.localStorage.getItem(STORAGE_KEY);
+    if (fromStorage) {
+      setBrandState(fromStorage);
+      // Promote legacy localStorage value into the cookie (one-time migration)
+      writeCookie(BRAND_COOKIE_NAME, fromStorage);
+    }
   }, []);
 
   const setBrand = (b: Brand) => {
     setBrandState(b);
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem(STORAGE_KEY, b);
+      writeCookie(BRAND_COOKIE_NAME, b);
+      try { window.localStorage.setItem(STORAGE_KEY, b); } catch {}
     }
   };
 

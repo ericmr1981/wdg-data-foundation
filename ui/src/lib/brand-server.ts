@@ -2,9 +2,37 @@
 // Legacy brands keep existing schema names: yufeng_* / bonjur_*
 // New brands use prefix: brand_<code>_
 
+import { cookies } from 'next/headers';
 import pool from '@/lib/db';
 
 export type BrandCode = string;
+
+// ── Brand cookie (authoritative source for RSC) ──
+// Client writes this cookie via brand-context.tsx setBrand(); server reads it
+// via getBrandServer() so RSC pages can access the active brand without localStorage.
+export const BRAND_COOKIE_NAME = 'wdg.brand';
+export const DEFAULT_BRAND = 'tamkoko';
+
+// Static fallback list for the client BrandSelector. The authoritative brand
+// list is loaded dynamically from /api/brands at runtime (see brands-client.ts).
+export const BRAND_OPTIONS = [
+  { code: 'tamkoko', name: '泰柯茶园' },
+  { code: 'gelatomiiix', name: '蜜可诗' },
+  { code: 'bonjur', name: 'Bonjour' }
+] as const;
+
+/**
+ * Read the active brand from the wdg.brand cookie (server-side, RSC-compatible).
+ * Validates the cookie value via normalizeBrand() so any brand code registered
+ * in ops.allowed_schemas is accepted (not just the static BRAND_OPTIONS above).
+ * Returns DEFAULT_BRAND ('tamkoko') when the cookie is missing or invalid.
+ */
+export async function getBrandServer(): Promise<BrandCode> {
+  const cookieStore = await cookies();
+  const raw = cookieStore.get(BRAND_COOKIE_NAME)?.value;
+  const brand = normalizeBrand(raw);
+  return brand ?? DEFAULT_BRAND;
+}
 
 // ── Schema whitelist (loaded once, cached in-module) ──
 let _schemaCache: Set<string> | null = null;

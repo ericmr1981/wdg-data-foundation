@@ -1,3 +1,0 @@
-dashboard 8: values MISSING/EMPTY (values_source_type=static-list)
-dashboard 9: values_len=5, first=2025-09, last=2025-05
-dashboard 10: values_len=5, first=2026-01, last=2025-09

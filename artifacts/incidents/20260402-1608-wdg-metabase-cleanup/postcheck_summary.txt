@@ -1,3 +1,0 @@
-Active dashboards now: 5 (ids=[4, 5, 8, 9, 10])
-Active relevant cards now: 37
-Orphan relevant cards now: 0

@@ -9,10 +9,18 @@ function getGitSha() {
 }
 
 const nextConfig = {
+  reactStrictMode: true,
+  compress: true,
+  poweredByHeader: false,
+  output: 'standalone',
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',
     },
+    optimizePackageImports: ['recharts', 'xlsx', 'xlsx-js-style', 'react-syntax-highlighter', '@tanstack/react-table', '@dnd-kit/core', '@dnd-kit/sortable'],
+  },
+  images: {
+    formats: ['image/avif', 'image/webp'],
   },
   env: {
     NEXT_PUBLIC_GIT_SHA: getGitSha(),

@@ -30,7 +30,6 @@
     "react-syntax-highlighter": "^15.6.6",
     "recharts": "^3.8.1",
     "remark-gfm": "^4.0.1",
-    "xlsx": "^0.18.5",
     "xlsx-js-style": "^1.2.0",
     "zod": "^3.25.76"
   },

@@ -1,2 +1,0 @@
-values_source_type: static-list
-has_values: False

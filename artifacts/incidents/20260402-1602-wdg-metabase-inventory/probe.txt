@@ -1,3 +1,0 @@
-== http://localhost:8082/api/session/properties ==
-http_code=200 size=115922
-

@@ -6,7 +6,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 import crypto from 'crypto';
 import pool from '@/lib/db';
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 
 /**
  * Extract YYYY-MM from a filename. Returns null if no usable date is found.
