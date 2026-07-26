@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
           const ext = filePayload.file.name.split('.').pop()?.toLowerCase();
           if (ext === 'csv') {
             // Parse CSV via xlsx (already installed) — read as single-sheet workbook
-            const XLSX = await import('xlsx');
+            const XLSX = await import('xlsx-js-style');
             const wb = XLSX.read(buf.toString('utf-8').slice(0, 256 * 1024), { type: 'string', raw: true });
             const sheetName = wb.SheetNames[0];
             const data: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
               }
             }
           } else if (ext === 'xlsx' || ext === 'xls') {
-            const XLSX = await import('xlsx');
+            const XLSX = await import('xlsx-js-style');
             const wb = XLSX.read(buf, { type: 'buffer' });
             const sheetName = wb.SheetNames[0];
             const data: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1 });
