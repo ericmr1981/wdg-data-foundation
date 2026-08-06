@@ -651,21 +651,12 @@ def do_import(file_path: str) -> dict:
 
 def main():
     parser = setup_cli_parser("Yufeng 银行流水导入脚本")
-    parser.add_argument(
-        "input_path",
-        help="文件路径或目录路径",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="干运行：解析并验证数据，不写入数据库",
-    )
-
-
     args = parser.parse_args()
 
     # 查找文件
-    input_path = args.input_path
+    input_path = args.input
+    if not input_path:
+        parser.error("请提供文件路径或目录路径")
     if os.path.isdir(input_path):
         files = find_bank_files(input_path)
         if not files:
