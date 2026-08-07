@@ -60,11 +60,11 @@ export async function POST(request: Request) {
     // best-effort query — proceed if table unreachable
   }
 
-  // 5. Save file to inputs/gelatomiiix/{store}/income_detail/{yyyyMM}/
+  // 5. Save file to inputs/gelatomiiix/{store}/income/{yyyyMM}/（与通用 /api/upload 约定一致，issue #41）
   const now = new Date();
-  const yyyyMM = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const yyyyMM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-  const uploadDir = path.join(process.cwd(), '..', 'inputs', 'gelatomiiix', store, 'income_detail', yyyyMM);
+  const uploadDir = path.join(process.cwd(), '..', 'inputs', 'gelatomiiix', store, 'income', yyyyMM);
   if (!existsSync(uploadDir)) {
     await mkdir(uploadDir, { recursive: true });
   }

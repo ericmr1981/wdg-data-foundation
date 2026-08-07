@@ -2,7 +2,7 @@
 """
 Bonjur｜企迈收入明细表导入脚本
 
-Path convention: inputs/{brand_code}/{store_code}/income_detail/{YYYY-MM}/{filename}.csv
+Path convention: inputs/{brand_code}/{store_code}/income/{YYYY-MM}/{filename}.csv
 
 Usage:
     python scripts/import_bonjur_income_detail.py [csv_file_or_dir] [--dry-run]
@@ -33,7 +33,8 @@ from lib.importer import (
 
 BRAND_CODE = "bonjur"
 TARGET_TABLE = "bonjur_ods.income_detail"
-SOURCE_TYPE = "income_detail"
+# UI 上传 source='income'，落盘 inputs/{brand}/{store}/income/{YYYY-MM}/（issue #41 同类 bug）
+SOURCE_TYPE = "income"
 
 THIRD_PARTY_METHODS = {
     "微信支付", "支付宝支付", "美团团购券", "云闪付",

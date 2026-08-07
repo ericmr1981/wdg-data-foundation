@@ -81,10 +81,10 @@ export async function POST(request: Request) {
     // best-effort
   }
 
-  // 5. Save file to inputs/tamkoko/{store}/income_detail/{yyyyMM}/
+  // 5. Save file to inputs/tamkoko/{store}/income/{yyyyMM}/（与通用 /api/upload 约定一致，issue #41）
   const now = new Date();
   const yyyyMM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const uploadDir = path.join(process.cwd(), '..', 'inputs', 'tamkoko', store, 'income_detail', yyyyMM);
+  const uploadDir = path.join(process.cwd(), '..', 'inputs', 'tamkoko', store, 'income', yyyyMM);
   if (!existsSync(uploadDir)) {
     await mkdir(uploadDir, { recursive: true });
   }
@@ -134,13 +134,19 @@ export async function POST(request: Request) {
 
   try {
     const q = await pool.query(
-      `SELECT id, status, row_count::int FROM raw.ingest_file WHERE file_hash = $1 LIMIT 1`,
+      `SELECT id, status, row_count::int, error_message FROM raw.ingest_file WHERE file_hash = $1 LIMIT 1`,
       [fileHash]
     );
     if (q.rows?.length) {
       sourceFileId = Number(q.rows[0].id);
+      const status = q.rows[0].status as string;
       totalRows = q.rows[0].row_count ?? null;
       insertedRows = q.rows[0].row_count ?? null;
+      // issue #41: 脚本内部捕获单文件异常后以 exit 0 结束，必须检查 status，
+      // 否则导入失败会被误报为成功（MCP 工具据此返回 success）
+      if (status === 'failed') {
+        importError = q.rows[0].error_message ?? 'Import failed (see raw.ingest_file.error_message)';
+      }
     }
   } catch {
     // best-effort

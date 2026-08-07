@@ -36,7 +36,8 @@ from lib.importer import (
 STORE_CODE = os.getenv("INCOME_STORE_CODE", "sh_xtd")
 STORE_NAME = ""
 BRAND_CODE = os.getenv("INCOME_BRAND_CODE", "gelatomiiix")
-SOURCE_TYPE = "income_detail"
+# 与通用 /api/upload 及 upload-qimai 路由约定一致（issue #41），raw.ingest_file.source_type 统一 'income'
+SOURCE_TYPE = "income"
 
 def get_target_table(brand: str) -> str:
     if brand in ('bonjur',):
