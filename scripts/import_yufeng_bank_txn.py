@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
+from psycopg2.extras import execute_values
 
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPTS_DIR not in sys.path:
@@ -639,7 +640,7 @@ def do_import(file_path: str) -> dict:
             ops.finish(status="failed", note=error_msg[:500])
 
         if source_file_id:
-            mgr.mark_failed(source_file_id, error_msg[:1000])
+            mgr.mark_failed(source_file_id, error_message=error_msg)
 
         raise
 

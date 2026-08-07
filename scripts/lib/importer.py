@@ -122,11 +122,12 @@ class IngestFileManager:
             )
             self.conn.commit()
 
-    def mark_failed(self, source_file_id: int, row_count: int = 0):
+    def mark_failed(self, source_file_id: int, error_message: Optional[str] = None):
+        """Mark a file as failed, writing the error message (never into the int row_count column)."""
         with self.conn.cursor() as cur:
             cur.execute(
-                "UPDATE raw.ingest_file SET status='failed', row_count=%s, finished_at=CURRENT_TIMESTAMP WHERE id=%s",
-                (row_count, source_file_id),
+                "UPDATE raw.ingest_file SET status='failed', error_message=%s, finished_at=CURRENT_TIMESTAMP WHERE id=%s",
+                (error_message[:1000] if error_message else None, source_file_id),
             )
             self.conn.commit()
 

@@ -46,6 +46,7 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
+from psycopg2.extras import execute_values
 
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPTS_DIR not in sys.path:
