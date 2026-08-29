@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 
 import pytest
-import psycopg2
 
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -17,7 +16,7 @@ REFUND_CSV = Path(__file__).resolve().parent / "test_fixtures" / "cash_register_
 
 
 def test_parse_path_valid():
-    meta = mod.parse_path("inputs/tamkoko/sh_sjh/sales/cash_register/2026-06/qimai.csv")
+    meta = mod.parse_path_cash_register("inputs/tamkoko/sh_sjh/sales/cash_register/2026-06/qimai.csv")
     assert meta["brand_code"] == "tamkoko"
     assert meta["store_code"] == "sh_sjh"
     assert meta["source_type"] == "cash_register"
@@ -26,12 +25,12 @@ def test_parse_path_valid():
 
 def test_parse_path_wrong_source_type():
     with pytest.raises(ValueError, match="source_type"):
-        mod.parse_path("inputs/tamkoko/sh_sjh/income_detail/2026-06/file.csv")
+        mod.parse_path_cash_register("inputs/tamkoko/sh_sjh/income_detail/2026-06/file.csv")
 
 
 def test_parse_path_bad_month():
     with pytest.raises(ValueError, match="月份"):
-        mod.parse_path("inputs/tamkoko/sh_sjh/sales/cash_register/2026-6/file.csv")
+        mod.parse_path_cash_register("inputs/tamkoko/sh_sjh/sales/cash_register/2026-6/file.csv")
 
 
 def test_strip_backtick():
@@ -105,16 +104,18 @@ def test_sample_fixture_has_backtick_order_no():
     assert all(r["订单号"].startswith("`") for r in rows)
 
 
-def test_is_already_imported_returns_id_when_success(monkeypatch):
-    """SHA256 命中且 status='success' 时返回 source_file_id,主流程据此 SKIPPED"""
-    captured = {"calls": []}
+def test_ingest_check_returns_meta_when_success():
+    """SHA256 命中时返回 file 元信息(id/status/row_count),import_one_file 据此 SKIPPED"""
+    from lib.importer import IngestFileManager
+
+    executed = []
 
     class FakeCursor:
         def execute(self, sql, params=None):
-            captured["calls"].append((sql, params))
+            executed.append((sql, params))
 
         def fetchone(self):
-            return (42,)  # 已存在的 source_file_id
+            return (42, "success", 3)  # raw.ingest_file 中已存在且成功
 
         def __enter__(self):
             return self
@@ -126,19 +127,17 @@ def test_is_already_imported_returns_id_when_success(monkeypatch):
         def cursor(self):
             return FakeCursor()
 
-        def commit(self):
-            pass
-
-        def close(self):
-            pass
-
-    monkeypatch.setattr(mod, "_get_db_config", lambda: {"host": "x"})
-    result = mod.is_already_imported(FakeConn(), "abc123hash")
-    assert result == 42
+    result = IngestFileManager(FakeConn()).check("abc123hash", "tamkoko")
+    assert result == {"id": 42, "status": "success", "row_count": 3}
+    # 查询应按 file_hash + brand_code 精确匹配
+    assert executed and "file_hash = %s" in executed[0][0]
+    assert "brand_code = %s" in executed[0][0]
+    assert executed[0][1] == ("abc123hash", "tamkoko")
 
 
-def test_is_already_imported_returns_none_when_new(monkeypatch):
-    """SHA256 未命中或 status != 'success' 时返回 None"""
+def test_ingest_check_returns_none_when_new():
+    """SHA256 未命中时返回 None"""
+    from lib.importer import IngestFileManager
 
     class FakeCursor:
         def execute(self, sql, params=None):
@@ -157,11 +156,10 @@ def test_is_already_imported_returns_none_when_new(monkeypatch):
         def cursor(self):
             return FakeCursor()
 
-    monkeypatch.setattr(mod, "_get_db_config", lambda: {"host": "x"})
-    assert mod.is_already_imported(FakeConn(), "newhash") is None
+    assert IngestFileManager(FakeConn()).check("newhash", "tamkoko") is None
 
 
-def test_replace_existing_for_period_deletes_old_files(monkeypatch):
+def test_replace_existing_for_period_deletes_old_files():
     """replace=true 时按 ODS 中 biz_date 年/月判定旧 source_file 并删除"""
     executed = []
 
@@ -186,7 +184,6 @@ def test_replace_existing_for_period_deletes_old_files(monkeypatch):
         def commit(self):
             pass
 
-    monkeypatch.setattr(mod, "_get_db_config", lambda: {"host": "x"})
     mod.replace_existing_for_period(FakeConn(), "sh_sjh", "2026-06-15")
 
     # 期望:先 SELECT 找旧 source_file_id,再 DELETE ingest_file(CASCADE 清 ODS)
@@ -212,7 +209,7 @@ def test_import_one_file_writes_ods_rows(tmp_path, monkeypatch):
     monkeypatch.setenv("CASH_REGISTER_STORE_CODE", "sh_sjh")
     monkeypatch.setenv("CASH_REGISTER_STORE_NAME", "上海世纪汇店")
 
-    conn = psycopg2.connect(**mod._get_db_config())
+    conn = mod.get_connection()
     try:
         # 清测试 store 的旧数据(避免污染)
         with conn.cursor() as cur:
@@ -227,6 +224,7 @@ def test_import_one_file_writes_ods_rows(tmp_path, monkeypatch):
             "store_code": "sh_sjh",
             "source_type": "cash_register",
             "month": "2026-06",
+            "month_date": "2026-06-01",
             "file_name": SAMPLE_CSV.name,
             "file_path": str(SAMPLE_CSV),
         }
@@ -273,7 +271,7 @@ def test_import_one_file_with_refund_merges_rows(tmp_path, monkeypatch):
     monkeypatch.setenv("CASH_REGISTER_STORE_CODE", "sh_sjh")
     monkeypatch.setenv("CASH_REGISTER_STORE_NAME", "上海世纪汇店")
 
-    conn = psycopg2.connect(**mod._get_db_config())
+    conn = mod.get_connection()
     try:
         # 用 refund fixture
         meta = {
@@ -281,6 +279,7 @@ def test_import_one_file_with_refund_merges_rows(tmp_path, monkeypatch):
             "store_code": "sh_sjh",
             "source_type": "cash_register",
             "month": "2026-06",
+            "month_date": "2026-06-01",
             "file_name": REFUND_CSV.name,
             "file_path": str(REFUND_CSV),
         }
